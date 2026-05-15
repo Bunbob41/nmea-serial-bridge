@@ -3,12 +3,52 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import List, Optional, Tuple
+from typing import List, Optional, Set, Tuple
 
 
 class NmeaMode(str, Enum):
     PASSTHROUGH = "passthrough"
     STRICT = "strict"
+
+
+NMEA_SENTENCE_TYPES: tuple[str, ...] = (
+    "GGA",
+    "RMC",
+    "ZDA",
+    "VTG",
+    "GSA",
+    "GSV",
+    "GLL",
+    "HDT",
+    "HDG",
+    "DTM",
+    "GBS",
+    "GST",
+)
+
+
+@dataclass
+class NmeaFilter:
+    """When enabled_types is empty, all sentence types are allowed."""
+
+    enabled_types: Set[str] = field(default_factory=set)
+
+    def allows_sentence(self, line: str) -> bool:
+        if not self.enabled_types:
+            return True
+        st = nmea_sentence_type(line)
+        if st is None:
+            return False
+        return st in self.enabled_types
+
+
+def nmea_sentence_type(line: str) -> Optional[str]:
+    s = line.strip()
+    if len(s) < 6 or s[0] not in ("$", "!"):
+        return None
+    if s[0] == "$":
+        return s[3:6].upper()
+    return s[2:5].upper()
 
 
 # NMEA 0183 max sentence length 82 chars; allow headroom for buffering mistakes
@@ -78,13 +118,16 @@ def _find_line_end(buf: bytearray) -> Optional[int]:
     return None
 
 
-def _classify_strict(line: str) -> Tuple[bool, str]:
+def _classify_strict(line: str, nmea_filter: Optional[NmeaFilter] = None) -> Tuple[bool, str]:
     s = line.strip()
     if not s:
         return False, "empty line"
     if s[0] in ("$", "!"):
         if not nmea_checksum_ok(s):
             return False, f"bad checksum: {s[:72]}"
+        if nmea_filter is not None and not nmea_filter.allows_sentence(s):
+            st = nmea_sentence_type(s) or "?"
+            return False, f"sentence type {st} not enabled"
         return True, ""
     return False, f"not NMEA (strict): {s[:72]}"
 
@@ -98,7 +141,9 @@ class NmeaLineAssembler:
     def reset(self) -> None:
         self._buf.clear()
 
-    def feed(self, data: bytes, mode: NmeaMode) -> ProcessResult:
+    def feed(
+        self, data: bytes, mode: NmeaMode, nmea_filter: Optional[NmeaFilter] = None
+    ) -> ProcessResult:
         out = ProcessResult()
         if not data:
             return out
@@ -125,7 +170,7 @@ class NmeaLineAssembler:
                 continue
 
             if mode == NmeaMode.STRICT:
-                ok, reason = _classify_strict(line)
+                ok, reason = _classify_strict(line, nmea_filter)
                 if not ok:
                     out.rejected.append(reason)
                     continue

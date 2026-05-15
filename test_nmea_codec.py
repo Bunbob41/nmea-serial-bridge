@@ -1,6 +1,7 @@
 import unittest
 
 from nmea_codec import (
+    NmeaFilter,
     NmeaLineAssembler,
     NmeaMode,
     nmea_checksum_ok,
@@ -55,6 +56,19 @@ class TestLineAssembler(unittest.TestCase):
         r = asm.feed(line.encode(), NmeaMode.PASSTHROUGH)
         self.assertEqual(len(r.forward), 1)
         self.assertTrue(r.forward[0].endswith(b"\r\n"))
+
+
+class TestNmeaFilter(unittest.TestCase):
+    def test_filter_gga_only(self) -> None:
+        filt = NmeaFilter(enabled_types={"GGA"})
+        asm = NmeaLineAssembler()
+        gga = b"$GPGGA,123519,4807.038,N,01131.000,E,1,08,0.9,545.4,M,46.9,M,,*47\r\n"
+        rmc = b"$GPRMC,123519,A,4807.038,N,01131.000,E,022.4,084.4,230394,003.1,W*6A\r\n"
+        r1 = asm.feed(gga, NmeaMode.STRICT, filt)
+        self.assertEqual(len(r1.forward), 1)
+        r2 = asm.feed(rmc, NmeaMode.STRICT, filt)
+        self.assertEqual(len(r2.forward), 0)
+        self.assertTrue(r2.rejected)
 
 
 class TestParseUtc(unittest.TestCase):
