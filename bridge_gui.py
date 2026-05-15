@@ -11,7 +11,7 @@ from bridge_core import (  # noqa: F401 — re-export for older scripts
     SerialNetBridge,
     configure_windows_event_loop_policy,
 )
-from ui.registry import UI_DEFAULT, create_window
+from ui.registry import create_window
 from ui.standard import BridgeWindowStandard
 
 BridgeWindow = BridgeWindowStandard
@@ -23,11 +23,20 @@ def main() -> None:
         "--ui",
         choices=["standard", "minimal", "logfirst"],
         default=None,
-        help="UI layout (default: standard, or last choice from launcher)",
+        help="UI layout (default: saved choice, picker on first .exe run, else standard)",
+    )
+    parser.add_argument(
+        "--pick-ui",
+        action="store_true",
+        help="Show layout picker dialog before opening the window",
     )
     args = parser.parse_args()
-    ui_id = args.ui or UI_DEFAULT
     app = QtWidgets.QApplication(sys.argv)
+    frozen = getattr(sys, "frozen", False)
+    from ui.picker import load_saved_ui, resolve_ui_id
+
+    show_picker = args.pick_ui or (frozen and args.ui is None and load_saved_ui() is None)
+    ui_id = resolve_ui_id(args.ui, show_picker=show_picker)
     w = create_window(ui_id)
     w.show()
     sys.exit(app.exec())

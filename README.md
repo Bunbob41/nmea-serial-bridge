@@ -118,13 +118,27 @@ Includes: unit tests, `com_free`, `check_setup`, GUI smoke (all three UIs), head
 python -m unittest discover -s . -p "test_*.py" -v
 ```
 
-## Build `.exe` (Windows)
+## Build & release (Windows `.exe` for another PC)
+
+**One command** — build, zip, optional GitHub publish:
+
+```powershell
+.\release.ps1              # creates dist\nmea-serial-bridge-v0.5.2-win64.zip
+.\release.ps1 -Publish     # also tags v0.5.2 and uploads to GitHub Releases (needs `gh` CLI)
+.\release.ps1 -SkipTests   # faster rebuild while iterating
+```
+
+**Manual steps:**
 
 ```powershell
 .\build.ps1
+cd dist
+Compress-Archive -Path nmea-serial-bridge -DestinationPath nmea-serial-bridge-v0.5.2-win64.zip
 ```
 
-Output: `dist\nmea-serial-bridge\` — copy the folder; run `nmea-serial-bridge.exe`.
+Then [create a release](https://github.com/Bunbob41/nmea-serial-bridge/releases/new): tag `v0.5.2`, attach the zip.
+
+**On the other PC:** download the zip from **Releases** (not “Source code”), unzip, run `nmea-serial-bridge.exe`. First run shows a **layout picker**; copy the whole folder (not just the `.exe`). Windows SmartScreen may warn on unsigned apps.
 
 ## Project layout
 
