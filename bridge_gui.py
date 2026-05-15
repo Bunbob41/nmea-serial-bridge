@@ -41,62 +41,151 @@ UI_LOG_FLUSH_MS = 50
 UI_LOG_MAX_LINES_PER_FLUSH = 96
 UI_VIEW_MAX_BLOCK_COUNT = 4000
 
-# Muted green accent (survey / marine tone, not bright neon)
+# Survey / marine palette — structured for path → serial → network → action
 BRIDGE_STYLESHEET = """
 QWidget#BridgeRoot {
+    background-color: #1a2420;
+    color: #e8f2ea;
+    font-family: "Segoe UI", sans-serif;
+    font-size: 10pt;
+}
+QLabel#appTitle {
+    font-size: 15pt;
+    font-weight: 600;
+    color: #e8f8eb;
+}
+QLabel#appSubtitle {
+    color: #9bb8a4;
+    font-size: 9pt;
+}
+QFrame#statusBanner {
+    border-radius: 8px;
+    padding: 10px 12px;
+    border: 1px solid #4a6b52;
     background-color: #243328;
 }
+QFrame#statusBanner[state="running"] {
+    background-color: #1e3d28;
+    border-color: #6fcf97;
+}
+QFrame#statusBanner[state="starting"] {
+    background-color: #3d3a22;
+    border-color: #d4c06a;
+}
+QFrame#statusBanner[state="failed"] {
+    background-color: #3d2424;
+    border-color: #c97a7a;
+}
+QLabel#statusBannerText {
+    font-size: 12pt;
+    font-weight: 600;
+}
+QLabel#intentHint {
+    color: #c8e6d0;
+    padding: 6px 4px;
+    line-height: 1.35;
+}
+QPushButton#pathBench, QPushButton#pathProduction {
+    text-align: left;
+    padding: 12px 14px;
+    border-radius: 8px;
+    border: 2px solid #4a6b52;
+    background-color: #2a3830;
+    font-weight: 600;
+}
+QPushButton#pathBench:hover, QPushButton#pathProduction:hover {
+    border-color: #7ab88a;
+    background-color: #324a38;
+}
+QPushButton#pathBench[active="true"], QPushButton#pathProduction[active="true"] {
+    border-color: #8ee0a0;
+    background-color: #2d4a36;
+}
+QPushButton#btnStart {
+    background-color: #2d6a3e;
+    border: 1px solid #6fcf97;
+    border-radius: 8px;
+    font-size: 11pt;
+    font-weight: 600;
+    min-height: 44px;
+    padding: 8px 16px;
+}
+QPushButton#btnStart:hover { background-color: #36824b; }
+QPushButton#btnStart:disabled { background-color: #2a352c; color: #666; border-color: #444; }
+QPushButton#btnStop {
+    background-color: #4a3234;
+    border: 1px solid #a07070;
+    border-radius: 8px;
+    font-size: 11pt;
+    font-weight: 600;
+    min-height: 44px;
+    padding: 8px 16px;
+}
+QPushButton#btnStop:hover { background-color: #5c3e40; }
 QTabWidget::pane {
-    border: 1px solid #4a6b52;
-    border-radius: 4px;
-    background: #2c3b30;
+    border: 1px solid #3d5244;
+    border-radius: 6px;
+    background: #222e26;
     top: -1px;
 }
+QTabBar::tab {
+    background: #2a3830;
+    color: #b0c8b8;
+    padding: 8px 14px;
+    margin-right: 2px;
+    border-top-left-radius: 6px;
+    border-top-right-radius: 6px;
+}
+QTabBar::tab:selected {
+    background: #324a38;
+    color: #e8f8eb;
+}
 QPlainTextEdit {
-    background-color: #1e2a22;
-    color: #e8f2ea;
-    border: 1px solid #4a6b52;
-    border-radius: 4px;
+    background-color: #141c18;
+    color: #d8ebe0;
+    border: 1px solid #3d5244;
+    border-radius: 6px;
     font-family: Consolas, "Cascadia Mono", monospace;
+    font-size: 9pt;
 }
 QStatusBar {
-    background: #344a3a;
-    color: #e8f2ea;
+    background: #1e2a22;
+    color: #b8d0c0;
+    border-top: 1px solid #3d5244;
 }
 QGroupBox {
-    border: 1px solid #5a7d62;
-    border-radius: 4px;
-    margin-top: 10px;
-    padding-top: 10px;
+    border: 1px solid #3d5244;
+    border-radius: 6px;
+    margin-top: 12px;
+    padding: 12px 10px 10px 10px;
     color: #dcefe0;
+    font-weight: 600;
 }
 QGroupBox::title {
     subcontrol-origin: margin;
-    left: 8px;
-    padding: 0 4px;
-    color: #b8e0bc;
+    left: 10px;
+    padding: 0 6px;
+    color: #9fd4a8;
 }
 QPushButton {
-    background-color: #3d5c44;
+    background-color: #324a38;
     color: #f0faf1;
-    border: 1px solid #6a9b72;
-    border-radius: 4px;
-    padding: 4px 10px;
+    border: 1px solid #5a7d62;
+    border-radius: 6px;
+    padding: 6px 12px;
 }
-QPushButton:hover {
-    background-color: #4a7052;
-}
-QPushButton:disabled {
-    background-color: #2a352c;
-    color: #888;
-}
+QPushButton:hover { background-color: #3d5c44; }
+QPushButton:disabled { background-color: #252e28; color: #666; }
 QComboBox, QLineEdit, QSpinBox, QPlainTextEdit#sendEdit {
-    background-color: #222e26;
+    background-color: #1a2420;
     color: #e8f2ea;
     border: 1px solid #4a6b52;
-    border-radius: 3px;
-    padding: 2px 4px;
+    border-radius: 4px;
+    padding: 4px 6px;
+    min-height: 1.4em;
 }
+QRadioButton { spacing: 8px; color: #d0e8d8; }
+QCheckBox { color: #d0e8d8; }
 """
 
 FILE_LOG_MAX_BYTES = 10 * 1024 * 1024
@@ -968,6 +1057,8 @@ class BridgeWindow(QtWidgets.QWidget):
         self._stopping = False
         self._start_gen = 0
         self._pending_start_gen = 0
+        self._active_path: Optional[str] = None
+        self._starting = False
         self._stop_guard_timer = QtCore.QTimer(self)
         self._stop_guard_timer.setSingleShot(True)
         self._stop_guard_timer.timeout.connect(self._stop_timeout_guard)
@@ -984,10 +1075,10 @@ class BridgeWindow(QtWidgets.QWidget):
         self.log_view.setPlaceholderText("Live log: bridge status and traffic appear here while running.")
 
         tabs = QtWidgets.QTabWidget()
-        tabs.addTab(self._build_settings_tab(), "1. Connection")
-        tabs.addTab(self._build_nmea_tab(), "2. NMEA")
-        tabs.addTab(self._build_send_tab(), "3. Send")
-        tabs.addTab(self._build_log_tab(), "4. Log / QA")
+        tabs.addTab(self._build_settings_tab(), "Connect")
+        tabs.addTab(self._build_nmea_tab(), "NMEA")
+        tabs.addTab(self._build_send_tab(), "Send")
+        tabs.addTab(self._build_log_tab(), "Diagnostics")
 
         log_panel = QtWidgets.QWidget()
         log_lay = QtWidgets.QVBoxLayout(log_panel)
@@ -1062,6 +1153,85 @@ class BridgeWindow(QtWidgets.QWidget):
         else:
             self._splitter.setSizes([900, 0])
 
+    def _polish_widget(self, w: QtWidgets.QWidget) -> None:
+        style = w.style()
+        style.unpolish(w)
+        style.polish(w)
+
+    def _set_status_banner(self, state: str, title: str, detail: str = "") -> None:
+        self.status_banner.setProperty("state", state)
+        self._polish_widget(self.status_banner)
+        text = title if not detail else f"{title}\n{detail}"
+        self.status_banner_text.setText(text)
+
+    def _set_active_path(self, path: Optional[str]) -> None:
+        self._active_path = path
+        self.btn_bench_preset.setProperty("active", path == "bench")
+        self.btn_production_preset.setProperty("active", path == "production")
+        self._polish_widget(self.btn_bench_preset)
+        self._polish_widget(self.btn_production_preset)
+        self._refresh_intent_hint()
+
+    def _refresh_intent_hint(self) -> None:
+        if self.rb_udp_remote.isChecked():
+            self.intent_hint.setText(
+                "⚠ Wrong mode: UDP remote is for talking to a fixed peer. "
+                "For INS/simulator tests use Desk or Boat path (UDP listen)."
+            )
+            return
+        if not self.rb_udp_listen.isChecked() and self.chk_advanced_net.isChecked():
+            self.intent_hint.setText(
+                "TCP mode selected — only use if your device speaks TCP, not UDP NMEA."
+            )
+            return
+        if self._active_path == "bench":
+            com = self.com_cb.currentText() or "COM?"
+            self.intent_hint.setText(
+                f"Desk test: bridge owns {com}. Send UDP to 127.0.0.1:{self.udp_port.text()}. "
+                f"Watch the paired com0com port (e.g. COM12), not {com}. "
+                f"Do not open Tera Term on {com}."
+            )
+        elif self._active_path == "production":
+            d = load_production_defaults()
+            self.intent_hint.setText(
+                f"Boat: INS sends UDP to {d.get('pc_ip', 'PC IP')}:{self.udp_port.text()} → "
+                f"{self.com_cb.currentText() or 'COM?'}. "
+                "Close Mission Planner on that COM while bridging."
+            )
+        else:
+            self.intent_hint.setText(
+                "Choose Desk test or Boat / INS above, then Start. "
+                "The bridge listens on UDP; your device must send NMEA to this PC."
+            )
+
+    def _validate_before_start(self) -> Optional[str]:
+        if self._worker and self._worker.isRunning():
+            return "Bridge is still stopping. Wait a moment, then try again."
+        if self._starting:
+            return "Start already in progress."
+        if not self.com_cb.currentText().strip():
+            return "Select a COM port (Refresh ports if the list is empty)."
+        if self._active_path is None:
+            return "Choose Desk test or Boat / INS first — this sets the correct UDP mode."
+        if self.rb_udp_remote.isChecked():
+            return (
+                "UDP remote is wrong for INS/bench. Click Desk test or Boat / INS, "
+                "or enable Advanced and select UDP listen."
+            )
+        if not self.rb_udp_listen.isChecked():
+            return "For standard NMEA UDP, select UDP listen (use Desk/Boat path or Advanced)."
+        try:
+            baud = int(self.baud_edit.text())
+            if baud <= 0:
+                raise ValueError
+        except ValueError:
+            return "Enter a valid baud rate (e.g. 115200)."
+        try:
+            _parse_port(self.udp_port.text(), "UDP port")
+        except ValueError as e:
+            return str(e)
+        return None
+
     def _apply_com_preset(self, com: str, baud: int, udp_host: str, udp_port: int) -> None:
         idx = self.com_cb.findText(com)
         if idx >= 0:
@@ -1078,6 +1248,7 @@ class BridgeWindow(QtWidgets.QWidget):
         self._toggle_log_panel(True)
         self.chk_verbose_log.setChecked(True)
         self._mode_toggle()
+        self._refresh_intent_hint()
 
     def _apply_bench_preset(self) -> None:
         """Bench: UDP listen -> COM from bench_defaults.json (com0com / localhost)."""
@@ -1087,6 +1258,7 @@ class BridgeWindow(QtWidgets.QWidget):
         udp_host = str(d["udp_host"])
         udp_port = int(d["udp_port"])
         self._apply_com_preset(com, baud, udp_host, udp_port)
+        self._set_active_path("bench")
         self._log_ui(
             f"Bench preset: {com} + UDP LISTEN {udp_host}:{udp_port}. "
             f"Test with 127.0.0.1:{udp_port} (python nmea_static_edh.py). "
@@ -1105,6 +1277,7 @@ class BridgeWindow(QtWidgets.QWidget):
         mask = str(d.get("subnet_mask", "255.255.255.0"))
         notes = str(d.get("notes", "")).strip()
         self._apply_com_preset(com, baud, udp_host, udp_port)
+        self._set_active_path("production")
         lines = [
             f"Production preset: {com} @ {baud}, UDP LISTEN {udp_host}:{udp_port}.",
             f"Survey PC Ethernet: {pc_ip} / {mask} (static recommended).",
@@ -1119,36 +1292,56 @@ class BridgeWindow(QtWidgets.QWidget):
     def _build_settings_tab(self) -> QtWidgets.QWidget:
         w = QtWidgets.QWidget()
         outer = QtWidgets.QVBoxLayout(w)
+        outer.setSpacing(10)
 
-        quick = QtWidgets.QLabel(
-            "<b>Quick start</b><br>"
-            "1) Pick COM port and network mode below<br>"
-            "2) Open tab <b>2. NMEA</b> (optional filters)<br>"
-            "3) Click <b>Start bridge</b> — settings lock while running<br>"
-            "4) Use <b>Stop bridge</b> before changing COM or network"
+        title = QtWidgets.QLabel("NMEA Serial Bridge")
+        title.setObjectName("appTitle")
+        sub = QtWidgets.QLabel(
+            f"v{__version__} — Ethernet NMEA (UDP) in, serial NMEA out to autopilot / bench"
         )
-        quick.setWordWrap(True)
-        outer.addWidget(quick)
+        sub.setObjectName("appSubtitle")
+        sub.setWordWrap(True)
+        outer.addWidget(title)
+        outer.addWidget(sub)
 
-        preset_row = QtWidgets.QHBoxLayout()
-        self.btn_bench_preset = QtWidgets.QPushButton("Bench preset (com0com / localhost)")
-        self.btn_bench_preset.clicked.connect(self._apply_bench_preset)
-        self.btn_production_preset = QtWidgets.QPushButton("Production preset (INS → COM → Cube)")
-        self.btn_production_preset.clicked.connect(self._apply_production_preset)
-        preset_row.addWidget(self.btn_bench_preset)
-        preset_row.addWidget(self.btn_production_preset)
-        preset_host = QtWidgets.QWidget()
-        preset_host.setLayout(preset_row)
-        outer.addWidget(preset_host)
+        self.status_banner = QtWidgets.QFrame()
+        self.status_banner.setObjectName("statusBanner")
+        self.status_banner.setProperty("state", "stopped")
+        bl = QtWidgets.QVBoxLayout(self.status_banner)
+        self.status_banner_text = QtWidgets.QLabel("Stopped")
+        self.status_banner_text.setObjectName("statusBannerText")
+        self.status_banner_text.setWordWrap(True)
+        bl.addWidget(self.status_banner_text)
+        outer.addWidget(self.status_banner)
 
-        form = QtWidgets.QFormLayout()
+        self.intent_hint = QtWidgets.QLabel()
+        self.intent_hint.setObjectName("intentHint")
+        self.intent_hint.setWordWrap(True)
+        outer.addWidget(self.intent_hint)
+
+        path_box = QtWidgets.QGroupBox("1 — Choose path")
+        path_lay = QtWidgets.QHBoxLayout(path_box)
+        self.btn_bench_preset = QtWidgets.QPushButton(
+            "Desk test\ncom0com · 127.0.0.1\n(bench_defaults.json)"
+        )
+        self.btn_bench_preset.setObjectName("pathBench")
+        self.btn_production_preset = QtWidgets.QPushButton(
+            "Boat / INS\nLAN UDP → Cube COM\n(production block)"
+        )
+        self.btn_production_preset.setObjectName("pathProduction")
+        path_lay.addWidget(self.btn_bench_preset)
+        path_lay.addWidget(self.btn_production_preset)
+        outer.addWidget(path_box)
+
         scroll = QtWidgets.QScrollArea()
         scroll.setWidgetResizable(True)
         form_host = QtWidgets.QWidget()
-        form_host.setLayout(form)
+        form = QtWidgets.QFormLayout(form_host)
         scroll.setWidget(form_host)
         outer.addWidget(scroll, 1)
 
+        ser_box = QtWidgets.QGroupBox("2 — Serial (bridge owns this COM)")
+        ser_form = QtWidgets.QFormLayout(ser_box)
         self.com_cb = QtWidgets.QComboBox()
         self.refresh_btn = QtWidgets.QPushButton("Refresh ports")
         row = QtWidgets.QHBoxLayout()
@@ -1156,81 +1349,87 @@ class BridgeWindow(QtWidgets.QWidget):
         row.addWidget(self.refresh_btn)
         cw = QtWidgets.QWidget()
         cw.setLayout(row)
-        form.addRow("COM port:", cw)
-
+        ser_form.addRow("COM port:", cw)
         self.baud_edit = QtWidgets.QLineEdit("115200")
-        form.addRow("Baud:", self.baud_edit)
+        ser_form.addRow("Baud:", self.baud_edit)
+        form.addRow(ser_box)
 
-        net_box = QtWidgets.QGroupBox("Network (choose one)")
-        net_lay = QtWidgets.QVBoxLayout(net_box)
+        net_box = QtWidgets.QGroupBox("3 — Network (UDP listen on this PC)")
+        net_outer = QtWidgets.QVBoxLayout(net_box)
+        udp_row = QtWidgets.QFormLayout()
+        self.udp_host = QtWidgets.QLineEdit("0.0.0.0")
+        self.udp_port = QtWidgets.QLineEdit("10110")
+        udp_row.addRow("Listen on:", self.udp_host)
+        udp_row.addRow("UDP port:", self.udp_port)
+        net_outer.addLayout(udp_row)
+        self.chk_advanced_net = QtWidgets.QCheckBox("Show advanced modes (TCP / UDP remote)")
+        net_outer.addWidget(self.chk_advanced_net)
+        self._advanced_net = QtWidgets.QWidget()
+        adv_lay = QtWidgets.QVBoxLayout(self._advanced_net)
+        mode_box = QtWidgets.QGroupBox("Mode")
+        mode_lay = QtWidgets.QVBoxLayout(mode_box)
         self.mode_group = QtWidgets.QButtonGroup(self)
-        self.rb_udp_listen = QtWidgets.QRadioButton("UDP listen — accept datagrams on this PC")
-        self.rb_udp_remote = QtWidgets.QRadioButton("UDP remote — send/receive with fixed peer")
-        self.rb_tcp_server = QtWidgets.QRadioButton("TCP server — wait for a connection")
-        self.rb_tcp_client = QtWidgets.QRadioButton("TCP client — connect outward")
+        self.rb_udp_listen = QtWidgets.QRadioButton("UDP listen (standard)")
+        self.rb_udp_remote = QtWidgets.QRadioButton("UDP remote")
+        self.rb_tcp_server = QtWidgets.QRadioButton("TCP server")
+        self.rb_tcp_client = QtWidgets.QRadioButton("TCP client")
         self.rb_udp_listen.setChecked(True)
         for rb in (self.rb_udp_listen, self.rb_udp_remote, self.rb_tcp_server, self.rb_tcp_client):
             self.mode_group.addButton(rb)
-            net_lay.addWidget(rb)
-        form.addRow(net_box)
-
-        self._udp_box = QtWidgets.QGroupBox("UDP settings")
+            mode_lay.addWidget(rb)
+        adv_lay.addWidget(mode_box)
+        self._udp_box = QtWidgets.QGroupBox("UDP remote fields")
         udp_form = QtWidgets.QFormLayout(self._udp_box)
-        self.udp_host = QtWidgets.QLineEdit("0.0.0.0")
-        self.udp_port = QtWidgets.QLineEdit("10110")
-        udp_form.addRow("Listen host:", self.udp_host)
-        udp_form.addRow("Port:", self.udp_port)
         self.remote_host = QtWidgets.QLineEdit("192.168.1.100")
         self.remote_port = QtWidgets.QLineEdit("10110")
         udp_form.addRow("Remote host:", self.remote_host)
         udp_form.addRow("Remote port:", self.remote_port)
-        form.addRow(self._udp_box)
-
-        self._tcp_srv_box = QtWidgets.QGroupBox("TCP server settings")
+        adv_lay.addWidget(self._udp_box)
+        self._tcp_srv_box = QtWidgets.QGroupBox("TCP server")
         tcp_srv_form = QtWidgets.QFormLayout(self._tcp_srv_box)
         self.tcp_srv_host = QtWidgets.QLineEdit("0.0.0.0")
         self.tcp_srv_port = QtWidgets.QLineEdit("4001")
         tcp_srv_form.addRow("Bind host:", self.tcp_srv_host)
         tcp_srv_form.addRow("Port:", self.tcp_srv_port)
-        form.addRow(self._tcp_srv_box)
-
-        self._tcp_cli_box = QtWidgets.QGroupBox("TCP client settings")
+        adv_lay.addWidget(self._tcp_srv_box)
+        self._tcp_cli_box = QtWidgets.QGroupBox("TCP client")
         tcp_cli_form = QtWidgets.QFormLayout(self._tcp_cli_box)
         self.tcp_cli_host = QtWidgets.QLineEdit("127.0.0.1")
         self.tcp_cli_port = QtWidgets.QLineEdit("4001")
         tcp_cli_form.addRow("Host:", self.tcp_cli_host)
         tcp_cli_form.addRow("Port:", self.tcp_cli_port)
-
+        adv_lay.addWidget(self._tcp_cli_box)
         self.tcp_reconnect_spin = QtWidgets.QDoubleSpinBox()
         self.tcp_reconnect_spin.setRange(TCP_RECONNECT_MIN_S, TCP_RECONNECT_MAX_S)
         self.tcp_reconnect_spin.setSingleStep(0.5)
         self.tcp_reconnect_spin.setDecimals(1)
         self.tcp_reconnect_spin.setSuffix(" s")
         self.tcp_reconnect_spin.setValue(DEFAULT_TCP_RECONNECT_S)
-        self.tcp_reconnect_spin.setToolTip("Delay before TCP client retries after disconnect or refused connection.")
-        form.addRow("TCP client reconnect:", self.tcp_reconnect_spin)
+        adv_lay.addWidget(self.tcp_reconnect_spin)
+        self._advanced_net.setVisible(False)
+        net_outer.addWidget(self._advanced_net)
+        form.addRow(net_box)
 
-        self.lbl_bridge_state = QtWidgets.QLabel("Bridge: STOPPED")
-        self.lbl_bridge_state.setStyleSheet(
-            "font-weight: bold; font-size: 13px; color: #c8e0bc; padding: 4px 0;"
-        )
-        form.addRow(self.lbl_bridge_state)
-
-        self.start_btn = QtWidgets.QPushButton("▶  Start bridge")
-        self.stop_btn = QtWidgets.QPushButton("■  Stop bridge")
-        self.start_btn.setMinimumHeight(36)
-        self.stop_btn.setMinimumHeight(36)
+        act_box = QtWidgets.QGroupBox("4 — Run")
+        act_lay = QtWidgets.QHBoxLayout(act_box)
+        self.start_btn = QtWidgets.QPushButton("Start bridge")
+        self.start_btn.setObjectName("btnStart")
+        self.stop_btn = QtWidgets.QPushButton("Stop bridge")
+        self.stop_btn.setObjectName("btnStop")
         self.stop_btn.setEnabled(False)
-        row2 = QtWidgets.QHBoxLayout()
-        row2.addWidget(self.start_btn)
-        row2.addWidget(self.stop_btn)
-        rw = QtWidgets.QWidget()
-        rw.setLayout(row2)
-        form.addRow(rw)
+        act_lay.addWidget(self.start_btn, 2)
+        act_lay.addWidget(self.stop_btn, 1)
+        outer.addWidget(act_box)
 
+        self.lbl_bridge_state = QtWidgets.QLabel("")
+        self.lbl_bridge_state.hide()
+
+        self.btn_bench_preset.clicked.connect(self._apply_bench_preset)
+        self.btn_production_preset.clicked.connect(self._apply_production_preset)
         self.refresh_btn.clicked.connect(self.refresh_ports)
         self.start_btn.clicked.connect(self.start_bridge)
         self.stop_btn.clicked.connect(self.stop_bridge)
+        self.chk_advanced_net.toggled.connect(self._on_advanced_net_toggle)
         for rb in (self.rb_udp_listen, self.rb_udp_remote, self.rb_tcp_server, self.rb_tcp_client):
             rb.toggled.connect(self._mode_toggle)
 
@@ -1240,6 +1439,7 @@ class BridgeWindow(QtWidgets.QWidget):
             self.com_cb,
             self.refresh_btn,
             self.baud_edit,
+            self.chk_advanced_net,
             self.rb_udp_listen,
             self.rb_udp_remote,
             self.rb_tcp_server,
@@ -1254,8 +1454,13 @@ class BridgeWindow(QtWidgets.QWidget):
             self.tcp_cli_port,
             self.tcp_reconnect_spin,
         ]
-
+        self._set_status_banner("stopped", "Stopped", "Choose a path, then Start bridge.")
+        self._refresh_intent_hint()
         return w
+
+    def _on_advanced_net_toggle(self, checked: bool) -> None:
+        self._advanced_net.setVisible(checked)
+        self._mode_toggle()
 
     def _build_nmea_tab(self) -> QtWidgets.QWidget:
         w = QtWidgets.QWidget()
@@ -1308,8 +1513,7 @@ class BridgeWindow(QtWidgets.QWidget):
         w = QtWidgets.QWidget()
         v = QtWidgets.QVBoxLayout(w)
         hint = QtWidgets.QLabel(
-            "Tab 3: edit the sentence below, then Send. "
-            "Bridge must be Started on tab 1 first."
+            "Edit NMEA below, then Send. Connect tab must show Running first."
         )
         hint.setWordWrap(True)
         v.addWidget(hint)
@@ -1386,6 +1590,7 @@ class BridgeWindow(QtWidgets.QWidget):
         self.tcp_srv_port.setEnabled(m_tcp_s)
         self.tcp_cli_host.setEnabled(m_tcp_c)
         self.tcp_cli_port.setEnabled(m_tcp_c)
+        self._refresh_intent_hint()
         self.tcp_reconnect_spin.setEnabled(m_tcp_c)
 
     def _enqueue_ui(self, line: str) -> None:
@@ -1448,8 +1653,7 @@ class BridgeWindow(QtWidgets.QWidget):
     def _send_manual(self, where: str) -> None:
         if not self.bridge or not self.bridge.running:
             self._log_ui(
-                "Send: bridge not running — tab 1: bench preset, then Start bridge "
-                "(status must show Serial open)."
+                "Send: bridge not running — Connect tab: choose path, Start, wait for Running."
             )
             return
         raw = self.send_edit.toPlainText()
@@ -1480,11 +1684,12 @@ class BridgeWindow(QtWidgets.QWidget):
             _do()
 
     def start_bridge(self) -> None:
-        com = self.com_cb.currentText()
-        if not com:
-            self._log_ui("No COM port selected — click Refresh ports or connect the device.")
-            QtWidgets.QMessageBox.warning(self, "Cannot start", "Select a COM port first.")
+        err = self._validate_before_start()
+        if err:
+            self._log_ui(err)
+            QtWidgets.QMessageBox.warning(self, "Cannot start", err)
             return
+        com = self.com_cb.currentText().strip()
         try:
             baud = int(self.baud_edit.text())
             if baud <= 0:
@@ -1534,15 +1739,6 @@ class BridgeWindow(QtWidgets.QWidget):
             QtWidgets.QMessageBox.warning(self, "Cannot start", str(e))
             return
 
-        if self.rb_udp_remote.isChecked():
-            QtWidgets.QMessageBox.warning(
-                self,
-                "Wrong UDP mode for bench",
-                "UDP remote is selected. For NMEA Simulator / nmea_static_edh.py, click "
-                "“Apply bench preset” so the mode is UDP listen on port 10110.",
-            )
-            return
-
         if self._worker and self._worker.isRunning():
             self._log_ui("Stop the bridge before starting again.")
             return
@@ -1578,10 +1774,8 @@ class BridgeWindow(QtWidgets.QWidget):
 
         self._set_connection_locked(True)
         self._update_status_bar("Serial: starting…", "Network: starting…")
-        self.lbl_bridge_state.setText("Bridge: STARTING…")
-        self.lbl_bridge_state.setStyleSheet(
-            "font-weight: bold; font-size: 13px; color: #e8f2a0; padding: 4px 0;"
-        )
+        self._starting = True
+        self._set_status_banner("starting", "Starting…", f"Opening {com} and UDP :{self.udp_port.text()}")
         self._start_gen += 1
         gen = self._start_gen
         self._log_ui(f"Start: opening {com} @ {baud} (background thread)…")
@@ -1623,11 +1817,9 @@ class BridgeWindow(QtWidgets.QWidget):
             self._file_log = None
         self._set_connection_locked(False)
         self._update_status_bar("Serial: stopped", "Network: stopped")
-        self.lbl_bridge_state.setText("Bridge: STOPPED (start failed)")
-        self.lbl_bridge_state.setStyleSheet(
-            "font-weight: bold; font-size: 13px; color: #e8a0a0; padding: 4px 0;"
-        )
-        self.start_btn.setText("▶  Start bridge")
+        self._starting = False
+        self._set_status_banner("failed", "Start failed", message)
+        self.start_btn.setText("Start bridge")
         QtWidgets.QMessageBox.critical(self, "Bridge failed to start", message)
 
     def _start_watchdog_fired(self) -> None:
@@ -1649,11 +1841,9 @@ class BridgeWindow(QtWidgets.QWidget):
         )
 
     def _on_bridge_started(self, b: SerialNetBridge) -> None:
-        self.lbl_bridge_state.setText("Bridge: RUNNING")
-        self.lbl_bridge_state.setStyleSheet(
-            "font-weight: bold; font-size: 13px; color: #90ee90; padding: 4px 0;"
-        )
-        self.start_btn.setText("▶  Running…")
+        self._starting = False
+        self._set_status_banner("running", "Running", f"{b.com} @ {b.baud} — UDP listen :{b.udp_listen[1] if b.udp_listen else '?'}")
+        self.start_btn.setText("Running…")
         if b.mode == NetMode.UDP_LISTEN and b.udp_listen:
             host, port = b.udp_listen
             dest = f"127.0.0.1:{port}" if host in ("0.0.0.0", "", "::") else f"{host}:{port}"
@@ -1707,11 +1897,9 @@ class BridgeWindow(QtWidgets.QWidget):
             self._file_log = None
         self._set_connection_locked(False)
         self.stop_btn.setText("■  Stop bridge")
-        self.start_btn.setText("▶  Start bridge")
-        self.lbl_bridge_state.setText("Bridge: STOPPED")
-        self.lbl_bridge_state.setStyleSheet(
-            "font-weight: bold; font-size: 13px; color: #c8e0bc; padding: 4px 0;"
-        )
+        self._starting = False
+        self.start_btn.setText("Start bridge")
+        self._set_status_banner("stopped", "Stopped", "Choose a path and Start when ready.")
         self._update_status_bar("Serial: stopped", "Network: stopped")
 
     def closeEvent(self, event: QtGui.QCloseEvent) -> None:
