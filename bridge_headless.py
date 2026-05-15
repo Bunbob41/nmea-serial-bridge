@@ -8,7 +8,8 @@ import sys
 
 from bench_config import load_bench_defaults
 from bench_udp_test import port_has_listener
-from bridge_gui import NetMode, NmeaMode, SerialNetBridge, configure_windows_event_loop_policy
+from bridge_core import NetMode, SerialNetBridge, configure_windows_event_loop_policy
+from nmea_codec import NmeaMode
 from nmea_static_edh import build_gga, build_rmc
 
 
