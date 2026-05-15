@@ -101,6 +101,24 @@ def check_udp_send(host: str, port: int) -> None:
         s.close()
 
 
+def print_production_hints(pc_ip: str, port: int, ins_ip: str, com: str) -> None:
+    print(
+        f"""
+Production / boat path (edit bench_defaults.json -> "production"):
+  1) Set survey Ethernet on this PC (static recommended): {pc_ip}/24
+  2) Configure INS / sonar to SEND NMEA UDP to {pc_ip}:{port} (not "listen" on {port})
+  3) Bridge: Production preset -> Start -> {com} @ 115200 to Cube GPS UART
+  4) Do NOT open Mission Planner on {com} while the bridge is running
+  5) Verify in MP: position via autopilot, not laptop COM GPS
+  6) INS reference IP (typical): {ins_ip}
+
+Pre-flight on the boat PC:
+  python com_free.py --com {com}
+  python check_setup.py --port {port} --host {pc_ip}
+"""
+    )
+
+
 def print_network_hints() -> None:
     print(
         """
@@ -124,16 +142,37 @@ def main() -> None:
     p = argparse.ArgumentParser(description="Pre-flight checks for nmea-serial-bridge")
     p.add_argument("--port", type=int, default=10110)
     p.add_argument("--host", default="127.0.0.1", help="UDP target for send test")
+    p.add_argument(
+        "--production",
+        action="store_true",
+        help="Show boat/INS production checklist (uses bench_defaults.json production block)",
+    )
     args = p.parse_args()
 
-    print_network_hints()
+    if args.production:
+        try:
+            from bench_config import load_production_defaults
+
+            d = load_production_defaults()
+            print_production_hints(
+                str(d.get("pc_ip", "192.168.1.10")),
+                int(d.get("udp_port", args.port)),
+                str(d.get("ins_ip", "192.168.1.20")),
+                str(d.get("com", "COM3")),
+            )
+        except ImportError:
+            print_production_hints("192.168.1.10", args.port, "192.168.1.20", "COM3")
+    else:
+        print_network_hints()
+
     list_com()
     check_udp_bind(args.port)
     check_udp_send(args.host, args.port)
-    print("\nIf COM7 open fails in the bridge: close Tera Term / PuTTY on COM7.")
+    print("\nIf COM open fails in the bridge: close Tera Term / PuTTY on that port.")
     print(
-        "Recommended: bridge_gui -> bench preset -> Start -> Tera Term on COM12 -> "
-        "NMEA Sim UDP send to 127.0.0.1:10110 (or: python nmea_static_edh.py).\n"
+        "Bench: bridge_gui -> bench preset -> Start -> Tera Term on paired COM -> "
+        "python nmea_static_edh.py\n"
+        "Boat:  python check_setup.py --production\n"
     )
 
 

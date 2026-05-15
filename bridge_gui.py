@@ -29,7 +29,7 @@ from nmea_codec import (
     feed_nmea_times_from_lines,
     parse_nmea_utc,
 )
-from bench_config import load_bench_defaults
+from bench_config import load_bench_defaults, load_production_defaults
 from nmea_static_edh import EDH_ALT_M, EDH_LAT_DEG, EDH_LON_DEG, build_gga, build_rmc
 from version import __version__
 
@@ -1062,13 +1062,7 @@ class BridgeWindow(QtWidgets.QWidget):
         else:
             self._splitter.setSizes([900, 0])
 
-    def _apply_bench_preset(self) -> None:
-        """Bench: UDP listen -> COM from bench_defaults.json (edit file for your ports)."""
-        d = load_bench_defaults()
-        com = str(d["com"])
-        baud = int(d["baud"])
-        udp_host = str(d["udp_host"])
-        udp_port = int(d["udp_port"])
+    def _apply_com_preset(self, com: str, baud: int, udp_host: str, udp_port: int) -> None:
         idx = self.com_cb.findText(com)
         if idx >= 0:
             self.com_cb.setCurrentIndex(idx)
@@ -1083,12 +1077,44 @@ class BridgeWindow(QtWidgets.QWidget):
         self.chk_show_log.setChecked(True)
         self._toggle_log_panel(True)
         self.chk_verbose_log.setChecked(True)
-        self.rb_udp_listen.setChecked(True)
         self._mode_toggle()
+
+    def _apply_bench_preset(self) -> None:
+        """Bench: UDP listen -> COM from bench_defaults.json (com0com / localhost)."""
+        d = load_bench_defaults()
+        com = str(d["com"])
+        baud = int(d["baud"])
+        udp_host = str(d["udp_host"])
+        udp_port = int(d["udp_port"])
+        self._apply_com_preset(com, baud, udp_host, udp_port)
         self._log_ui(
-            f"Preset: {com} + UDP LISTEN {udp_host}:{udp_port} (not UDP remote). "
-            f"Only one app may use {com}. Send UDP to 127.0.0.1:{udp_port} or use tab 3 Send."
+            f"Bench preset: {com} + UDP LISTEN {udp_host}:{udp_port}. "
+            f"Test with 127.0.0.1:{udp_port} (python nmea_static_edh.py). "
+            f"Watch paired COM (e.g. COM12), not {com}."
         )
+
+    def _apply_production_preset(self) -> None:
+        """Boat: INS UDP -> bridge -> physical COM -> Cube (edit production in bench_defaults.json)."""
+        d = load_production_defaults()
+        com = str(d["com"])
+        baud = int(d["baud"])
+        udp_host = str(d["udp_host"])
+        udp_port = int(d["udp_port"])
+        pc_ip = str(d.get("pc_ip", "192.168.1.10"))
+        ins_ip = str(d.get("ins_ip", ""))
+        mask = str(d.get("subnet_mask", "255.255.255.0"))
+        notes = str(d.get("notes", "")).strip()
+        self._apply_com_preset(com, baud, udp_host, udp_port)
+        lines = [
+            f"Production preset: {com} @ {baud}, UDP LISTEN {udp_host}:{udp_port}.",
+            f"Survey PC Ethernet: {pc_ip} / {mask} (static recommended).",
+            f"Configure INS NMEA UDP output -> {pc_ip}:{udp_port} (INS often {ins_ip}).",
+            "Start bridge BEFORE opening Mission Planner on the Cube COM.",
+            "MP sees position via the autopilot UART — not this PC's COM GPS.",
+        ]
+        if notes:
+            lines.append(notes)
+        self._log_ui("\n".join(lines))
 
     def _build_settings_tab(self) -> QtWidgets.QWidget:
         w = QtWidgets.QWidget()
@@ -1104,9 +1130,16 @@ class BridgeWindow(QtWidgets.QWidget):
         quick.setWordWrap(True)
         outer.addWidget(quick)
 
-        self.btn_bench_preset = QtWidgets.QPushButton("Apply bench preset (from bench_defaults.json)")
+        preset_row = QtWidgets.QHBoxLayout()
+        self.btn_bench_preset = QtWidgets.QPushButton("Bench preset (com0com / localhost)")
         self.btn_bench_preset.clicked.connect(self._apply_bench_preset)
-        outer.addWidget(self.btn_bench_preset)
+        self.btn_production_preset = QtWidgets.QPushButton("Production preset (INS → COM → Cube)")
+        self.btn_production_preset.clicked.connect(self._apply_production_preset)
+        preset_row.addWidget(self.btn_bench_preset)
+        preset_row.addWidget(self.btn_production_preset)
+        preset_host = QtWidgets.QWidget()
+        preset_host.setLayout(preset_row)
+        outer.addWidget(preset_host)
 
         form = QtWidgets.QFormLayout()
         scroll = QtWidgets.QScrollArea()
@@ -1203,6 +1236,7 @@ class BridgeWindow(QtWidgets.QWidget):
 
         self._connection_widgets = [
             self.btn_bench_preset,
+            self.btn_production_preset,
             self.com_cb,
             self.refresh_btn,
             self.baud_edit,
