@@ -110,7 +110,7 @@ python verify_all.py
 
 Or `.\verify_all.bat` from the project folder (not from `System32`).
 
-Includes: unit tests, `com_free`, `check_setup`, GUI smoke (all three UIs), headless bridge, stress cycles.
+Includes: unit tests, `check_setup`, GUI smoke (all three UIs), and bench steps (`com_free`, headless bridge, stress). If the bench UDP port is already bound (bridge **Running**), exclusive COM/UDP steps are skipped unless you set `VERIFY_ALL_NO_SKIP=1`.
 
 ## Tests
 
@@ -118,14 +118,26 @@ Includes: unit tests, `com_free`, `check_setup`, GUI smoke (all three UIs), head
 python -m unittest discover -s . -p "test_*.py" -v
 ```
 
-## Build & release (Windows `.exe` for another PC)
+## Install on many PCs (frozen build)
 
-**One command** — build, zip, optional GitHub publish:
+Same build on every machine: use **GitHub Releases** (or copy the zip on a USB stick).
+
+1. On each PC: open the repo **Releases** page, download **`nmea-serial-bridge-v<version>-win64.zip`** (the asset, not “Source code”).
+2. Unzip anywhere you like; keep the whole **`nmea-serial-bridge`** folder.
+3. Run **`nmea-serial-bridge.exe`**. First launch: **layout picker** (Standard / Minimal / Log-first). Optional: put `bench_defaults.json` next to the exe for Desk/Boat presets.
+4. Windows **SmartScreen** may warn (unsigned app) — “More info” → run anyway if you trust the build.
+
+Repeat whenever you publish a newer **v…** zip; no Python install required on those PCs.
+
+## Build & release (authoring the zip)
+
+**One command** — build, zip, optional GitHub publish (version comes from `version.py`; zip name matches):
 
 ```powershell
-.\release.ps1              # creates dist\nmea-serial-bridge-v0.5.2-win64.zip
-.\release.ps1 -Publish     # also tags v0.5.2 and uploads to GitHub Releases (needs `gh` CLI)
-.\release.ps1 -SkipTests   # faster rebuild while iterating
+.\release.ps1                 # dist\nmea-serial-bridge-v<version>-win64.zip
+.\release.ps1 -Publish        # + git tag v<version> + gh release (needs GitHub CLI + `gh auth login`)
+.\release.ps1 -PublishOnly   # upload existing zip only (no PyInstaller rebuild — e.g. after login failed mid-publish)
+.\release.ps1 -SkipTests      # faster rebuild while iterating (skips unittest in build.ps1)
 ```
 
 **Manual steps:**
@@ -133,12 +145,12 @@ python -m unittest discover -s . -p "test_*.py" -v
 ```powershell
 .\build.ps1
 cd dist
-Compress-Archive -Path nmea-serial-bridge -DestinationPath nmea-serial-bridge-v0.5.2-win64.zip
+Compress-Archive -Path nmea-serial-bridge -DestinationPath nmea-serial-bridge-v<version>-win64.zip
 ```
 
-Then [create a release](https://github.com/Bunbob41/nmea-serial-bridge/releases/new): tag `v0.5.2`, attach the zip.
+Then [create a release](https://github.com/Bunbob41/nmea-serial-bridge/releases/new): tag **`v<version>`** (same string as `version.py`), attach the zip.
 
-**On the other PC:** download the zip from **Releases** (not “Source code”), unzip, run `nmea-serial-bridge.exe`. First run shows a **layout picker**; copy the whole folder (not just the `.exe`). Windows SmartScreen may warn on unsigned apps.
+**Cadence (personal / small fleet):** bump `version.py` when you want a new drop → commit → `.\release.ps1` → `gh auth login` once per machine → `.\release.ps1 -Publish` (or `-PublishOnly` if the zip is already built). Human-readable notes live in **`CHANGELOG.md`**.
 
 ## Project layout
 
