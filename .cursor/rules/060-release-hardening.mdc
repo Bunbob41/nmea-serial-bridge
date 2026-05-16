@@ -1,0 +1,22 @@
+---
+description: Release hardening checklist before packaging/distribution
+alwaysApply: true
+---
+
+# Release Hardening
+
+Before any "final build", "packaging", or release handoff:
+
+- Run compile checks on edited modules.
+- Run project verification suite (`verify_all.py`) when feasible.
+- Run targeted stress/bench checks for changed runtime paths.
+- Verify all UI modes launch with primary workflow visible.
+- Verify HUD open/resize/compact presets remain stable.
+- Confirm disconnect/backpressure scenarios do not freeze UI.
+- Ensure no accidental debug leftovers (temporary prints, dev toggles).
+- Ensure version/release metadata is updated intentionally.
+
+Release summary should include:
+- What changed
+- What was tested
+- Known risks or deferred follow-ups

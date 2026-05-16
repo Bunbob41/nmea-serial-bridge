@@ -8,6 +8,7 @@ from typing import Optional
 from PySide6 import QtCore, QtWidgets
 
 from ui.registry import UI_DEFAULT, UI_LABELS, UI_ORDER
+from ui.styles import UI_PICKER_STYLESHEET
 
 CONFIG_PATH = Path.home() / ".cursor-udp-com-bridge" / "ui_choice.json"
 
@@ -31,6 +32,8 @@ def save_ui_choice(ui: str) -> None:
 def pick_ui_dialog(parent: Optional[QtWidgets.QWidget] = None) -> Optional[str]:
     """Show modal dialog; return UI id or None if cancelled."""
     dlg = QtWidgets.QDialog(parent)
+    dlg.setObjectName("UiPickerDialog")
+    dlg.setStyleSheet(UI_PICKER_STYLESHEET)
     dlg.setWindowTitle("NMEA Serial Bridge — choose layout")
     dlg.setMinimumWidth(420)
     lay = QtWidgets.QVBoxLayout(dlg)

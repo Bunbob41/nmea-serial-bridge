@@ -32,6 +32,10 @@ from log_serial_coalesce import serial_timeout_line_suppress
 from py_interpreter import cli_python_executable
 from ui.stats_line import format_live_stats_line
 from ui.stats_popout import SurveyStatsPopout
+from ui.styles import THEME_LABELS, bridge_stylesheet
+from ui.theme_choice import load_theme_choice, save_theme_choice
+from ui.picker import save_ui_choice
+from ui.registry import create_window
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 
@@ -65,6 +69,13 @@ class BridgeLogicMixin:
         self._diag_current_title = ""
         self._ui_log_serial_dup_last: Optional[str] = None
         self._ui_log_serial_dup_mono: float = 0.0
+        self._theme_id = load_theme_choice()
+        self._log_pause = False
+        self._log_autoscroll = True
+        self._log_filter_rx = True
+        self._log_filter_tx = True
+        self._log_filter_warn = True
+        self._log_paused_dropped = 0
 
     def _reset_ui_log_serial_coalesce(self) -> None:
         self._ui_log_serial_dup_last = None
@@ -95,14 +106,64 @@ class BridgeLogicMixin:
         self.addAction(act_fs)
         vm.addAction(act_fs)
 
-        act_pop = QtGui.QAction("Pop out survey stats…", self)
+        act_pop = QtGui.QAction("Survey HUD…", self)
         act_pop.setShortcut(QtGui.QKeySequence("Ctrl+Shift+S"))
-        act_pop.setStatusTip("Large readable Hz / transport / totals for Hypack or a second monitor")
+        act_pop.setStatusTip("Detachable live metrics (second monitor)")
         act_pop.triggered.connect(self._open_stats_popout)
         self.addAction(act_pop)
         vm.addAction(act_pop)
 
+        tm = vm.addMenu("Theme")
+        g = QtGui.QActionGroup(self)
+        g.setExclusive(True)
+        for tid in ("maroon_classic", "maroon_high_contrast"):
+            act = QtGui.QAction(THEME_LABELS.get(tid, tid), self)
+            act.setCheckable(True)
+            act.setChecked(self._theme_id == tid)
+            act.triggered.connect(lambda checked=False, t=tid: self._apply_theme(t))
+            g.addAction(act)
+            tm.addAction(act)
+
         return mb
+
+    def _apply_theme(self, theme_id: str, *, persist: bool = True) -> None:
+        self._theme_id = theme_id
+        if persist:
+            save_theme_choice(theme_id)
+        ui_mode = getattr(self, "_ui_mode", "standard")
+        self.setStyleSheet(bridge_stylesheet(ui_mode, theme_id))
+        pop = getattr(self, "_stats_popout_window", None)
+        if pop is not None:
+            try:
+                pop.set_theme(theme_id)
+            except RuntimeError:
+                self._stats_popout_window = None
+
+    def _switch_ui_layout(self, ui_id: str) -> None:
+        if self.bridge is not None or (self._worker is not None and self._worker.isRunning()):
+            QtWidgets.QMessageBox.information(
+                self,
+                "UI Switch",
+                "Stop the bridge before switching UI layout.",
+            )
+            return
+        if ui_id == getattr(self, "_ui_mode", ""):
+            return
+        try:
+            save_ui_choice(ui_id)
+            nw = create_window(ui_id)
+            if hasattr(nw, "_apply_theme"):
+                nw._apply_theme(self._theme_id, persist=False)
+            nw.show()
+            nw.raise_()
+            nw.activateWindow()
+            self.close()
+        except Exception as exc:
+            QtWidgets.QMessageBox.warning(
+                self,
+                "UI Switch",
+                f"Could not switch UI layout: {exc}",
+            )
 
     def _toggle_fullscreen(self) -> None:
         if self.isFullScreen():
@@ -153,6 +214,11 @@ class BridgeLogicMixin:
         pop = SurveyStatsPopout(self)
         pop.destroyed.connect(self._on_stats_popout_destroyed)
         self._stats_popout_window = pop
+        try:
+            seed = self.log_view.toPlainText().splitlines()[-120:]
+            pop.append_nmea_log_lines(seed)
+        except Exception:
+            pass
         self._refresh_stats_popout()
         pop.show()
         pop.raise_()
@@ -172,8 +238,11 @@ class BridgeLogicMixin:
             return
         if not vis:
             return
-        pop.set_status_lines(self.status_serial.text(), self.status_network.text())
-        pop.set_stats_text(self.lbl_stats.text(), self.lbl_stats.toolTip())
+        serial = self.status_serial.text()
+        network = self.status_network.text()
+        running = self.bridge is not None
+        merged = self._merge_bridge_stats({}) if running else {}
+        pop.apply_snapshot(merged, serial, network, running=running)
 
     def closeEvent(self, event: QtGui.QCloseEvent) -> None:
         pop = getattr(self, "_stats_popout_window", None)
@@ -391,18 +460,85 @@ class BridgeLogicMixin:
         self._pending_ui.append(line)
 
     def _flush_ui_log(self) -> None:
-        if not self._pending_ui:
+        if self._log_pause or not self._pending_ui:
             return
         n = min(UI_LOG_MAX_LINES_PER_FLUSH, len(self._pending_ui))
         chunk = [self._pending_ui.popleft() for _ in range(n)]
         self.log_view.appendPlainText("\n".join(chunk))
-        sb = self.log_view.verticalScrollBar()
-        sb.setValue(sb.maximum())
+        if self._log_autoscroll:
+            sb = self.log_view.verticalScrollBar()
+            sb.setValue(sb.maximum())
+        pop = getattr(self, "_stats_popout_window", None)
+        if pop is not None:
+            try:
+                if pop.isVisible():
+                    pop.append_nmea_log_lines(chunk)
+            except RuntimeError:
+                self._stats_popout_window = None
 
     def _log_ui(self, txt: str) -> None:
         if self._should_coalesce_serial_gui_log(txt):
             return
+        if not self._log_line_allowed(txt):
+            return
+        if self._log_pause:
+            self._log_paused_dropped += 1
+            return
         self._enqueue_ui(txt)
+
+    def _log_line_allowed(self, txt: str) -> bool:
+        s = txt.upper()
+        is_warn = (
+            "[REJECT]" in s
+            or "[DROP" in s
+            or "TIMED OUT" in s
+            or "ERROR" in s
+            or "FAILED" in s
+            or "DISCONNECT" in s
+            or "FORCING PORT RELEASE" in s
+            or "DID NOT EXIT CLEANLY" in s
+        )
+        is_rx = (
+            "UDP←" in txt
+            or "TCP←" in txt
+            or "INJECT→SER" in txt
+            or "GUI→SER" in txt
+            or "N→S" in txt
+            or "SEND→COM" in s
+        )
+        is_tx = (
+            "SER→" in txt
+            or "SER→NET" in txt
+            or "COM→" in txt
+            or "S→N" in txt
+            or "S→N" in s
+            or "UDP SEND" in s
+            or "TCP SEND" in s
+        )
+        if is_warn and self._log_filter_warn:
+            return True
+        if is_rx and self._log_filter_rx:
+            return True
+        if is_tx and self._log_filter_tx:
+            return True
+        if not (is_warn or is_rx or is_tx):
+            return self._log_filter_warn or self._log_filter_rx or self._log_filter_tx
+        return False
+
+    def _set_log_pause(self, paused: bool) -> None:
+        prev = self._log_pause
+        self._log_pause = bool(paused)
+        if self._log_pause:
+            self._log_paused_dropped = 0
+            return
+        if prev and self._log_paused_dropped:
+            dropped = self._log_paused_dropped
+            self._log_paused_dropped = 0
+            self._enqueue_ui(f"[PAUSE] resumed — {dropped} lines skipped while paused")
+            self._flush_ui_log()
+
+    def _set_log_autoscroll(self, enabled: bool) -> None:
+        self._log_autoscroll = bool(enabled)
 
     def _should_coalesce_serial_gui_log(self, txt: str, window_s: float = 2.5) -> bool:
         """Live log: drop repeat ``Serial COMx: timed out (open/write).`` within window."""

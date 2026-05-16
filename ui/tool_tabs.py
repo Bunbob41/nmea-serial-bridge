@@ -121,6 +121,25 @@ def build_diagnostics_tab(parent: QtWidgets.QWidget) -> QtWidgets.QWidget:
     sv.addWidget(parent.btn_clear_ui)
     lay.addWidget(screen_box)
 
+    ui_box = QtWidgets.QGroupBox("UI shortcuts")
+    uv = QtWidgets.QVBoxLayout(ui_box)
+    ui_note = QtWidgets.QLabel(
+        "Jump between layouts quickly. Choice is remembered for next launch."
+    )
+    ui_note.setWordWrap(True)
+    ui_note.setObjectName("tabNote")
+    uv.addWidget(ui_note)
+    ui_row = QtWidgets.QHBoxLayout()
+    parent.btn_ui_standard = QtWidgets.QPushButton("Open Standard UI")
+    parent.btn_ui_minimal = QtWidgets.QPushButton("Open Minimal UI")
+    parent.btn_ui_logfirst = QtWidgets.QPushButton("Open Log-first UI")
+    ui_row.addWidget(parent.btn_ui_standard)
+    ui_row.addWidget(parent.btn_ui_minimal)
+    ui_row.addWidget(parent.btn_ui_logfirst)
+    ui_row.addStretch(1)
+    uv.addLayout(ui_row)
+    lay.addWidget(ui_box)
+
     qa_box = QtWidgets.QGroupBox("Traffic & data quality (honest counters)")
     qv = QtWidgets.QVBoxLayout(qa_box)
     qa = QtWidgets.QLabel(
@@ -221,6 +240,9 @@ def build_diagnostics_tab(parent: QtWidgets.QWidget) -> QtWidgets.QWidget:
     parent.btn_diag_udp.clicked.connect(parent._diag_run_udp_sample)
     parent.btn_diag_stop.clicked.connect(parent._diag_stop)
     parent.btn_diag_clear.clicked.connect(parent.diag_output.clear)
+    parent.btn_ui_standard.clicked.connect(lambda: parent._switch_ui_layout("standard"))
+    parent.btn_ui_minimal.clicked.connect(lambda: parent._switch_ui_layout("minimal"))
+    parent.btn_ui_logfirst.clicked.connect(lambda: parent._switch_ui_layout("logfirst"))
     lay.addWidget(bench_box)
 
     lay.addStretch(1)

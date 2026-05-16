@@ -1,0 +1,21 @@
+---
+description: HUD stability and deterministic resize behavior
+alwaysApply: true
+---
+
+# HUD Stability
+
+For `ui/stats_popout.py` and HUD-related UI work:
+
+- Keep resize behavior deterministic and non-blocking.
+- Never allow stuck interactive resize state; always provide cleanup/failsafe.
+- Avoid re-entrant layout loops; debounce expensive reflow work.
+- Do not trigger heavy relayout on every mouse-move while dragging.
+- Prevent launch-state glitches (stale scroll position, misaligned content origin).
+- Keep compact settings stable after mouse release (no rubber-band relayout surprises).
+- Preserve user choices for scale/columns/subtitle visibility across restarts.
+
+Before finishing HUD work:
+- Stress test edge/corner resizing
+- Verify no cursor lockups
+- Verify no clipping in compact mode

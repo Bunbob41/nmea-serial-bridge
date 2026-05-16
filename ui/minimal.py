@@ -11,7 +11,8 @@ from ui.controls import (
     create_send_controls,
 )
 from ui.mixin import BridgeLogicMixin
-from ui.styles import BRIDGE_STYLESHEET_MINIMAL
+from ui.styles import bridge_stylesheet
+from ui.theme_choice import load_theme_choice
 from version import __version__
 
 
@@ -19,9 +20,10 @@ class BridgeWindowMinimal(BridgeLogicMixin, QtWidgets.QWidget):
     def __init__(self) -> None:
         super().__init__()
         self.setObjectName("BridgeRoot")
-        self.setStyleSheet(BRIDGE_STYLESHEET_MINIMAL)
+        self._ui_mode = "minimal"
+        self.setStyleSheet(bridge_stylesheet(self._ui_mode, load_theme_choice()))
         self.setWindowTitle(f"NMEA Bridge (minimal) v{__version__}")
-        self.resize(720, 520)
+        self.resize(880, 620)
         self._init_bridge_state()
         create_connection_controls(self)
 
@@ -30,7 +32,7 @@ class BridgeWindowMinimal(BridgeLogicMixin, QtWidgets.QWidget):
         self.status_line.setProperty("state", "stopped")
         self.intent_hint = QtWidgets.QLabel()
         self.intent_hint.setWordWrap(True)
-        self.intent_hint.setStyleSheet("color: #444;")
+        self.intent_hint.setStyleSheet("color: #5a2a33;")
 
         # Dummy banner attrs for mixin compatibility
         self.status_banner = self.status_line
@@ -40,8 +42,13 @@ class BridgeWindowMinimal(BridgeLogicMixin, QtWidgets.QWidget):
         top.addWidget(self.btn_bench_preset)
         top.addWidget(self.btn_production_preset)
         top.addStretch(1)
-        top.addWidget(self.start_btn)
-        top.addWidget(self.stop_btn)
+
+        run_strip = QtWidgets.QGroupBox("Run")
+        run_l = QtWidgets.QHBoxLayout(run_strip)
+        self.start_btn.setText("Start bridge")
+        self.stop_btn.setText("Stop bridge")
+        run_l.addWidget(self.start_btn, 2)
+        run_l.addWidget(self.stop_btn, 1)
 
         row2 = QtWidgets.QHBoxLayout()
         row2.addWidget(QtWidgets.QLabel("COM"))
@@ -93,6 +100,7 @@ class BridgeWindowMinimal(BridgeLogicMixin, QtWidgets.QWidget):
 
         outer = QtWidgets.QVBoxLayout(self)
         outer.setContentsMargins(8, 8, 8, 4)
+        outer.addWidget(run_strip)
         outer.addWidget(self._splitter)
         outer.addWidget(self.statusBar)
         self._finalize_ui()

@@ -47,6 +47,8 @@ SERIAL_OPEN_TIMEOUT_S = 5.0
 SERIAL_WRITE_TIMEOUT_S = 2.0
 START_WATCHDOG_MS = 15_000
 START_ASYNC_TIMEOUT_S = 10.0
+STATS_EMIT_MIN_INTERVAL_S = 0.20
+UI_EVENT_LOG_MIN_INTERVAL_S = 0.40
 
 
 def rolling_hz_last_second(times: deque[float], window_s: float = 1.0) -> float:
@@ -287,6 +289,9 @@ class SerialNetBridge:
         self._network_ready = False
         self._serial_io_err_last_msg: Optional[str] = None
         self._serial_io_err_last_mono: float = 0.0
+        self._last_stats_emit_mono: float = 0.0
+        self._pending_stats_emit: Optional[asyncio.Handle] = None
+        self._ui_event_log_state: dict[str, tuple[float, int]] = {}
 
     def _set_status(self, serial_line: str, network_line: str) -> None:
         self._status_cb(serial_line, network_line)
@@ -348,6 +353,7 @@ class SerialNetBridge:
         return rolling_hz_last_second(self._hz_gui_times)
 
     def _emit_stats(self) -> None:
+        self._last_stats_emit_mono = time.monotonic()
         self._stats_cb(
             {
                 "drops_n2s": self.drops_net_to_serial,
@@ -363,6 +369,34 @@ class SerialNetBridge:
                 "lines_up": self.lines_serial_to_net,
             }
         )
+
+    def _schedule_stats_emit(self) -> None:
+        """Coalesce hot-path stats updates to avoid flooding Qt queued signals."""
+        now = time.monotonic()
+        due_in = STATS_EMIT_MIN_INTERVAL_S - (now - self._last_stats_emit_mono)
+        if due_in <= 0:
+            self._emit_stats()
+            return
+        if self._pending_stats_emit is not None and not self._pending_stats_emit.cancelled():
+            return
+
+        def _fire() -> None:
+            self._pending_stats_emit = None
+            self._emit_stats()
+
+        self._pending_stats_emit = self.loop.call_later(due_in, _fire)
+
+    def _ui_log_event_limited(self, key: str, msg: str, *, window_s: float = UI_EVENT_LOG_MIN_INTERVAL_S) -> None:
+        """Rate-limit repeated high-volume events and include suppression count."""
+        now = time.monotonic()
+        last_mono, suppressed = self._ui_event_log_state.get(key, (0.0, 0))
+        if now - last_mono < window_s:
+            self._ui_event_log_state[key] = (last_mono, suppressed + 1)
+            return
+        if suppressed:
+            msg = f"{msg} (+{suppressed} similar suppressed)"
+        self._ui_event_log_state[key] = (now, 0)
+        self._ui_log(msg)
 
     def _log(self, direction: str, data: bytes, *, to_ui: bool = True, always: bool = False) -> None:
         preview = data.decode(errors="replace").rstrip().replace("\r", "\\r")
@@ -380,8 +414,14 @@ class SerialNetBridge:
             self.net_to_serial.put_nowait(data)
         except asyncio.QueueFull:
             self.drops_net_to_serial += 1
-            self._emit_stats()
-            self._log(f"{direction} [DROP n→s]", data, to_ui=True, always=True)
+            self._schedule_stats_emit()
+            self._ui_log_event_limited(
+                "drop_n2s",
+                (
+                    f"{direction} [DROP n→s] queue full "
+                    f"(drops={self.drops_net_to_serial}, q={self.net_to_serial.qsize()})"
+                ),
+            )
         else:
             self._log(direction, data)
 
@@ -390,8 +430,14 @@ class SerialNetBridge:
             self.serial_to_net.put_nowait(data)
         except asyncio.QueueFull:
             self.drops_serial_to_net += 1
-            self._emit_stats()
-            self._log(f"{direction} [DROP s→n]", data, to_ui=True, always=True)
+            self._schedule_stats_emit()
+            self._ui_log_event_limited(
+                "drop_s2n",
+                (
+                    f"{direction} [DROP s→n] queue full "
+                    f"(drops={self.drops_serial_to_net}, q={self.serial_to_net.qsize()})"
+                ),
+            )
         else:
             self._log(direction, data)
 
@@ -403,8 +449,11 @@ class SerialNetBridge:
         feed_nmea_times_from_lines(result.forward, self._gps_state)
         for reason in result.rejected:
             self.rejected_net_to_serial += 1
-            self._emit_stats()
-            self._log_text(f"{direction} [REJECT] {reason}")
+            self._schedule_stats_emit()
+            self._ui_log_event_limited(
+                "reject_n2s",
+                f"{direction} [REJECT] {reason}",
+            )
         for line in result.forward:
             if direction.startswith(("UDP", "TCP")):
                 self.lines_remote_to_serial += 1
@@ -422,8 +471,11 @@ class SerialNetBridge:
         feed_nmea_times_from_lines(result.forward, self._gps_state)
         for reason in result.rejected:
             self.rejected_serial_to_net += 1
-            self._emit_stats()
-            self._log_text(f"{direction} [REJECT] {reason}")
+            self._schedule_stats_emit()
+            self._ui_log_event_limited(
+                "reject_s2n",
+                f"{direction} [REJECT] {reason}",
+            )
         for line in result.forward:
             if direction.startswith("SER"):
                 self.lines_serial_to_net += 1
