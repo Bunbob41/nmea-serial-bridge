@@ -36,6 +36,7 @@ from ui.styles import THEME_LABELS, bridge_stylesheet
 from ui.theme_choice import load_theme_choice, save_theme_choice
 from ui.picker import save_ui_choice
 from ui.registry import create_window
+from ui.ui_prefs import load_diag_card_states, save_diag_card_states
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 
@@ -76,6 +77,7 @@ class BridgeLogicMixin:
         self._log_filter_tx = True
         self._log_filter_warn = True
         self._log_paused_dropped = 0
+        self._diag_card_states = load_diag_card_states(getattr(self, "_ui_mode", "standard"))
 
     def _reset_ui_log_serial_coalesce(self) -> None:
         self._ui_log_serial_dup_last = None
@@ -540,6 +542,13 @@ class BridgeLogicMixin:
     def _set_log_autoscroll(self, enabled: bool) -> None:
         self._log_autoscroll = bool(enabled)
 
+    def _load_diag_card_states(self) -> dict[str, bool]:
+        return dict(self._diag_card_states)
+
+    def _save_diag_card_state(self, key: str, is_open: bool) -> None:
+        self._diag_card_states[str(key)] = bool(is_open)
+        save_diag_card_states(getattr(self, "_ui_mode", "standard"), self._diag_card_states)
+
     def _should_coalesce_serial_gui_log(self, txt: str, window_s: float = 2.5) -> bool:
         """Live log: drop repeat ``Serial COMx: timed out (open/write).`` within window."""
         suppress, last, mono = serial_timeout_line_suppress(
@@ -764,6 +773,81 @@ class BridgeLogicMixin:
             "nmea_static_edh (2.5 s UDP burst @ 5 Hz)",
             "nmea_static_edh.py",
             ["--dest-host", "127.0.0.1", "--dest-port", str(port), "--duration", "2.5", "--quiet"],
+        )
+
+    def _diag_run_capacity_probe(self) -> None:
+        port = self._diag_udp_port()
+        if port is None:
+            return
+        com = self.com_cb.currentText().strip()
+        if not com:
+            QtWidgets.QMessageBox.warning(
+                self,
+                "Diagnostics",
+                "Pick a COM port on Connect before running capacity probe.",
+            )
+            return
+        try:
+            baud = int(self.baud_edit.text().strip())
+            if baud <= 0:
+                raise ValueError()
+        except ValueError:
+            QtWidgets.QMessageBox.warning(
+                self,
+                "Diagnostics",
+                "Enter a valid positive baud rate on Connect before running capacity probe.",
+            )
+            return
+        prof = {}
+        box = getattr(self, "cmb_diag_capacity", None)
+        if box is not None:
+            raw = box.currentData()
+            if isinstance(raw, dict):
+                prof = raw
+        hz_start = float(prof.get("start", 5))
+        hz_stop = float(prof.get("stop", 40))
+        hz_step = float(prof.get("step", 5))
+        if hz_step <= 0:
+            hz_step = 5.0
+        sent = int(prof.get("sent", 8))
+        sec = float(prof.get("sec", 6.0))
+        profile_name = str(prof.get("name", "custom"))
+        if hz_stop < hz_start:
+            hz_stop = hz_start
+        stages = int((hz_stop - hz_start) / hz_step) + 1
+        max_runtime = max(20.0, stages * (sec + 0.5) + 12.0)
+        args = [
+            "--com",
+            com,
+            "--baud",
+            str(baud),
+            "--udp-host",
+            self.udp_host.text().strip() or "0.0.0.0",
+            "--udp-port",
+            str(port),
+            "--dest-host",
+            "127.0.0.1",
+            "--hz-start",
+            f"{hz_start:g}",
+            "--hz-stop",
+            f"{hz_stop:g}",
+            "--hz-step",
+            f"{hz_step:g}",
+            "--sentences",
+            str(sent),
+            "--stage-seconds",
+            f"{sec:g}",
+            "--max-runtime",
+            f"{max_runtime:g}",
+            "--stop-on-clog",
+        ]
+        chk = getattr(self, "chk_diag_capacity_strict", None)
+        if chk is not None and chk.isChecked():
+            args.append("--strict")
+        self._diag_start_script(
+            f"capacity probe [{profile_name}] (ramp no-drop threshold)",
+            "bench_capacity_probe.py",
+            args,
         )
 
     def refresh_ports(self) -> None:

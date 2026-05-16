@@ -1273,7 +1273,7 @@ class SurveyStatsPopout(QtWidgets.QWidget):
         self._apply_section_strip_layout()
         uw = self._effective_metric_band_width()
         cr = self._columns_for_band(uw, hero_tiles=True)
-        cs = self._columns_for_band(uw, hero_tiles=True)
+        cs = self._columns_for_band(uw, hero_tiles=False)
         cb = self._columns_for_band(uw, hero_tiles=False)
         forced = max(0, min(6, int(self._layout_cfg.get("forced_columns", 0) or 0)))
         if forced > 0:

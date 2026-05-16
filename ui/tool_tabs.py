@@ -26,6 +26,49 @@ def _scrollable(inner: QtWidgets.QWidget) -> QtWidgets.QScrollArea:
     return scroll
 
 
+def _add_collapsible_card(
+    host_layout: QtWidgets.QVBoxLayout,
+    title: str,
+    *,
+    start_open: bool = False,
+    on_toggled=None,
+) -> QtWidgets.QVBoxLayout:
+    """Create an iOS-style collapsible card and return its body layout."""
+    card = QtWidgets.QFrame()
+    card.setObjectName("iosCard")
+    outer = QtWidgets.QVBoxLayout(card)
+    outer.setContentsMargins(8, 8, 8, 8)
+    outer.setSpacing(6)
+
+    toggle = QtWidgets.QToolButton()
+    toggle.setObjectName("iosCardToggle")
+    toggle.setText(title)
+    toggle.setToolButtonStyle(QtCore.Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+    toggle.setCheckable(True)
+    toggle.setChecked(start_open)
+
+    body = QtWidgets.QWidget()
+    body.setObjectName("iosCardBody")
+    body_lay = QtWidgets.QVBoxLayout(body)
+    body_lay.setContentsMargins(4, 2, 4, 4)
+    body_lay.setSpacing(8)
+
+    def _on_toggle(on: bool) -> None:
+        toggle.setArrowType(
+            QtCore.Qt.ArrowType.DownArrow if on else QtCore.Qt.ArrowType.RightArrow
+        )
+        body.setVisible(on)
+        if callable(on_toggled):
+            on_toggled(on)
+
+    toggle.toggled.connect(_on_toggle)
+    _on_toggle(start_open)
+    outer.addWidget(toggle)
+    outer.addWidget(body)
+    host_layout.addWidget(card)
+    return body_lay
+
+
 def build_send_tab(parent: QtWidgets.QWidget) -> QtWidgets.QWidget:
     """Manual NMEA inject tab."""
     host = QtWidgets.QWidget()
@@ -86,6 +129,25 @@ def build_diagnostics_tab(parent: QtWidgets.QWidget) -> QtWidgets.QWidget:
     lay.setContentsMargins(14, 14, 14, 14)
     lay.setSpacing(12)
 
+    card_states = {}
+    if hasattr(parent, "_load_diag_card_states"):
+        try:
+            loaded = parent._load_diag_card_states()
+            if isinstance(loaded, dict):
+                card_states = loaded
+        except Exception:
+            card_states = {}
+
+    def _card_open(key: str, default: bool) -> bool:
+        return bool(card_states.get(key, default))
+
+    def _persist_card(key: str, on: bool) -> None:
+        if hasattr(parent, "_save_diag_card_state"):
+            try:
+                parent._save_diag_card_state(key, on)
+            except Exception:
+                pass
+
     hint = QtWidgets.QLabel(
         "Optional rotating file log for survey records. "
         "The live log panel (right side or top) is separate — use controls below to clear it."
@@ -94,8 +156,43 @@ def build_diagnostics_tab(parent: QtWidgets.QWidget) -> QtWidgets.QWidget:
     hint.setObjectName("tabHint")
     lay.addWidget(hint)
 
-    file_box = QtWidgets.QGroupBox("Rotating file log")
-    fv = QtWidgets.QVBoxLayout(file_box)
+    quick = _add_collapsible_card(
+        lay,
+        "Quick UI switch",
+        start_open=True,
+        on_toggled=lambda on: _persist_card("quick_ui_switch", on),
+    )
+    quick_note = QtWidgets.QLabel(
+        "Jump between layouts quickly. Choice is remembered for next launch."
+    )
+    quick_note.setWordWrap(True)
+    quick_note.setObjectName("tabHint")
+    quick.addWidget(quick_note)
+    ui_grid = QtWidgets.QGridLayout()
+    ui_grid.setHorizontalSpacing(8)
+    ui_grid.setVerticalSpacing(6)
+    parent.btn_ui_standard = QtWidgets.QPushButton("Open Standard UI")
+    parent.btn_ui_standard.setToolTip("Switch to the Standard workspace layout.")
+    parent.btn_ui_minimal = QtWidgets.QPushButton("Open Minimal UI")
+    parent.btn_ui_minimal.setToolTip("Switch to the compact Minimal workspace layout.")
+    parent.btn_ui_logfirst = QtWidgets.QPushButton("Open Log-first UI")
+    parent.btn_ui_logfirst.setToolTip("Switch to the log-centric Log-first workspace layout.")
+    for b in (parent.btn_ui_standard, parent.btn_ui_minimal, parent.btn_ui_logfirst):
+        b.setMinimumHeight(30)
+        b.setSizePolicy(QtWidgets.QSizePolicy.Policy.Expanding, QtWidgets.QSizePolicy.Policy.Fixed)
+    ui_grid.addWidget(parent.btn_ui_standard, 0, 0)
+    ui_grid.addWidget(parent.btn_ui_minimal, 0, 1)
+    ui_grid.addWidget(parent.btn_ui_logfirst, 1, 0, 1, 2)
+    ui_grid.setColumnStretch(0, 1)
+    ui_grid.setColumnStretch(1, 1)
+    quick.addLayout(ui_grid)
+
+    fv = _add_collapsible_card(
+        lay,
+        "Rotating file log",
+        start_open=_card_open("file_log", True),
+        on_toggled=lambda on: _persist_card("file_log", on),
+    )
     parent.chk_file_log = QtWidgets.QCheckBox("Write NMEA traffic to file while bridge runs")
     fv.addWidget(parent.chk_file_log)
     path_row = QtWidgets.QHBoxLayout()
@@ -112,36 +209,23 @@ def build_diagnostics_tab(parent: QtWidgets.QWidget) -> QtWidgets.QWidget:
     file_note.setWordWrap(True)
     file_note.setObjectName("tabNote")
     fv.addWidget(file_note)
-    lay.addWidget(file_box)
 
-    screen_box = QtWidgets.QGroupBox("On-screen log")
-    sv = QtWidgets.QVBoxLayout(screen_box)
+    sv = _add_collapsible_card(
+        lay,
+        "On-screen log",
+        start_open=_card_open("screen_log", False),
+        on_toggled=lambda on: _persist_card("screen_log", on),
+    )
     parent.btn_clear_ui = QtWidgets.QPushButton("Clear live log panel")
     parent.btn_clear_ui.setToolTip("Clears the main log view — does not delete the file above.")
     sv.addWidget(parent.btn_clear_ui)
-    lay.addWidget(screen_box)
 
-    ui_box = QtWidgets.QGroupBox("UI shortcuts")
-    uv = QtWidgets.QVBoxLayout(ui_box)
-    ui_note = QtWidgets.QLabel(
-        "Jump between layouts quickly. Choice is remembered for next launch."
+    qv = _add_collapsible_card(
+        lay,
+        "Traffic & data quality (honest counters)",
+        start_open=_card_open("traffic_quality", False),
+        on_toggled=lambda on: _persist_card("traffic_quality", on),
     )
-    ui_note.setWordWrap(True)
-    ui_note.setObjectName("tabNote")
-    uv.addWidget(ui_note)
-    ui_row = QtWidgets.QHBoxLayout()
-    parent.btn_ui_standard = QtWidgets.QPushButton("Open Standard UI")
-    parent.btn_ui_minimal = QtWidgets.QPushButton("Open Minimal UI")
-    parent.btn_ui_logfirst = QtWidgets.QPushButton("Open Log-first UI")
-    ui_row.addWidget(parent.btn_ui_standard)
-    ui_row.addWidget(parent.btn_ui_minimal)
-    ui_row.addWidget(parent.btn_ui_logfirst)
-    ui_row.addStretch(1)
-    uv.addLayout(ui_row)
-    lay.addWidget(ui_box)
-
-    qa_box = QtWidgets.QGroupBox("Traffic & data quality (honest counters)")
-    qv = QtWidgets.QVBoxLayout(qa_box)
     qa = QtWidgets.QLabel(
         "Bottom status bar while Running:\n\n"
         "• ↓ / ↑ Hz — Rolling ~1 s rate of complete NMEA sentences: remote (UDP/TCP) toward COM, "
@@ -158,10 +242,13 @@ def build_diagnostics_tab(parent: QtWidgets.QWidget) -> QtWidgets.QWidget:
     qa.setObjectName("tabNote")
     qa.setTextInteractionFlags(QtCore.Qt.TextInteractionFlag.TextSelectableByMouse)
     qv.addWidget(qa)
-    lay.addWidget(qa_box)
 
-    bench_box = QtWidgets.QGroupBox("Automated checks (runs on this PC)")
-    bv = QtWidgets.QVBoxLayout(bench_box)
+    bv = _add_collapsible_card(
+        lay,
+        "Automated checks (runs on this PC)",
+        start_open=_card_open("automated_checks", False),
+        on_toggled=lambda on: _persist_card("automated_checks", on),
+    )
     intro = QtWidgets.QLabel(
         "Runs the same Python helpers as the command line. Output streams below; the window stays responsive. "
         "Start the bridge first for the UDP burst if you want to see traffic on the wire."
@@ -208,6 +295,37 @@ def build_diagnostics_tab(parent: QtWidgets.QWidget) -> QtWidgets.QWidget:
     btn_row2.addStretch(1)
     bv.addLayout(btn_row2)
 
+    cap_row = QtWidgets.QHBoxLayout()
+    cap_row.addWidget(QtWidgets.QLabel("Capacity probe"))
+    parent.cmb_diag_capacity = QtWidgets.QComboBox()
+    parent.cmb_diag_capacity.addItem(
+        "Quick: 5→20 Hz (8 lines, 3 s)",
+        {"name": "quick", "start": 5, "stop": 20, "step": 5, "sent": 8, "sec": 3.0},
+    )
+    parent.cmb_diag_capacity.addItem(
+        "Field: 10→30 Hz (10 lines, 6 s)",
+        {"name": "field", "start": 10, "stop": 30, "step": 5, "sent": 10, "sec": 6.0},
+    )
+    parent.cmb_diag_capacity.addItem(
+        "Stress: 10→45 Hz (10 lines, 6 s)",
+        {"name": "stress", "start": 10, "stop": 45, "step": 5, "sent": 10, "sec": 6.0},
+    )
+    parent.cmb_diag_capacity.addItem(
+        "Safe overload: 20→70 Hz (12 lines, 3 s)",
+        {"name": "overload", "start": 20, "stop": 70, "step": 5, "sent": 12, "sec": 3.0},
+    )
+    parent.chk_diag_capacity_strict = QtWidgets.QCheckBox("Strict parser")
+    parent.btn_diag_capacity = QtWidgets.QPushButton("Run capacity probe")
+    parent.btn_diag_capacity.setToolTip(
+        "Runs bench_capacity_probe.py with the selected ramp profile "
+        "against your current COM/baud/UDP settings."
+    )
+    cap_row.addWidget(parent.cmb_diag_capacity, 1)
+    cap_row.addWidget(parent.chk_diag_capacity_strict)
+    cap_row.addWidget(parent.btn_diag_capacity)
+    cap_row.addStretch(1)
+    bv.addLayout(cap_row)
+
     parent.chk_diag_mirror_log = QtWidgets.QCheckBox("Mirror output lines to the main live log")
     parent.chk_diag_mirror_log.setToolTip("When checked, each non-empty output line is also appended to the big log panel.")
     bv.addWidget(parent.chk_diag_mirror_log)
@@ -232,18 +350,19 @@ def build_diagnostics_tab(parent: QtWidgets.QWidget) -> QtWidgets.QWidget:
         parent.btn_diag_setup,
         parent.btn_diag_setup_prod,
         parent.btn_diag_udp,
+        parent.btn_diag_capacity,
     ]
     parent.btn_diag_verify.clicked.connect(parent._diag_run_verify_all)
     parent.btn_diag_com.clicked.connect(parent._diag_run_com_free)
     parent.btn_diag_setup.clicked.connect(parent._diag_run_check_setup)
     parent.btn_diag_setup_prod.clicked.connect(parent._diag_run_check_setup_production)
     parent.btn_diag_udp.clicked.connect(parent._diag_run_udp_sample)
+    parent.btn_diag_capacity.clicked.connect(parent._diag_run_capacity_probe)
     parent.btn_diag_stop.clicked.connect(parent._diag_stop)
     parent.btn_diag_clear.clicked.connect(parent.diag_output.clear)
     parent.btn_ui_standard.clicked.connect(lambda: parent._switch_ui_layout("standard"))
     parent.btn_ui_minimal.clicked.connect(lambda: parent._switch_ui_layout("minimal"))
     parent.btn_ui_logfirst.clicked.connect(lambda: parent._switch_ui_layout("logfirst"))
-    lay.addWidget(bench_box)
 
     lay.addStretch(1)
     return _scrollable(host)

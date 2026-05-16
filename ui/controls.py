@@ -58,6 +58,16 @@ def create_connection_controls(parent: QtWidgets.QWidget) -> None:
 
     p._advanced_net = QtWidgets.QWidget()
     adv = QtWidgets.QVBoxLayout(p._advanced_net)
+    p._mode_box = QtWidgets.QGroupBox("Mode")
+    mv = QtWidgets.QVBoxLayout(p._mode_box)
+    mv.setContentsMargins(8, 8, 8, 8)
+    mv.setSpacing(4)
+    mv.addWidget(p.rb_udp_listen)
+    mv.addWidget(p.rb_udp_remote)
+    mv.addWidget(p.rb_tcp_server)
+    mv.addWidget(p.rb_tcp_client)
+    adv.addWidget(p._mode_box)
+
     p._udp_box = QtWidgets.QGroupBox("UDP remote")
     uf = QtWidgets.QFormLayout(p._udp_box)
     p.remote_host = QtWidgets.QLineEdit("192.168.1.100")

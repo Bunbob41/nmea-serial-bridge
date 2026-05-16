@@ -31,8 +31,8 @@ class BridgeWindowMinimal(BridgeLogicMixin, QtWidgets.QWidget):
         self.status_line.setObjectName("statusLine")
         self.status_line.setProperty("state", "stopped")
         self.intent_hint = QtWidgets.QLabel()
+        self.intent_hint.setObjectName("intentHint")
         self.intent_hint.setWordWrap(True)
-        self.intent_hint.setStyleSheet("color: #5a2a33;")
 
         # Dummy banner attrs for mixin compatibility
         self.status_banner = self.status_line
