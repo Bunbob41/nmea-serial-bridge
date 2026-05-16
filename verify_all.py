@@ -18,7 +18,7 @@ def run(name: str, args: list[str]) -> int:
 def main() -> int:
     steps = [
         ("compileall", ["-m", "compileall", "-q", str(ROOT)]),
-        ("unittest", ["-m", "unittest", "test_nmea_codec", "-q"]),
+        ("unittest", ["-m", "unittest", "test_nmea_codec", "test_bridge_metrics", "-q"]),
         ("com_free", ["com_free.py"]),
         ("check_setup", ["check_setup.py", "--port", "10110"]),
         ("bench_gui_smoke", ["bench_gui_smoke.py"]),

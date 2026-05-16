@@ -32,10 +32,11 @@ def main() -> None:
     )
     args = parser.parse_args()
     app = QtWidgets.QApplication(sys.argv)
-    frozen = getattr(sys, "frozen", False)
     from ui.picker import load_saved_ui, resolve_ui_id
 
-    show_picker = args.pick_ui or (frozen and args.ui is None and load_saved_ui() is None)
+    show_picker = args.pick_ui or (
+        args.ui is None and load_saved_ui() is None
+    )
     ui_id = resolve_ui_id(args.ui, show_picker=show_picker)
     w = create_window(ui_id)
     w.show()

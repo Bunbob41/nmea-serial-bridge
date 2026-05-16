@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
-"""Choose UI layout, optionally remember choice, then start the bridge GUI."""
+"""Start the bridge GUI. Default: no console — saved UI or Qt layout picker."""
 from __future__ import annotations
 
+import argparse
 import json
 import subprocess
 import sys
@@ -57,15 +58,35 @@ def _menu() -> str:
         print("  Invalid — try again.")
 
 
-def main() -> int:
-    ui = _menu()
-    remember = input("Remember this UI for next time? [Y/n]: ").strip().lower()
-    if remember in ("", "y", "yes"):
-        _save_choice(ui)
+def _spawn_gui(ui_arg: list[str]) -> None:
     exe = PYTHONW if PYTHONW.is_file() else Path(PY)
     script = ROOT / "bridge_gui.py"
-    subprocess.Popen([str(exe), str(script), "--ui", ui], cwd=ROOT)
-    print(f"\nLaunched: {UI_LABELS[ui]}\n")
+    subprocess.Popen([str(exe), str(script), *ui_arg], cwd=ROOT)
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Launch NMEA bridge GUI")
+    parser.add_argument(
+        "--console-menu",
+        action="store_true",
+        help="Interactive 1–4 menu in this terminal (for debugging)",
+    )
+    args = parser.parse_args()
+
+    if args.console_menu:
+        ui = _menu()
+        remember = input("Remember this UI for next time? [Y/n]: ").strip().lower()
+        if remember in ("", "y", "yes"):
+            _save_choice(ui)
+        _spawn_gui(["--ui", ui])
+        print(f"\nLaunched: {UI_LABELS[ui]}\n")
+        return 0
+
+    saved = _load_choice()
+    if saved:
+        _spawn_gui(["--ui", saved])
+    else:
+        _spawn_gui(["--pick-ui"])
     return 0
 
 

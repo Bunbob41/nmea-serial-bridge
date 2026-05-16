@@ -5,13 +5,15 @@ from typing import Callable, Dict, Type
 
 from PySide6 import QtWidgets
 
+from version import __version__
+
 UI_STANDARD = "standard"
 UI_MINIMAL = "minimal"
 UI_LOGFIRST = "logfirst"
 UI_DEFAULT = UI_STANDARD
 
 UI_LABELS: Dict[str, str] = {
-    UI_STANDARD: "Standard (v0.4 — tabs, path cards)",
+    UI_STANDARD: f"Standard (v{__version__} — tabs, path cards)",
     UI_MINIMAL: "Minimal (light, compact, log below)",
     UI_LOGFIRST: "Log-first (dark, log dominates)",
 }

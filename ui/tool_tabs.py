@@ -68,8 +68,9 @@ def build_send_tab(parent: QtWidgets.QWidget) -> QtWidgets.QWidget:
     lay.addLayout(row)
 
     note = QtWidgets.QLabel(
-        "If nothing moves: confirm status bar shows COM open and UDP listening, "
-        "then check the live log (verbose on)."
+        "If nothing moves: confirm status bar shows COM open and UDP listening. "
+        "While running, ↓ / inj↓ / ↑ Hz on the bottom bar are sentence rates (rolling 1 s) — "
+        "enable verbose log to see each line."
     )
     note.setWordWrap(True)
     note.setObjectName("tabNote")
@@ -119,6 +120,26 @@ def build_diagnostics_tab(parent: QtWidgets.QWidget) -> QtWidgets.QWidget:
     parent.btn_clear_ui.setToolTip("Clears the main log view — does not delete the file above.")
     sv.addWidget(parent.btn_clear_ui)
     lay.addWidget(screen_box)
+
+    qa_box = QtWidgets.QGroupBox("Traffic & data quality (honest counters)")
+    qv = QtWidgets.QVBoxLayout(qa_box)
+    qa = QtWidgets.QLabel(
+        "Bottom status bar while Running:\n\n"
+        "• ↓ Hz — Complete NMEA sentences per second from UDP/TCP toward COM (simulator/INS). "
+        "Rolling 1 second — compare to your source (e.g. 1 Hz vs 5 Hz).\n"
+        "• inj↓ Hz — Send-tab inject toward COM only (separate from ↓).\n"
+        "• ↑ Hz — Sentences per second from COM back toward the network.\n"
+        "• dr — Drops when internal queues are full (overload); should stay 0 in normal use.\n"
+        "• rj — Assembler / Strict-mode rejects. In Passthrough, rj usually stays 0 unless data is corrupt.\n"
+        "• Q — Pending chunks in queues before write.\n"
+        "• k↓ / ↑ — Lifetime sentence counts this session (UDP/TCP→COM vs COM→net).\n\n"
+        "Hover the status bar any time for the same legend."
+    )
+    qa.setWordWrap(True)
+    qa.setObjectName("tabNote")
+    qa.setTextInteractionFlags(QtCore.Qt.TextInteractionFlag.TextSelectableByMouse)
+    qv.addWidget(qa)
+    lay.addWidget(qa_box)
 
     bench_box = QtWidgets.QGroupBox("Quick checks")
     bv = QtWidgets.QVBoxLayout(bench_box)

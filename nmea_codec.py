@@ -21,6 +21,7 @@ NMEA_SENTENCE_TYPES: tuple[str, ...] = (
     "GLL",
     "HDT",
     "HDG",
+    "DBT",
     "DTM",
     "GBS",
     "GST",

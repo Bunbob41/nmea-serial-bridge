@@ -297,27 +297,75 @@ class BridgeLogicMixin:
         self.start_btn.setEnabled(not locked)
         self.stop_btn.setEnabled(locked)
 
-    def _stats_from_bridge(self, d: dict) -> None:
-        self.lbl_stats.setText(
-            f"Drops {d['drops_n2s']}/{d['drops_s2n']} | "
-            f"Reject {d['rej_n2s']}/{d['rej_s2n']} | "
-            f"Q {d['n2s_q']}/{d['s2n_q']}"
+    def _stats_tooltip(self) -> str:
+        return (
+            "Live QA (this session)\n\n"
+            "↓ Hz — Complete NMEA sentences per second from UDP/TCP toward the serial port "
+            "(rolling 1 s window). Matches what your simulator/INS sends after line assembly — "
+            "not raw packet count.\n"
+            "inj↓ Hz — Send-tab / GUI inject toward COM only (does not add to ↓ Hz).\n"
+            "↑ Hz — Sentences per second from COM toward the network (autopilot answering).\n\n"
+            "dr — Queue drops when net→serial / serial→net queues are full (backpressure).\n"
+            "rj — Lines rejected by assembler or Strict NMEA filter. In Passthrough mode "
+            "reject counts usually stay at 0 unless lines are malformed.\n"
+            "Q — Queue depth waiting to be written (chunks).\n\n"
+            "↓ / ↑ counts — Lifetime sentences forwarded (UDP/TCP→COM vs COM→net)."
         )
+
+    def _fmt_lines_short(self, n: int) -> str:
+        if n >= 1_000_000:
+            return f"{n / 1e6:.1f}M"
+        if n >= 10_000:
+            return f"{n / 1000:.1f}k"
+        if n >= 1000:
+            return f"{n / 1000:.2f}k"
+        return str(n)
+
+    def _format_live_stats(self, d: dict) -> str:
+        hz_d = float(d.get("hz_down", 0.0))
+        hz_i = float(d.get("hz_gui", 0.0))
+        hz_u = float(d.get("hz_up", 0.0))
+        ld = int(d.get("lines_down", 0))
+        lu = int(d.get("lines_up", 0))
+        return (
+            f"↓{hz_d:.1f} inj↓{hz_i:.1f} ↑{hz_u:.1f} Hz | "
+            f"dr {d['drops_n2s']}/{d['drops_s2n']} rj {d['rej_n2s']}/{d['rej_s2n']} | "
+            f"Q {d['n2s_q']}/{d['s2n_q']} | "
+            f"{self._fmt_lines_short(ld)}↓ {self._fmt_lines_short(lu)}↑"
+        )
+
+    def _merge_bridge_stats(self, base: Optional[dict] = None) -> dict:
+        b = self.bridge
+        if not b:
+            return {}
+        _ = base  # worker may send partial snapshots; always read live counters
+        return {
+            "drops_n2s": b.drops_net_to_serial,
+            "drops_s2n": b.drops_serial_to_net,
+            "rej_n2s": b.rejected_net_to_serial,
+            "rej_s2n": b.rejected_serial_to_net,
+            "n2s_q": b.net_to_serial.qsize(),
+            "s2n_q": b.serial_to_net.qsize(),
+            "hz_down": b.hz_remote_to_serial(),
+            "hz_gui": b.hz_gui_to_serial(),
+            "hz_up": b.hz_serial_to_net(),
+            "lines_down": b.lines_remote_to_serial,
+            "lines_up": b.lines_serial_to_net,
+        }
+
+    def _stats_from_bridge(self, _d: dict) -> None:
+        merged = self._merge_bridge_stats(_d)
+        self.lbl_stats.setText(self._format_live_stats(merged))
+        self.lbl_stats.setToolTip(self._stats_tooltip())
 
     def _tick_stats(self) -> None:
         if self.bridge:
-            self._stats_from_bridge(
-                {
-                    "drops_n2s": self.bridge.drops_net_to_serial,
-                    "drops_s2n": self.bridge.drops_serial_to_net,
-                    "rej_n2s": self.bridge.rejected_net_to_serial,
-                    "rej_s2n": self.bridge.rejected_serial_to_net,
-                    "n2s_q": self.bridge.net_to_serial.qsize(),
-                    "s2n_q": self.bridge.serial_to_net.qsize(),
-                }
-            )
+            self._stats_from_bridge({})
         else:
-            self.lbl_stats.setText("Drops 0/0 | Reject 0/0 | Q 0/0")
+            self.lbl_stats.setText(
+                "Stopped — ↓ inj↓ ↑ Hz = remote vs Send→COM vs COM→net rate when running (hover)"
+            )
+            self.lbl_stats.setToolTip(self._stats_tooltip())
 
     def refresh_ports(self) -> None:
         self.com_cb.clear()

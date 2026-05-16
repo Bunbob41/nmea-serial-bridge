@@ -47,6 +47,15 @@ START_WATCHDOG_MS = 15_000
 START_ASYNC_TIMEOUT_S = 10.0
 
 
+def rolling_hz_last_second(times: deque[float], window_s: float = 1.0) -> float:
+    """How many timestamps fall within the last ``window_s`` seconds (monotonic clock)."""
+    now = time.monotonic()
+    cutoff = now - window_s
+    while times and times[0] < cutoff:
+        times.popleft()
+    return float(len(times))
+
+
 def configure_windows_event_loop_policy() -> None:
     """Selector policy is deprecated on Python 3.14+; qasync QEventLoop does not need it."""
     if sys.platform != "win32":
@@ -258,6 +267,14 @@ class SerialNetBridge:
         self.rejected_net_to_serial = 0
         self.rejected_serial_to_net = 0
 
+        # QA: complete NMEA sentences (after assembly), not raw UDP datagrams.
+        self.lines_remote_to_serial = 0  # UDP/TCP ingress only (excludes GUI inject)
+        self.lines_gui_to_serial = 0  # Send tab / explicit inject → COM
+        self.lines_serial_to_net = 0  # COM → network path
+        self._hz_remote_times: deque[float] = deque()
+        self._hz_gui_times: deque[float] = deque()
+        self._hz_serial_times: deque[float] = deque()
+
         self._asm_n2s = NmeaLineAssembler()
         self._asm_s2n = NmeaLineAssembler()
 
@@ -300,6 +317,18 @@ class SerialNetBridge:
         self.serial_writer.write(chunk)
         await asyncio.wait_for(self.serial_writer.drain(), timeout=SERIAL_WRITE_TIMEOUT_S)
 
+    def hz_remote_to_serial(self) -> float:
+        """Rolling ~1 s rate of full NMEA lines from UDP/TCP toward COM."""
+        return rolling_hz_last_second(self._hz_remote_times)
+
+    def hz_serial_to_net(self) -> float:
+        """Rolling ~1 s rate of full NMEA lines from COM toward network."""
+        return rolling_hz_last_second(self._hz_serial_times)
+
+    def hz_gui_to_serial(self) -> float:
+        """Rolling ~1 s rate of lines injected from GUI toward COM (Send tab)."""
+        return rolling_hz_last_second(self._hz_gui_times)
+
     def _emit_stats(self) -> None:
         self._stats_cb(
             {
@@ -309,6 +338,11 @@ class SerialNetBridge:
                 "rej_s2n": self.rejected_serial_to_net,
                 "n2s_q": self.net_to_serial.qsize(),
                 "s2n_q": self.serial_to_net.qsize(),
+                "hz_down": self.hz_remote_to_serial(),
+                "hz_gui": self.hz_gui_to_serial(),
+                "hz_up": self.hz_serial_to_net(),
+                "lines_down": self.lines_remote_to_serial,
+                "lines_up": self.lines_serial_to_net,
             }
         )
 
@@ -354,6 +388,12 @@ class SerialNetBridge:
             self._emit_stats()
             self._log_text(f"{direction} [REJECT] {reason}")
         for line in result.forward:
+            if direction.startswith(("UDP", "TCP")):
+                self.lines_remote_to_serial += 1
+                self._hz_remote_times.append(time.monotonic())
+            elif direction.startswith(("GUI", "INJECT")):
+                self.lines_gui_to_serial += 1
+                self._hz_gui_times.append(time.monotonic())
             self._enqueue_net_to_serial(line, direction)
 
     def _ingest_serial(self, data: bytes, direction: str) -> None:
@@ -367,6 +407,9 @@ class SerialNetBridge:
             self._emit_stats()
             self._log_text(f"{direction} [REJECT] {reason}")
         for line in result.forward:
+            if direction.startswith("SER"):
+                self.lines_serial_to_net += 1
+                self._hz_serial_times.append(time.monotonic())
             self._enqueue_serial_to_net(line, direction)
 
     def _log_text(self, msg: str) -> None:

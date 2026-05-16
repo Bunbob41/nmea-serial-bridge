@@ -82,7 +82,9 @@ class BridgeWindowMinimal(BridgeLogicMixin, QtWidgets.QWidget):
         self.statusBar = QtWidgets.QStatusBar()
         self.status_serial = QtWidgets.QLabel("Serial: stopped")
         self.status_network = QtWidgets.QLabel("Network: stopped")
-        self.lbl_stats = QtWidgets.QLabel("")
+        self.lbl_stats = QtWidgets.QLabel(
+            "Stopped — ↓ inj↓ ↑ when running (hover)"
+        )
         self.statusBar.addWidget(self.status_serial, 1)
         self.statusBar.addWidget(self.status_network, 1)
         self.statusBar.addPermanentWidget(self.lbl_stats)

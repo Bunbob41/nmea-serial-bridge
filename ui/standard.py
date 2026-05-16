@@ -109,7 +109,10 @@ class BridgeWindowStandard(BridgeLogicMixin, QtWidgets.QWidget):
         self.statusBar = QtWidgets.QStatusBar()
         self.status_serial = QtWidgets.QLabel("Serial: stopped")
         self.status_network = QtWidgets.QLabel("Network: stopped")
-        self.lbl_stats = QtWidgets.QLabel("Drops 0/0 | Reject 0/0")
+        self.lbl_stats = QtWidgets.QLabel(
+            "Stopped — ↓ inj↓ ↑ Hz = remote vs Send→COM vs COM→net when running (hover)"
+        )
+        self.lbl_stats.setToolTip("")  # filled when running / see mixin._stats_tooltip
         self.statusBar.addWidget(self.status_serial, 2)
         self.statusBar.addWidget(self.status_network, 2)
         self.statusBar.addPermanentWidget(self.lbl_stats)
