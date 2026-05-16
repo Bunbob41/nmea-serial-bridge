@@ -31,6 +31,7 @@ from nmea_static_edh import EDH_ALT_M, EDH_LAT_DEG, EDH_LON_DEG, build_gga, buil
 from log_serial_coalesce import serial_timeout_line_suppress
 from py_interpreter import cli_python_executable
 from ui.stats_line import format_live_stats_line
+from ui.stats_popout import SurveyStatsPopout
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 
@@ -58,6 +59,8 @@ class BridgeLogicMixin:
         self._log_flush_timer.timeout.connect(self._flush_ui_log)
         self._stats_timer = QtCore.QTimer(self)
         self._stats_timer.timeout.connect(self._tick_stats)
+        self._stats_popout_window: Optional[SurveyStatsPopout] = None
+        self._splitter_sizes_backup: Optional[list[int]] = None
         self._diag_qprocess: Optional[QtCore.QProcess] = None
         self._diag_current_title = ""
         self._ui_log_serial_dup_last: Optional[str] = None
@@ -68,6 +71,11 @@ class BridgeLogicMixin:
         self._ui_log_serial_dup_mono = 0.0
 
     def _finalize_ui(self) -> None:
+        lay = self.layout()
+        if isinstance(lay, QtWidgets.QVBoxLayout) and not getattr(self, "_survey_menu_placed", False):
+            lay.insertWidget(0, self._create_survey_menu_bar())
+            self._survey_menu_placed = True
+
         from ui.controls import wire_connection_controls
         wire_connection_controls(self)
         self.refresh_ports()
@@ -76,10 +84,106 @@ class BridgeLogicMixin:
         self._stats_timer.start(400)
         self._on_ui_ready()
 
+    def _create_survey_menu_bar(self) -> QtWidgets.QMenuBar:
+        mb = QtWidgets.QMenuBar(self)
+        vm = mb.addMenu("&View")
+
+        act_fs = QtGui.QAction("Full screen", self)
+        act_fs.setShortcut(QtGui.QKeySequence(QtCore.Qt.Key.Key_F11))
+        act_fs.setStatusTip("Toggle full screen (survey / multi-monitor layouts)")
+        act_fs.triggered.connect(self._toggle_fullscreen)
+        self.addAction(act_fs)
+        vm.addAction(act_fs)
+
+        act_pop = QtGui.QAction("Pop out survey stats…", self)
+        act_pop.setShortcut(QtGui.QKeySequence("Ctrl+Shift+S"))
+        act_pop.setStatusTip("Large readable Hz / transport / totals for Hypack or a second monitor")
+        act_pop.triggered.connect(self._open_stats_popout)
+        self.addAction(act_pop)
+        vm.addAction(act_pop)
+
+        return mb
+
+    def _toggle_fullscreen(self) -> None:
+        if self.isFullScreen():
+            self.showNormal()
+            if self._splitter_sizes_backup and hasattr(self, "_splitter"):
+                self._splitter.setSizes(self._splitter_sizes_backup)
+                self._splitter_sizes_backup = None
+        else:
+            if hasattr(self, "_splitter"):
+                self._splitter_sizes_backup = list(self._splitter.sizes())
+                self._apply_fullscreen_splitter_bias()
+            self.showFullScreen()
+
+    def _apply_fullscreen_splitter_bias(self) -> None:
+        """Give logs / tools a friendlier ratio on large displays."""
+        sp = getattr(self, "_splitter", None)
+        if sp is None:
+            return
+        o = sp.orientation()
+        total = max(sum(sp.sizes()), 1)
+        if o == QtCore.Qt.Orientation.Horizontal:
+            # Standard: favor slightly more log width when very wide
+            w = max(self.width(), total)
+            tabs_w = int(w * 0.62)
+            log_w = max(w - tabs_w, 200)
+            sp.setSizes([tabs_w, log_w])
+        else:
+            h = max(self.height(), total)
+            name = self.__class__.__name__.lower()
+            if "logfirst" in name:
+                top = int(h * 0.74)
+                bot = max(h - top, 100)
+                sp.setSizes([top, bot])
+            else:
+                # Minimal: more log height for survey noise
+                top = int(h * 0.58)
+                bot = max(h - top, 120)
+                sp.setSizes([top, bot])
+
+    def _open_stats_popout(self) -> None:
+        pop = self._stats_popout_window
+        if pop is not None:
+            pop.show()
+            pop.raise_()
+            pop.activateWindow()
+            self._refresh_stats_popout()
+            return
+        pop = SurveyStatsPopout(self)
+        pop.destroyed.connect(self._on_stats_popout_destroyed)
+        self._stats_popout_window = pop
+        self._refresh_stats_popout()
+        pop.show()
+        pop.raise_()
+        pop.activateWindow()
+
+    def _on_stats_popout_destroyed(self, *_args: object) -> None:
+        self._stats_popout_window = None
+
+    def _refresh_stats_popout(self) -> None:
+        pop = self._stats_popout_window
+        if pop is None:
+            return
+        try:
+            vis = pop.isVisible()
+        except RuntimeError:
+            self._stats_popout_window = None
+            return
+        if not vis:
+            return
+        pop.set_status_lines(self.status_serial.text(), self.status_network.text())
+        pop.set_stats_text(self.lbl_stats.text(), self.lbl_stats.toolTip())
+
+    def closeEvent(self, event: QtGui.QCloseEvent) -> None:
+        pop = getattr(self, "_stats_popout_window", None)
+        if pop is not None:
+            pop.close()
+            self._stats_popout_window = None
+        super().closeEvent(event)
+
     def _on_ui_ready(self) -> None:
         pass
-
-
 
     def _preflight_com(self, com: str, baud: int) -> Optional[str]:
         """Quick COM probe on GUI thread before async start."""
@@ -315,6 +419,7 @@ class BridgeLogicMixin:
     def _update_status_bar(self, serial_line: str, network_line: str) -> None:
         self.status_serial.setText(serial_line)
         self.status_network.setText(network_line)
+        self._refresh_stats_popout()
 
     def _set_connection_locked(self, locked: bool) -> None:
         for w in self._connection_widgets:
@@ -387,6 +492,7 @@ class BridgeLogicMixin:
         merged = self._merge_bridge_stats(_d)
         self.lbl_stats.setText(format_live_stats_line(merged))
         self.lbl_stats.setToolTip(self._stats_tooltip())
+        self._refresh_stats_popout()
 
     def _tick_stats(self) -> None:
         if self.bridge:
@@ -396,6 +502,7 @@ class BridgeLogicMixin:
                 "Stopped — live Hz, transport health, and session totals appear here when Running (hover)"
             )
             self.lbl_stats.setToolTip(self._stats_tooltip())
+            self._refresh_stats_popout()
 
     def _diag_udp_port(self) -> Optional[int]:
         try:

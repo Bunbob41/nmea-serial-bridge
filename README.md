@@ -26,6 +26,7 @@ Windows desktop app that **bidirectionally bridges** NMEA-style (text) traffic b
 - **Diagnostics tab** — optional rotating file log (PC time | GPS UTC | direction | payload); clear on-screen log; quick bench commands.
 
 - **Three UI layouts** — choose at launch (see [Run](#run)).
+- **Survey / Hypack workflow** — **View → Full screen** (F11) for large displays; **View → Pop out survey stats** (Ctrl+Shift+S) for a second monitor with large Hz / transport / session totals (Hypack on one screen, bridge on another). MAVLink / Mission Planner stays on its own COM; this app is the NMEA ↔ bridge path.
 
 ## Requirements
 
@@ -64,6 +65,8 @@ python launcher.py
 | **Log-first** | Dark theme, log dominates; tools in a drawer |
 
 The launcher can **remember** your last choice (`%USERPROFILE%\.cursor-udp-com-bridge\ui_choice.json`).
+
+**Desktop shortcut:** run `.\create_desktop_shortcut.bat` from the repo folder. It writes **NMEA Serial Bridge.lnk** (points at `launch_bridge_gui.bat`, silent `pythonw` + layout picker / saved UI) and **NMEA Serial Bridge (console menu).lnk** (numbered menu in a console). After **moving or renaming the project folder**, run it again so **Start in** and targets stay correct.
 
 ### Direct launch (skip menu)
 

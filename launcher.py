@@ -13,9 +13,26 @@ from ui.registry import UI_DEFAULT, UI_LABELS, UI_ORDER
 CONFIG_PATH = Path.home() / ".cursor-udp-com-bridge" / "ui_choice.json"
 ROOT = Path(__file__).resolve().parent
 PY = sys.executable
-PYTHONW = Path(r"C:\Program Files\Python314\pythonw.exe")
-if not PYTHONW.is_file():
-    PYTHONW = Path(sys.executable.replace("python.exe", "pythonw.exe"))
+
+
+def _pythonw_next_to(sys_exe: Path) -> Path | None:
+    p = sys_exe.resolve()
+    if p.name.lower() == "pythonw.exe":
+        return p
+    cand = p.parent / "pythonw.exe"
+    return cand if cand.is_file() else None
+
+
+def _resolve_pythonw_for_spawn() -> Path:
+    """Prefer pythonw beside the interpreter that ran launcher; avoid stale hard-coded paths."""
+    cur = Path(sys.executable)
+    n = _pythonw_next_to(cur)
+    if n is not None:
+        return n
+    legacy = Path(r"C:\Program Files\Python314\pythonw.exe")
+    if legacy.is_file():
+        return legacy
+    return cur
 
 
 def _load_choice() -> str | None:
@@ -59,7 +76,7 @@ def _menu() -> str:
 
 
 def _spawn_gui(ui_arg: list[str]) -> None:
-    exe = PYTHONW if PYTHONW.is_file() else Path(PY)
+    exe = _resolve_pythonw_for_spawn()
     script = ROOT / "bridge_gui.py"
     subprocess.Popen([str(exe), str(script), *ui_arg], cwd=ROOT)
 

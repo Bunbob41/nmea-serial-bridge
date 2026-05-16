@@ -3,6 +3,10 @@
 High-level notes for **this fork / branch** (`feature/multi-ui-layouts-v0.5`).  
 Version = `version.py` / Git tag when you run `.\release.ps1` or tag manually.
 
+## v0.5.12
+
+- **View** menu on all layouts: **Full screen** (F11) with friendlier splitter ratios on large displays; **Pop out survey stats** (Ctrl+Shift+S) — large, optional always-on-top window for Hypack / multi-monitor survey ops (Cube COM NMEA path vs MAVLink called out in UI copy).
+
 ## v0.5.11
 
 - `verify_all.py` imports are complete on a fresh clone (`py_interpreter`, extra tests).

@@ -1,12 +1,15 @@
 @echo off
-REM Silent launch (no console menu): pythonw + launcher picks saved UI or Qt dialog.
+REM Silent launch: pythonw + launcher.py (saved UI, or Qt layout picker). Re-run create_desktop_shortcut after moving the repo.
 cd /d "%~dp0"
-setlocal
-set "PYW=C:\Program Files\Python314\pythonw.exe"
-if exist "%PYW%" (
-    start "" "%PYW%" "%~dp0launcher.py"
-) else (
-    REM Fallback: python - launcher exits immediately after spawning GUI
+where pythonw >nul 2>&1 && (
     start "" pythonw "%~dp0launcher.py"
+    exit /b 0
 )
-endlocal
+if exist "C:\Program Files\Python314\pythonw.exe" (
+    start "" "C:\Program Files\Python314\pythonw.exe" "%~dp0launcher.py"
+    exit /b 0
+)
+echo [launch_bridge_gui] Could not find pythonw.exe. Install Python or add it to PATH.
+echo Then run create_desktop_shortcut.bat again to refresh the desktop link.
+pause
+exit /b 1

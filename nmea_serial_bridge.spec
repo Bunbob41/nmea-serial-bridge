@@ -26,6 +26,8 @@ APP_HIDDEN = [
     "ui.mixin",
     "ui.controls",
     "ui.tool_tabs",
+    "ui.stats_line",
+    "ui.stats_popout",
     "ui.styles",
     "ui.picker",
 ]
