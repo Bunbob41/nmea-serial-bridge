@@ -1,6 +1,5 @@
 # PyInstaller spec — NMEA serial bridge (Windows one-folder build)
 # Build:  pyinstaller nmea_serial_bridge.spec --noconfirm
-import sys
 from pathlib import Path
 
 from PyInstaller.utils.hooks import collect_all
@@ -9,25 +8,40 @@ block_cipher = None
 root = Path(SPECPATH)
 
 pyside_datas, pyside_binaries, pyside_hidden = collect_all("PySide6")
-qasync_datas, qasync_binaries, qasync_hidden = collect_all("qasync")
+
+APP_HIDDEN = [
+    "serial_asyncio",
+    "serial.tools.list_ports",
+    "nmea_codec",
+    "version",
+    "bridge_core",
+    "bench_config",
+    "nmea_static_edh",
+    "bench_udp_test",
+    "ui",
+    "ui.registry",
+    "ui.standard",
+    "ui.minimal",
+    "ui.logfirst",
+    "ui.mixin",
+    "ui.controls",
+    "ui.tool_tabs",
+    "ui.stats_line",
+    "ui.stats_popout",
+    "ui.styles",
+    "ui.picker",
+]
 
 a = Analysis(
     ["bridge_gui.py"],
     pathex=[str(root)],
-    binaries=pyside_binaries + qasync_binaries,
-    datas=pyside_datas + qasync_datas,
-    hiddenimports=[
-        "serial_asyncio",
-        "serial.tools.list_ports",
-        "nmea_codec",
-        "version",
-        *pyside_hidden,
-        *qasync_hidden,
-    ],
+    binaries=pyside_binaries,
+    datas=pyside_datas + [(str(root / "bench_defaults.json"), ".")],
+    hiddenimports=[*APP_HIDDEN, *pyside_hidden],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=["PyQt5", "PyQt5.QtCore", "PyQt5.QtGui", "PyQt5.QtWidgets"],
+    excludes=["PyQt5", "PyQt5.QtCore", "PyQt5.QtGui", "PyQt5.QtWidgets", "qasync"],
     win_no_prefer_redirects=False,
     win_private_assemblies=False,
     cipher=block_cipher,
