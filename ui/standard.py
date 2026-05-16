@@ -1,4 +1,4 @@
-"""Standard UI — tabs + path cards (v0.4 layout)."""
+"""Standard UI — tabs + path cards."""
 from __future__ import annotations
 
 from PySide6 import QtCore, QtWidgets
@@ -42,7 +42,7 @@ class BridgeWindowStandard(BridgeLogicMixin, QtWidgets.QWidget):
         cv = QtWidgets.QVBoxLayout(connect_tab)
         title = QtWidgets.QLabel("NMEA Serial Bridge")
         title.setObjectName("appTitle")
-        sub = QtWidgets.QLabel(f"v{__version__} — UDP NMEA in, serial out")
+        sub = QtWidgets.QLabel(f"v{__version__} — Network ↔ serial (UDP/TCP NMEA)")
         sub.setObjectName("appSubtitle")
         sub.setWordWrap(True)
         cv.addWidget(title)
@@ -69,11 +69,11 @@ class BridgeWindowStandard(BridgeLogicMixin, QtWidgets.QWidget):
         sf.addRow("Baud:", self.baud_edit)
         cv.addWidget(ser_box)
 
-        net_box = QtWidgets.QGroupBox("3 — Network (UDP listen)")
+        net_box = QtWidgets.QGroupBox("3 — Network endpoint")
         nv = QtWidgets.QVBoxLayout(net_box)
         uf = QtWidgets.QFormLayout()
-        uf.addRow("Listen:", self.udp_host)
-        uf.addRow("Port:", self.udp_port)
+        uf.addRow("Listen host:", self.udp_host)
+        uf.addRow("Listen port:", self.udp_port)
         nv.addLayout(uf)
         nv.addWidget(self.chk_advanced_net)
         nv.addWidget(self._advanced_net)
@@ -110,7 +110,7 @@ class BridgeWindowStandard(BridgeLogicMixin, QtWidgets.QWidget):
         self.status_serial = QtWidgets.QLabel("Serial: stopped")
         self.status_network = QtWidgets.QLabel("Network: stopped")
         self.lbl_stats = QtWidgets.QLabel(
-            "Stopped — ↓ inj↓ ↑ Hz = remote vs Send→COM vs COM→net when running (hover)"
+            "Stopped — when Running, this line shows Hz, transport health, and session totals (hover)"
         )
         self.lbl_stats.setToolTip("")  # filled when running / see mixin._stats_tooltip
         self.statusBar.addWidget(self.status_serial, 2)

@@ -4,7 +4,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from pathlib import Path
 
-from PySide6 import QtCore, QtWidgets
+from PySide6 import QtCore, QtGui, QtWidgets
 
 from nmea_static_edh import EDH_ALT_M, EDH_LAT_DEG, EDH_LON_DEG, build_gga
 
@@ -68,9 +68,9 @@ def build_send_tab(parent: QtWidgets.QWidget) -> QtWidgets.QWidget:
     lay.addLayout(row)
 
     note = QtWidgets.QLabel(
-        "If nothing moves: confirm status bar shows COM open and UDP listening. "
-        "While running, ↓ / inj↓ / ↑ Hz on the bottom bar are sentence rates (rolling 1 s) — "
-        "enable verbose log to see each line."
+        "If nothing moves: confirm the status bar shows COM open and the network line matches your mode. "
+        "While running, the right end shows sentence rates (↓ ↑ Hz), plain-language transport health "
+        "(no fake 0/0 pairs), and session totals — enable verbose log to see each line."
     )
     note.setWordWrap(True)
     note.setObjectName("tabNote")
@@ -125,14 +125,14 @@ def build_diagnostics_tab(parent: QtWidgets.QWidget) -> QtWidgets.QWidget:
     qv = QtWidgets.QVBoxLayout(qa_box)
     qa = QtWidgets.QLabel(
         "Bottom status bar while Running:\n\n"
-        "• ↓ Hz — Complete NMEA sentences per second from UDP/TCP toward COM (simulator/INS). "
-        "Rolling 1 second — compare to your source (e.g. 1 Hz vs 5 Hz).\n"
-        "• inj↓ Hz — Send-tab inject toward COM only (separate from ↓).\n"
-        "• ↑ Hz — Sentences per second from COM back toward the network.\n"
-        "• dr — Drops when internal queues are full (overload); should stay 0 in normal use.\n"
-        "• rj — Assembler / Strict-mode rejects. In Passthrough, rj usually stays 0 unless data is corrupt.\n"
-        "• Q — Pending chunks in queues before write.\n"
-        "• k↓ / ↑ — Lifetime sentence counts this session (UDP/TCP→COM vs COM→net).\n\n"
+        "• ↓ / ↑ Hz — Rolling ~1 s rate of complete NMEA sentences: remote (UDP/TCP) toward COM, "
+        "and COM toward the network.\n"
+        "• Send→COM …/s — Appears only while the Send tab is injecting fast enough to register on that window.\n"
+        "• transport OK — No queue drops, no rejects, and both write queues are empty. "
+        "If something is wrong, the bar names the problem instead of showing idle 0/0 counters.\n"
+        "• session: … — Lifetime sentence counts this session (remote →COM and COM→net).\n"
+        "• Live log — Repeating “Serial … timed out (open/write).” lines are collapsed to one per ~2.5 s "
+        "(same as the bridge; mirrored Diagnostics output uses the same path when “Mirror” is on).\n\n"
         "Hover the status bar any time for the same legend."
     )
     qa.setWordWrap(True)
@@ -141,17 +141,86 @@ def build_diagnostics_tab(parent: QtWidgets.QWidget) -> QtWidgets.QWidget:
     qv.addWidget(qa)
     lay.addWidget(qa_box)
 
-    bench_box = QtWidgets.QGroupBox("Quick checks")
+    bench_box = QtWidgets.QGroupBox("Automated checks (runs on this PC)")
     bv = QtWidgets.QVBoxLayout(bench_box)
-    tips = QtWidgets.QLabel(
-        "• Bench: python com_free.py  then  python check_setup.py\n"
-        "• Full auto: python verify_all.py\n"
-        "• Traffic test: python nmea_static_edh.py  (bridge must be Running)"
+    intro = QtWidgets.QLabel(
+        "Runs the same Python helpers as the command line. Output streams below; the window stays responsive. "
+        "Start the bridge first for the UDP burst if you want to see traffic on the wire."
     )
-    tips.setWordWrap(True)
-    tips.setObjectName("tabNote")
-    tips.setTextInteractionFlags(QtCore.Qt.TextInteractionFlag.TextSelectableByMouse)
-    bv.addWidget(tips)
+    intro.setWordWrap(True)
+    intro.setObjectName("tabNote")
+    bv.addWidget(intro)
+
+    btn_row1 = QtWidgets.QHBoxLayout()
+    parent.btn_diag_verify = QtWidgets.QPushButton("Full verify")
+    parent.btn_diag_verify.setToolTip(
+        "Runs verify_all.py (~15 s): unit tests, COM check, GUI smoke, headless bridge, stress. "
+        "If the bridge was started with pythonw.exe, child steps use python.exe so unittest is reliable."
+    )
+    parent.btn_diag_com = QtWidgets.QPushButton("COM probe")
+    parent.btn_diag_com.setToolTip("Runs com_free.py for the COM + baud shown on Connect (or bench defaults).")
+    parent.btn_diag_setup = QtWidgets.QPushButton("Desk checklist")
+    parent.btn_diag_setup.setToolTip("Runs check_setup.py for the UDP port on Connect (127.0.0.1 send test).")
+    parent.btn_diag_setup_prod = QtWidgets.QPushButton("Boat checklist")
+    parent.btn_diag_setup_prod.setToolTip("Runs check_setup.py --production (reads production block in bench_defaults.json).")
+    for b in (
+        parent.btn_diag_verify,
+        parent.btn_diag_com,
+        parent.btn_diag_setup,
+        parent.btn_diag_setup_prod,
+    ):
+        btn_row1.addWidget(b)
+    btn_row1.addStretch(1)
+    bv.addLayout(btn_row1)
+
+    btn_row2 = QtWidgets.QHBoxLayout()
+    parent.btn_diag_udp = QtWidgets.QPushButton("UDP sample burst (2.5 s)")
+    parent.btn_diag_udp.setToolTip(
+        "Runs nmea_static_edh.py toward 127.0.0.1 and your Connect-tab UDP port. "
+        "Bridge should be Running (UDP listen) to see lines in the log."
+    )
+    parent.btn_diag_stop = QtWidgets.QPushButton("Stop")
+    parent.btn_diag_stop.setEnabled(False)
+    parent.btn_diag_stop.setToolTip("Kill the running helper process.")
+    parent.btn_diag_clear = QtWidgets.QPushButton("Clear output")
+    btn_row2.addWidget(parent.btn_diag_udp)
+    btn_row2.addWidget(parent.btn_diag_stop)
+    btn_row2.addWidget(parent.btn_diag_clear)
+    btn_row2.addStretch(1)
+    bv.addLayout(btn_row2)
+
+    parent.chk_diag_mirror_log = QtWidgets.QCheckBox("Mirror output lines to the main live log")
+    parent.chk_diag_mirror_log.setToolTip("When checked, each non-empty output line is also appended to the big log panel.")
+    bv.addWidget(parent.chk_diag_mirror_log)
+
+    parent.diag_status_label = QtWidgets.QLabel("Idle — pick a check above.")
+    parent.diag_status_label.setWordWrap(True)
+    parent.diag_status_label.setObjectName("tabHint")
+    bv.addWidget(parent.diag_status_label)
+
+    parent.diag_output = QtWidgets.QPlainTextEdit()
+    parent.diag_output.setReadOnly(True)
+    parent.diag_output.setObjectName("diagOutput")
+    parent.diag_output.setMinimumHeight(160)
+    parent.diag_output.setMaximumBlockCount(12_000)
+    mono = QtGui.QFontDatabase.systemFont(QtGui.QFontDatabase.SystemFont.FixedFont)
+    parent.diag_output.setFont(mono)
+    bv.addWidget(parent.diag_output, 1)
+
+    parent._diag_run_buttons = [
+        parent.btn_diag_verify,
+        parent.btn_diag_com,
+        parent.btn_diag_setup,
+        parent.btn_diag_setup_prod,
+        parent.btn_diag_udp,
+    ]
+    parent.btn_diag_verify.clicked.connect(parent._diag_run_verify_all)
+    parent.btn_diag_com.clicked.connect(parent._diag_run_com_free)
+    parent.btn_diag_setup.clicked.connect(parent._diag_run_check_setup)
+    parent.btn_diag_setup_prod.clicked.connect(parent._diag_run_check_setup_production)
+    parent.btn_diag_udp.clicked.connect(parent._diag_run_udp_sample)
+    parent.btn_diag_stop.clicked.connect(parent._diag_stop)
+    parent.btn_diag_clear.clicked.connect(parent.diag_output.clear)
     lay.addWidget(bench_box)
 
     lay.addStretch(1)

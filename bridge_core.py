@@ -18,6 +18,8 @@ import serial_asyncio
 from serial_asyncio import connection_for_serial
 from PySide6 import QtCore
 
+from log_serial_coalesce import serial_timeout_line_suppress
+
 from nmea_codec import (
     NMEA_SENTENCE_TYPES,
     NmeaFilter,
@@ -283,6 +285,8 @@ class SerialNetBridge:
         self._tasks: list[asyncio.Task] = []
         self._serial_open = False
         self._network_ready = False
+        self._serial_io_err_last_msg: Optional[str] = None
+        self._serial_io_err_last_mono: float = 0.0
 
     def _set_status(self, serial_line: str, network_line: str) -> None:
         self._status_cb(serial_line, network_line)
@@ -290,6 +294,20 @@ class SerialNetBridge:
     def _gps_utc(self) -> str:
         return self._gps_state[0] or ""
 
+    def _ui_log_serial_coalesced(self, msg: str, window_s: float = 2.5) -> None:
+        """Throttle identical serial-path errors (burst traffic or shutdown overlap)."""
+        if not msg:
+            return
+        suppress, self._serial_io_err_last_msg, self._serial_io_err_last_mono = (
+            serial_timeout_line_suppress(
+                self._serial_io_err_last_msg,
+                self._serial_io_err_last_mono,
+                msg,
+                window_s=window_s,
+            )
+        )
+        if not suppress:
+            self._ui_log(msg)
 
     def _underlying_serial(self) -> Optional[serial.Serial]:
         writer = self.serial_writer
@@ -468,6 +486,7 @@ class SerialNetBridge:
         return reader, writer
 
     async def start(self) -> bool:
+        self._teardown = False
         self._set_status(f"Serial: opening {self.com} @ {self.baud}…", "Network: starting…")
         self._ui_log(f"Opening serial {self.com} @ {self.baud}")
         try:
@@ -655,7 +674,8 @@ class SerialNetBridge:
                 except asyncio.CancelledError:
                     break
                 except Exception as e:
-                    self._ui_log(_friendly_serial_error(e, self.com))
+                    if self.running and not self._teardown:
+                        self._ui_log_serial_coalesced(_friendly_serial_error(e, self.com))
                     break
                 if not data:
                     continue
@@ -676,9 +696,14 @@ class SerialNetBridge:
                     await self._write_serial_bytes(chunk)
                 except asyncio.CancelledError:
                     break
+                except asyncio.TimeoutError:
+                    if self.running and not self._teardown:
+                        self._ui_log_serial_coalesced(
+                            _friendly_serial_error(asyncio.TimeoutError(), self.com)
+                        )
                 except Exception as e:
                     if self.running and not self._teardown:
-                        self._ui_log(_friendly_serial_error(e, self.com))
+                        self._ui_log_serial_coalesced(_friendly_serial_error(e, self.com))
         except asyncio.CancelledError:
             pass
 
@@ -788,7 +813,6 @@ class SerialNetBridge:
         self._network_ready = False
         self._asm_n2s.reset()
         self._asm_s2n.reset()
-        self._teardown = False
 
     async def _await_closed(self, writer: Optional[asyncio.StreamWriter], label: str) -> None:
         if not writer:

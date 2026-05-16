@@ -48,7 +48,13 @@ class BridgeWindowLogFirst(BridgeLogicMixin, QtWidgets.QWidget):
         r1.addWidget(self.refresh_btn)
         r1.addWidget(QtWidgets.QLabel("Baud"))
         r1.addWidget(self.baud_edit)
-        r1.addWidget(QtWidgets.QLabel(":"))
+        r1.addWidget(QtWidgets.QLabel("UDP host"))
+        self.udp_host.setMaximumWidth(100)
+        self.udp_host.setToolTip("UDP listen bind address (see Network+ tab for TCP modes).")
+        r1.addWidget(self.udp_host)
+        r1.addWidget(QtWidgets.QLabel("port"))
+        self.udp_port.setMaximumWidth(64)
+        self.udp_port.setToolTip("UDP listen port — senders use this port on the host above.")
         r1.addWidget(self.udp_port)
         r1.addWidget(self.start_btn)
         r1.addWidget(self.stop_btn)
@@ -95,7 +101,7 @@ class BridgeWindowLogFirst(BridgeLogicMixin, QtWidgets.QWidget):
         self.status_serial = QtWidgets.QLabel("Serial: stopped")
         self.status_network = QtWidgets.QLabel("Network: stopped")
         self.lbl_stats = QtWidgets.QLabel(
-            "Stopped — ↓ inj↓ ↑ when running (hover)"
+            "Stopped — when Running, Hz + transport + session totals (hover)"
         )
         self.statusBar.addWidget(self.status_serial, 1)
         self.statusBar.addWidget(self.status_network, 1)

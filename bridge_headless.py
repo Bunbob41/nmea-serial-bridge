@@ -57,6 +57,7 @@ async def _run(com: str, baud: int, host: str, port: int, seconds: float) -> int
             await asyncio.sleep(0.2)
     finally:
         sock.close()
+        await asyncio.sleep(0.12)
         bridge.abort_now()
         pending = [t for t in asyncio.all_tasks(loop) if t is not asyncio.current_task()]
         for t in pending:
@@ -71,7 +72,12 @@ async def _run(com: str, baud: int, host: str, port: int, seconds: float) -> int
     print(f"[bridge_headless] sent {n} pairs; log lines={len(logs)}")
     if logs:
         print("[bridge_headless] last events:")
-        for line in logs[-6:]:
+        tail = logs[-18:]
+        # Benign Windows/com0com artifact: last in-flight COM write can time out during teardown.
+        if wrote or len(logs) > 12:
+            tail = [ln for ln in tail if "timed out (open/write)" not in ln]
+        show = tail[-6:] if tail else logs[-6:]
+        for line in show:
             safe = line.encode("ascii", errors="replace").decode("ascii")
             print(f"  {safe}")
     return 0 if wrote or len(logs) > 2 else 1

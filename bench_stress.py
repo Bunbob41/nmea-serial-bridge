@@ -4,11 +4,11 @@ from __future__ import annotations
 
 import argparse
 import subprocess
-import sys
 import time
 from pathlib import Path
 
 from bench_config import load_bench_defaults
+from py_interpreter import cli_python_executable
 
 ROOT = Path(__file__).resolve().parent
 
@@ -21,7 +21,7 @@ def main() -> int:
     p.add_argument("--pause", type=float, default=0.35, help="Pause between cycles (COM settle)")
     args = p.parse_args()
 
-    py = sys.executable
+    py = cli_python_executable()
     com = str(d["com"])
     baud = str(d["baud"])
     port = str(d["udp_port"])

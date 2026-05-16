@@ -88,7 +88,18 @@ def create_connection_controls(parent: QtWidgets.QWidget) -> None:
     p.tcp_reconnect_spin.setDecimals(1)
     p.tcp_reconnect_spin.setSuffix(" s")
     p.tcp_reconnect_spin.setValue(DEFAULT_TCP_RECONNECT_S)
-    adv.addWidget(p.tcp_reconnect_spin)
+    p.tcp_reconnect_spin.setToolTip(
+        "TCP client mode only: seconds to wait before each reconnect attempt when the server drops."
+    )
+    recon_row = QtWidgets.QHBoxLayout()
+    recon_lbl = QtWidgets.QLabel("TCP reconnect delay")
+    recon_lbl.setToolTip(
+        "Used when Advanced → TCP client is selected. Ignored for UDP and TCP server."
+    )
+    recon_row.addWidget(recon_lbl)
+    recon_row.addWidget(p.tcp_reconnect_spin)
+    recon_row.addStretch(1)
+    adv.addLayout(recon_row)
     p._advanced_net.setVisible(False)
 
     p.start_btn = QtWidgets.QPushButton("Start")

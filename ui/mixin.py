@@ -28,6 +28,11 @@ from bridge_core import (
 )
 from nmea_codec import NmeaFilter, NmeaMode
 from nmea_static_edh import EDH_ALT_M, EDH_LAT_DEG, EDH_LON_DEG, build_gga, build_rmc
+from log_serial_coalesce import serial_timeout_line_suppress
+from py_interpreter import cli_python_executable
+from ui.stats_line import format_live_stats_line
+
+_REPO_ROOT = Path(__file__).resolve().parent.parent
 
 
 class BridgeLogicMixin:
@@ -53,6 +58,14 @@ class BridgeLogicMixin:
         self._log_flush_timer.timeout.connect(self._flush_ui_log)
         self._stats_timer = QtCore.QTimer(self)
         self._stats_timer.timeout.connect(self._tick_stats)
+        self._diag_qprocess: Optional[QtCore.QProcess] = None
+        self._diag_current_title = ""
+        self._ui_log_serial_dup_last: Optional[str] = None
+        self._ui_log_serial_dup_mono: float = 0.0
+
+    def _reset_ui_log_serial_coalesce(self) -> None:
+        self._ui_log_serial_dup_last = None
+        self._ui_log_serial_dup_mono = 0.0
 
     def _finalize_ui(self) -> None:
         from ui.controls import wire_connection_controls
@@ -283,7 +296,21 @@ class BridgeLogicMixin:
         sb.setValue(sb.maximum())
 
     def _log_ui(self, txt: str) -> None:
+        if self._should_coalesce_serial_gui_log(txt):
+            return
         self._enqueue_ui(txt)
+
+    def _should_coalesce_serial_gui_log(self, txt: str, window_s: float = 2.5) -> bool:
+        """Live log: drop repeat ``Serial COMx: timed out (open/write).`` within window."""
+        suppress, last, mono = serial_timeout_line_suppress(
+            self._ui_log_serial_dup_last,
+            self._ui_log_serial_dup_mono,
+            txt,
+            window_s=window_s,
+        )
+        self._ui_log_serial_dup_last = last
+        self._ui_log_serial_dup_mono = mono
+        return suppress
 
     def _update_status_bar(self, serial_line: str, network_line: str) -> None:
         self.status_serial.setText(serial_line)
@@ -303,36 +330,37 @@ class BridgeLogicMixin:
             "↓ Hz — Complete NMEA sentences per second from UDP/TCP toward the serial port "
             "(rolling 1 s window). Matches what your simulator/INS sends after line assembly — "
             "not raw packet count.\n"
-            "inj↓ Hz — Send-tab / GUI inject toward COM only (does not add to ↓ Hz).\n"
-            "↑ Hz — Sentences per second from COM toward the network (autopilot answering).\n\n"
-            "dr — Queue drops when net→serial / serial→net queues are full (backpressure).\n"
-            "rj — Lines rejected by assembler or Strict NMEA filter. In Passthrough mode "
-            "reject counts usually stay at 0 unless lines are malformed.\n"
-            "Q — Queue depth waiting to be written (chunks).\n\n"
-            "↓ / ↑ counts — Lifetime sentences forwarded (UDP/TCP→COM vs COM→net)."
+            "↑ Hz — Sentences per second from COM toward the network.\n"
+            "Send→COM …/s — Only when the Send tab is actively injecting at ≥ ~0.05/s "
+            "(rolling 1 s). Does not add to ↓ Hz.\n\n"
+            "transport OK — No queue drops, no rejects, and both write queues empty.\n"
+            "If something is wrong, the bar spells it out (drops / rejects / queued chunks).\n\n"
+            "session totals — Lifetime sentences forwarded: remote →COM (UDP/TCP) and COM→net.\n\n"
+            "Live log: identical “Serial … timed out (open/write).” lines are shown at most once per ~2.5 s "
+            "(same window as the bridge engine; avoids spam during stress or Stop)."
         )
 
-    def _fmt_lines_short(self, n: int) -> str:
-        if n >= 1_000_000:
-            return f"{n / 1e6:.1f}M"
-        if n >= 10_000:
-            return f"{n / 1000:.1f}k"
-        if n >= 1000:
-            return f"{n / 1000:.2f}k"
-        return str(n)
+    def _starting_network_blurb(self) -> str:
+        if self.rb_udp_listen.isChecked():
+            return f"UDP listen {self.udp_host.text().strip()}:{self.udp_port.text().strip()}"
+        if self.rb_udp_remote.isChecked():
+            return f"UDP remote {self.remote_host.text().strip()}:{self.remote_port.text().strip()}"
+        if self.rb_tcp_server.isChecked():
+            return f"TCP server {self.tcp_srv_host.text().strip()}:{self.tcp_srv_port.text().strip()}"
+        return f"TCP client {self.tcp_cli_host.text().strip()}:{self.tcp_cli_port.text().strip()}"
 
-    def _format_live_stats(self, d: dict) -> str:
-        hz_d = float(d.get("hz_down", 0.0))
-        hz_i = float(d.get("hz_gui", 0.0))
-        hz_u = float(d.get("hz_up", 0.0))
-        ld = int(d.get("lines_down", 0))
-        lu = int(d.get("lines_up", 0))
-        return (
-            f"↓{hz_d:.1f} inj↓{hz_i:.1f} ↑{hz_u:.1f} Hz | "
-            f"dr {d['drops_n2s']}/{d['drops_s2n']} rj {d['rej_n2s']}/{d['rej_s2n']} | "
-            f"Q {d['n2s_q']}/{d['s2n_q']} | "
-            f"{self._fmt_lines_short(ld)}↓ {self._fmt_lines_short(lu)}↑"
-        )
+    def _running_banner_detail(self, b: SerialNetBridge) -> str:
+        if b.mode == NetMode.UDP_LISTEN and b.udp_listen:
+            host, port = b.udp_listen
+            return f"{b.com} @ {b.baud} — UDP listen {host}:{port}"
+        if b.mode == NetMode.UDP_REMOTE and b.udp_remote:
+            host, port = b.udp_remote
+            return f"{b.com} @ {b.baud} — UDP → {host}:{port}"
+        if b.mode == NetMode.TCP_SERVER:
+            return f"{b.com} @ {b.baud} — TCP server {b.tcp_bind_host}:{b.tcp_bind_port}"
+        if b.mode == NetMode.TCP_CLIENT:
+            return f"{b.com} @ {b.baud} — TCP client → {b.tcp_client_host}:{b.tcp_client_port}"
+        return f"{b.com} @ {b.baud}"
 
     def _merge_bridge_stats(self, base: Optional[dict] = None) -> dict:
         b = self.bridge
@@ -354,8 +382,10 @@ class BridgeLogicMixin:
         }
 
     def _stats_from_bridge(self, _d: dict) -> None:
+        if not self.bridge:
+            return
         merged = self._merge_bridge_stats(_d)
-        self.lbl_stats.setText(self._format_live_stats(merged))
+        self.lbl_stats.setText(format_live_stats_line(merged))
         self.lbl_stats.setToolTip(self._stats_tooltip())
 
     def _tick_stats(self) -> None:
@@ -363,9 +393,135 @@ class BridgeLogicMixin:
             self._stats_from_bridge({})
         else:
             self.lbl_stats.setText(
-                "Stopped — ↓ inj↓ ↑ Hz = remote vs Send→COM vs COM→net rate when running (hover)"
+                "Stopped — live Hz, transport health, and session totals appear here when Running (hover)"
             )
             self.lbl_stats.setToolTip(self._stats_tooltip())
+
+    def _diag_udp_port(self) -> Optional[int]:
+        try:
+            return _parse_port(self.udp_port.text(), "UDP port")
+        except ValueError:
+            QtWidgets.QMessageBox.warning(
+                self,
+                "Diagnostics",
+                "Enter a valid UDP listen port on the Connect tab first.",
+            )
+            return None
+
+    def _diag_set_running_ui(self, running: bool) -> None:
+        for b in getattr(self, "_diag_run_buttons", ()):
+            b.setEnabled(not running)
+        if hasattr(self, "btn_diag_stop"):
+            self.btn_diag_stop.setEnabled(running)
+
+    def _append_diag_output(self, text: str) -> None:
+        if not hasattr(self, "diag_output"):
+            return
+        self.diag_output.moveCursor(QtGui.QTextCursor.MoveOperation.End)
+        self.diag_output.insertPlainText(text)
+        self.diag_output.moveCursor(QtGui.QTextCursor.MoveOperation.End)
+        if getattr(self, "chk_diag_mirror_log", None) and self.chk_diag_mirror_log.isChecked():
+            for line in text.splitlines():
+                if line.strip():
+                    self._log_ui(line)
+
+    def _diag_start_script(self, title: str, script: str, args: list[str]) -> None:
+        if self._diag_qprocess is not None and self._diag_qprocess.state() != QtCore.QProcess.ProcessState.NotRunning:
+            self._append_diag_output("A check is already running — press Stop or wait for it to finish.\n")
+            return
+        self.diag_output.clear()
+        self._diag_current_title = title
+        exe = cli_python_executable()
+        rel = _REPO_ROOT / script
+        cmd = f"{exe} {rel.name} {' '.join(args)}".strip()
+        self._append_diag_output(f"$ {cmd}\n(working dir: {_REPO_ROOT})\n\n")
+        self.diag_status_label.setText(f"Running: {title}…")
+        self._diag_set_running_ui(True)
+
+        proc = QtCore.QProcess(self)
+        proc.setProgram(exe)
+        proc.setArguments([str(rel), *args])
+        proc.setWorkingDirectory(str(_REPO_ROOT))
+        proc.setProcessChannelMode(QtCore.QProcess.ProcessChannelMode.SeparateChannels)
+        proc.readyReadStandardOutput.connect(self._diag_on_stdout)
+        proc.readyReadStandardError.connect(self._diag_on_stderr)
+        proc.finished.connect(self._diag_on_finished)
+        proc.errorOccurred.connect(self._diag_on_error)
+        self._diag_qprocess = proc
+        proc.start()
+
+    def _diag_on_stdout(self) -> None:
+        p = self._diag_qprocess
+        if not p:
+            return
+        self._append_diag_output(bytes(p.readAllStandardOutput()).decode(errors="replace"))
+
+    def _diag_on_stderr(self) -> None:
+        p = self._diag_qprocess
+        if not p:
+            return
+        self._append_diag_output(bytes(p.readAllStandardError()).decode(errors="replace"))
+
+    def _diag_on_error(self, error: QtCore.QProcess.ProcessError) -> None:
+        self._append_diag_output(f"\n[process error: {int(error)}]\n")
+
+    def _diag_on_finished(self, exit_code: int, exit_status: QtCore.QProcess.ExitStatus) -> None:
+        p = self.sender()
+        if p is not self._diag_qprocess:
+            return
+        normal = exit_status == QtCore.QProcess.ExitStatus.NormalExit
+        ok = normal and exit_code == 0
+        label = "PASS" if ok else "FAIL"
+        self.diag_status_label.setText(
+            f"Finished: {self._diag_current_title} — exit code {exit_code} — {label}"
+        )
+        self._append_diag_output(f"\n--- done (exit {exit_code}) — {label} ---\n")
+        self._diag_set_running_ui(False)
+        self._diag_qprocess = None
+        p.deleteLater()
+
+    def _diag_stop(self) -> None:
+        if self._diag_qprocess and self._diag_qprocess.state() != QtCore.QProcess.ProcessState.NotRunning:
+            self._diag_qprocess.kill()
+            self._append_diag_output("\n[stopped by user]\n")
+
+    def _diag_run_verify_all(self) -> None:
+        self._diag_start_script("verify_all (full automated suite)", "verify_all.py", [])
+
+    def _diag_run_com_free(self) -> None:
+        args: list[str] = []
+        com = self.com_cb.currentText().strip()
+        if com:
+            args.extend(["--com", com])
+        try:
+            baud = int(self.baud_edit.text().strip())
+            if baud > 0:
+                args.extend(["--baud", str(baud)])
+        except ValueError:
+            pass
+        self._diag_start_script("com_free (COM port availability)", "com_free.py", args)
+
+    def _diag_run_check_setup(self) -> None:
+        port = self._diag_udp_port()
+        if port is None:
+            return
+        self._diag_start_script("check_setup (UDP + COM hints)", "check_setup.py", ["--port", str(port)])
+
+    def _diag_run_check_setup_production(self) -> None:
+        port = self._diag_udp_port()
+        if port is None:
+            return
+        self._diag_start_script("check_setup --production", "check_setup.py", ["--port", str(port), "--production"])
+
+    def _diag_run_udp_sample(self) -> None:
+        port = self._diag_udp_port()
+        if port is None:
+            return
+        self._diag_start_script(
+            "nmea_static_edh (2.5 s UDP burst @ 5 Hz)",
+            "nmea_static_edh.py",
+            ["--dest-host", "127.0.0.1", "--dest-port", str(port), "--duration", "2.5", "--quiet"],
+        )
 
     def refresh_ports(self) -> None:
         self.com_cb.clear()
@@ -497,7 +653,11 @@ class BridgeLogicMixin:
         self._set_connection_locked(True)
         self._update_status_bar("Serial: starting…", "Network: starting…")
         self._starting = True
-        self._set_status_banner("starting", "Starting…", f"Opening {com} and UDP :{self.udp_port.text()}")
+        self._set_status_banner(
+            "starting",
+            "Starting…",
+            f"Opening {com} @ {baud} — {self._starting_network_blurb()}",
+        )
         self._start_gen += 1
         gen = self._start_gen
         self._log_ui(f"Start: opening {com} @ {baud} (background thread)…")
@@ -564,7 +724,8 @@ class BridgeLogicMixin:
 
     def _on_bridge_started(self, b: SerialNetBridge) -> None:
         self._starting = False
-        self._set_status_banner("running", "Running", f"{b.com} @ {b.baud} — UDP listen :{b.udp_listen[1] if b.udp_listen else '?'}")
+        self._reset_ui_log_serial_coalesce()
+        self._set_status_banner("running", "Running", self._running_banner_detail(b))
         self.start_btn.setText("Running…")
         if b.mode == NetMode.UDP_LISTEN and b.udp_listen:
             host, port = b.udp_listen
@@ -612,6 +773,7 @@ class BridgeLogicMixin:
 
     def _finish_stop_ui(self) -> None:
         """Re-enable controls on the Qt main thread after async stop."""
+        self._reset_ui_log_serial_coalesce()
         self._stop_guard_timer.stop()
         self._stopping = False
         if self._file_log:
@@ -625,6 +787,13 @@ class BridgeLogicMixin:
         self._update_status_bar("Serial: stopped", "Network: stopped")
 
     def closeEvent(self, event: QtGui.QCloseEvent) -> None:
+        p = self._diag_qprocess
+        if p is not None:
+            if p.state() != QtCore.QProcess.ProcessState.NotRunning:
+                p.kill()
+                p.waitForFinished(2000)
+            self._diag_qprocess = None
+            p.deleteLater()
         running = self.bridge and self.bridge.running
         worker = self._worker
         if running or (worker and worker.isRunning()):
