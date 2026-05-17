@@ -1,12 +1,22 @@
 """Per-theme color remaps applied to the maroon base stylesheets."""
 from __future__ import annotations
 
+import colorsys
+import random
+
 from ui.theme_choice import (
     THEME_FOREST,
     THEME_MAROON,
     THEME_OCEAN,
+    THEME_RANDOM_CURRENT,
+    THEME_RANDOM_FAVORITE,
     THEME_SLATE,
     THEME_SUNSET,
+    THEME_ZONE_KEYS,
+    load_random_theme_current,
+    load_random_theme_current_zones,
+    load_random_theme_favorite,
+    load_random_theme_favorite_zones,
 )
 
 # Longest keys first when applying (handled in apply_theme_colors).
@@ -217,11 +227,206 @@ THEME_COLOR_MAPS: dict[str, dict[str, str]] = {
     THEME_SUNSET: _SUNSET_MAP,
 }
 
+DEFAULT_ZONE_COLORS: dict[str, str] = {
+    "background": "#1f2430",
+    "topbar": "#354b6b",
+    "tabs": "#5a3f8c",
+    "buttons": "#c54f8b",
+    "inputs": "#2f6a7a",
+    "logs": "#1d1530",
+    "accent": "#f6c65b",
+}
+
+_ZONE_COLOR_GROUPS: dict[str, tuple[str, ...]] = {
+    "background": (
+        "#2f2329",
+        "#241a1f",
+        "#2a1d22",
+        "#e8e4de",
+        "#f7f1e6",
+        "#f0ece6",
+    ),
+    "topbar": (
+        "#3a2a31",
+        "#e7dcc9",
+        "#ddd8d0",
+    ),
+    "tabs": (
+        "#4a2f39",
+        "#5a3543",
+        "#6b3a4a",
+        "#d0cbc4",
+        "#d0cbc4",
+    ),
+    "buttons": (
+        "#5a3240",
+        "#6a3d4c",
+        "#4a2a36",
+        "#6b3643",
+        "#d0cbc4",
+        "#e8e0d4",
+    ),
+    "inputs": (
+        "#1e181c",
+        "#1b1418",
+        "#2a1d22",
+        "#f5f2ec",
+        "#f7f1e6",
+    ),
+    "logs": (
+        "#161214",
+        "#1e181c",
+        "#f5f2ec",
+    ),
+    "accent": (
+        "#7a5a2d",
+        "#8d6a34",
+        "#b28a42",
+        "#d4af37",
+        "#f1d483",
+        "#ffe2a1",
+        "#ffe7b0",
+        "#e0be56",
+        "#bf9928",
+    ),
+}
+
+
+def _clamp01(value: float) -> float:
+    return max(0.0, min(1.0, value))
+
+
+def _hex_to_rgb(color: str) -> tuple[float, float, float]:
+    c = color.lstrip("#")
+    return int(c[0:2], 16) / 255.0, int(c[2:4], 16) / 255.0, int(c[4:6], 16) / 255.0
+
+
+def _rgb_to_hex(rgb: tuple[float, float, float]) -> str:
+    r = int(round(_clamp01(rgb[0]) * 255.0))
+    g = int(round(_clamp01(rgb[1]) * 255.0))
+    b = int(round(_clamp01(rgb[2]) * 255.0))
+    return f"#{r:02x}{g:02x}{b:02x}"
+
+
+def _zone_tint(source: str, target: str, *, weight: float) -> str:
+    sr, sg, sb = _hex_to_rgb(source)
+    tr, tg, tb = _hex_to_rgb(target)
+    sh, sl, ss = colorsys.rgb_to_hls(sr, sg, sb)
+    th, tl, ts = colorsys.rgb_to_hls(tr, tg, tb)
+    # Keep source contrast envelope, but strongly adopt the target zone hue.
+    h = th
+    s = _clamp01((ss * (1.0 - weight)) + (ts * weight))
+    l = _clamp01((sl * 0.62) + (tl * 0.38))
+    return _rgb_to_hex(colorsys.hls_to_rgb(h, l, s))
+
+
+def build_zone_theme_map(zone_colors: dict[str, str]) -> dict[str, str]:
+    zones = dict(DEFAULT_ZONE_COLORS)
+    for key in THEME_ZONE_KEYS:
+        value = str(zone_colors.get(key, "")).strip().lower()
+        if len(value) == 7 and value.startswith("#"):
+            zones[key] = value
+    out: dict[str, str] = {}
+    for zone, sources in _ZONE_COLOR_GROUPS.items():
+        weight_map = {
+            "background": 0.70,
+            "topbar": 0.84,
+            "tabs": 0.92,
+            "buttons": 0.95,
+            "inputs": 0.82,
+            "logs": 0.86,
+            "accent": 0.98,
+        }
+        weight = weight_map.get(zone, 0.85)
+        for src in sources:
+            out[src.lower()] = _zone_tint(src, zones[zone], weight=weight)
+    return out
+
+
+def generate_random_zone_colors(
+    seed: int | None = None, *, family_seed: int | None = None, variant: int = 0
+) -> dict[str, str]:
+    if family_seed is None:
+        family_seed = int(seed) if seed is not None else random.SystemRandom().randrange(1, 2**31)
+        variant = 0
+    family_seed = max(1, int(family_seed))
+    variant = max(0, int(variant))
+    rng_family = random.Random(family_seed)
+    rng_variant = random.Random((family_seed ^ ((variant + 1) * 524_287)) & 0x7FFFFFFF)
+    base_h = rng_family.random()
+    zones: dict[str, str] = {}
+    for idx, zone in enumerate(THEME_ZONE_KEYS):
+        hue = (base_h + (idx / max(len(THEME_ZONE_KEYS), 1)) + rng_variant.uniform(-0.06, 0.06)) % 1.0
+        sat = _clamp01(0.52 + rng_variant.uniform(0.08, 0.34))
+        if zone == "accent":
+            sat = _clamp01(0.70 + rng_variant.uniform(0.08, 0.20))
+            light = _clamp01(0.58 + rng_variant.uniform(0.08, 0.20))
+        elif zone in {"background", "logs"}:
+            light = _clamp01(0.17 + rng_variant.uniform(0.02, 0.10))
+        elif zone == "topbar":
+            light = _clamp01(0.24 + rng_variant.uniform(0.04, 0.12))
+        else:
+            light = _clamp01(0.32 + rng_variant.uniform(0.06, 0.18))
+        zones[zone] = _rgb_to_hex(colorsys.hls_to_rgb(hue, light, sat))
+    return zones
+
+
+def generate_standardized_zone_colors(
+    seed: int | None = None, *, family_seed: int | None = None, variant: int = 0
+) -> dict[str, str]:
+    """Generate a cohesive single-family palette (low visual chaos)."""
+    if family_seed is None:
+        family_seed = int(seed) if seed is not None else random.SystemRandom().randrange(1, 2**31)
+        variant = 0
+    family_seed = max(1, int(family_seed))
+    variant = max(0, int(variant))
+    rng = random.Random((family_seed ^ ((variant + 1) * 786_433)) & 0x7FFFFFFF)
+    hue = rng.random()
+    sat = _clamp01(0.26 + rng.uniform(0.03, 0.18))
+    accent_hue = (hue + rng.uniform(0.02, 0.10)) % 1.0
+    zones: dict[str, str] = {}
+    zone_lightness = {
+        "background": 0.17,
+        "topbar": 0.24,
+        "tabs": 0.30,
+        "buttons": 0.36,
+        "inputs": 0.28,
+        "logs": 0.13,
+        "accent": 0.62,
+    }
+    for zone in THEME_ZONE_KEYS:
+        light = zone_lightness.get(zone, 0.30) + rng.uniform(-0.03, 0.03)
+        zone_hue = accent_hue if zone == "accent" else hue
+        zone_sat = sat + (0.22 if zone == "accent" else 0.0)
+        zones[zone] = _rgb_to_hex(
+            colorsys.hls_to_rgb(zone_hue, _clamp01(light), _clamp01(zone_sat))
+        )
+    return zones
+
+
+def generate_random_theme_map(
+    seed: int | None = None, *, family_seed: int | None = None, variant: int = 0
+) -> dict[str, str]:
+    """Create a vibrant random remap while preserving relative lightness contrast.
+
+    - `seed`: one-off deterministic map
+    - `family_seed` + `variant`: same style family with deterministic variations
+    """
+    zones = generate_random_zone_colors(seed, family_seed=family_seed, variant=variant)
+    return build_zone_theme_map(zones)
+
 
 def apply_theme_colors(css: str, theme_id: str) -> str:
     if theme_id == THEME_MAROON:
         return css
-    mapping = THEME_COLOR_MAPS.get(theme_id)
+    if theme_id == THEME_RANDOM_CURRENT:
+        zones = load_random_theme_current_zones()
+        mapping = build_zone_theme_map(zones) if zones else load_random_theme_current()
+    elif theme_id == THEME_RANDOM_FAVORITE:
+        zones = load_random_theme_favorite_zones()
+        mapping = build_zone_theme_map(zones) if zones else load_random_theme_favorite()
+    else:
+        mapping = THEME_COLOR_MAPS.get(theme_id)
     if not mapping:
         return css
     out = css

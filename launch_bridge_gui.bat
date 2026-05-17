@@ -1,5 +1,5 @@
 @echo off
-REM Silent launch: pythonw + launcher.py (saved UI, or Qt layout picker). Re-run create_desktop_shortcut after moving the repo.
+REM Silent launch: pythonw + launcher.py v1.1+ (Standard or Field; saved UI or picker). Re-run create_desktop_shortcut after moving the repo.
 cd /d "%~dp0"
 where pythonw >nul 2>&1 && (
     start "" pythonw "%~dp0launcher.py"

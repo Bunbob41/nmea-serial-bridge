@@ -13,15 +13,25 @@ from pathlib import Path
 
 from bench_config import load_bench_defaults
 from bench_udp_test import port_has_listener
-from py_interpreter import cli_python_executable
+from py_interpreter import cli_python_executable, subprocess_no_console_kwargs
 
 ROOT = Path(__file__).resolve().parent
 PY = cli_python_executable()
 
 
+def compile_repo() -> int:
+    """Compile project sources only (skip dist/, venv, __pycache__)."""
+    import compileall
+    import re
+
+    skip = re.compile(r"(\\|/)(dist|\.venv|venv|__pycache__)(\\|/)")
+    ok = compileall.compile_dir(str(ROOT), quiet=1, rx=skip)
+    return 0 if ok else 1
+
+
 def run(name: str, args: list[str]) -> int:
     print(f"\n>> {name}: {' '.join(args)}", flush=True)
-    return subprocess.call([PY, *args], cwd=ROOT)
+    return subprocess.call([PY, *args], cwd=ROOT, **subprocess_no_console_kwargs())
 
 
 def _bench_udp_port() -> int:
@@ -47,24 +57,14 @@ def main() -> int:
             flush=True,
         )
 
-    steps: list[tuple[str, list[str]]] = [
-        ("compileall", ["-m", "compileall", "-q", str(ROOT)]),
+    steps: list[tuple[str, list[str] | None]] = [
+        ("compileall", None),
         (
             "unittest",
-            [
-                "-m",
-                "unittest",
-                "test_nmea_codec",
-                "test_bridge_metrics",
-                "test_ui_stats_line",
-                "test_py_interpreter",
-                "test_survey_log_contract",
-                "test_ui_log_coalesce",
-                "-q",
-            ],
+            ["-m", "unittest", "discover", "-s", str(ROOT), "-p", "test_*.py", "-q"],
         ),
         ("com_free", ["com_free.py"]),
-        ("check_setup", ["check_setup.py", "--port", str(bench_port)]),
+        ("check_setup", ["check_setup.py"]),
         ("bench_gui_smoke", ["bench_gui_smoke.py"]),
         ("bench_headless", ["bridge_headless.py", "--seconds", "2"]),
         ("bench_stress", ["bench_stress.py", "--cycles", "6", "--pause", "0.35"]),
@@ -76,7 +76,12 @@ def main() -> int:
 
     failed = 0
     for name, args in steps:
-        if run(name, args) != 0:
+        if name == "compileall":
+            print("\n>> compileall: project sources (excludes dist/, venv/)", flush=True)
+            code = compile_repo()
+        else:
+            code = run(name, args or [])
+        if code != 0:
             failed += 1
             print(f"FAIL: {name}", flush=True)
     if failed:

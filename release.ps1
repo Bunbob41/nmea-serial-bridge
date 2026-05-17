@@ -48,6 +48,8 @@ if ($PublishOnly) {
         python -m PyInstaller nmea_serial_bridge.spec --noconfirm
         if ($LASTEXITCODE -ne 0) { throw "PyInstaller failed" }
     } else {
+        python "$PSScriptRoot\tools\sync_version_info.py"
+        if ($LASTEXITCODE -ne 0) { throw "sync_version_info failed" }
         & "$PSScriptRoot\build.ps1"
     }
 

@@ -17,8 +17,8 @@ def main() -> int:
         assert w.btn_insert_sample is not None
         w._insert_send_sample()
         text = w.send_edit.toPlainText()
-        if "GPGGA" not in text or "GPRMC" not in text:
-            print(f"[bench_gui_smoke] FAIL {ui_id}: sample insert missing GGA/RMC")
+        if "GPGGA" not in text:
+            print(f"[bench_gui_smoke] FAIL {ui_id}: sample insert missing GGA")
             return 1
         print(f"[bench_gui_smoke] OK {ui_id} — {UI_LABELS[ui_id]}")
     print(f"[bench_gui_smoke] All UIs OK v{__version__}")

@@ -1,10 +1,12 @@
 import unittest
 
 from nmea_codec import (
+    NMEA_SENTENCE_TYPES,
     NmeaFilter,
     NmeaLineAssembler,
     NmeaMode,
     nmea_checksum_ok,
+    nmea_sentence_type,
     parse_nmea_utc,
 )
 
@@ -56,6 +58,20 @@ class TestLineAssembler(unittest.TestCase):
         r = asm.feed(line.encode(), NmeaMode.PASSTHROUGH)
         self.assertEqual(len(r.forward), 1)
         self.assertTrue(r.forward[0].endswith(b"\r\n"))
+
+
+class TestNmeaSentenceType(unittest.TestCase):
+    def test_sddpt_is_dpt_not_dbt(self) -> None:
+        """Sounder depth: $SDDPT → type DPT (common sim output; not DBT)."""
+        cs = 0
+        body = "SDDPT,5.0,0.0"
+        for ch in body:
+            cs ^= ord(ch)
+        line = f"${body}*{cs:02X}"
+        self.assertEqual(nmea_sentence_type(line), "DPT")
+        self.assertIn("DPT", NMEA_SENTENCE_TYPES)
+        self.assertNotIn("DBT", NMEA_SENTENCE_TYPES)
+        self.assertTrue(NmeaFilter(enabled_types={"DPT"}).allows_sentence(line))
 
 
 class TestNmeaFilter(unittest.TestCase):

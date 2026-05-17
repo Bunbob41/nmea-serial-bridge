@@ -7,11 +7,11 @@ import asyncio
 import socket
 from datetime import datetime, timezone
 
-from bench_config import load_bench_defaults
+from bench_config import desk_udp_send_host, load_bench_defaults
 from bench_udp_test import port_has_listener
 from bridge_core import NetMode, SerialNetBridge, configure_windows_event_loop_policy
 from nmea_codec import NmeaMode
-from nmea_static_edh import build_gga, build_rmc
+from nmea_static_sample import SAMPLE_ALT_M, SAMPLE_LAT_DEG, SAMPLE_LON_DEG, build_gga, build_rmc
 
 
 def _with_checksum(payload: str) -> str:
@@ -27,8 +27,8 @@ def _sentence_batch(when: datetime, count: int) -> list[str]:
     month = when.strftime("%m")
     year = when.strftime("%Y")
     base = [
-        build_gga(when, 38.685746, -121.082524, 255.0),
-        build_rmc(when, 38.685746, -121.082524),
+        build_gga(when, SAMPLE_LAT_DEG, SAMPLE_LON_DEG, SAMPLE_ALT_M),
+        build_rmc(when, SAMPLE_LAT_DEG, SAMPLE_LON_DEG),
         _with_checksum("GPVTG,0.0,T,352.9,M,0.0,N,0.0,K"),
         _with_checksum(f"GPZDA,{hhmmss}.00,{day},{month},{year},00,00"),
         _with_checksum("SDDPT,5.0,0.0"),
@@ -207,7 +207,11 @@ def main() -> None:
     p.add_argument("--baud", type=int, default=int(d["baud"]))
     p.add_argument("--udp-host", default=str(d["udp_host"]))
     p.add_argument("--udp-port", type=int, default=int(d["udp_port"]))
-    p.add_argument("--dest-host", default="127.0.0.1", help="Destination host to send test load")
+    p.add_argument(
+        "--dest-host",
+        default=desk_udp_send_host(d),
+        help="Destination host to send test load",
+    )
     p.add_argument("--strict", action="store_true", help="Use STRICT parser mode")
     p.add_argument("--sentences", type=int, default=8, help="NMEA lines sent each tick")
     p.add_argument("--hz-start", type=float, default=5.0, help="Starting tick rate")

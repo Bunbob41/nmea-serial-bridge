@@ -6,11 +6,14 @@ from typing import Any, Callable, Optional
 
 from PySide6 import QtCore, QtGui, QtWidgets
 
-from ui.stats_line import _fmt_k
+from ui.stats_line import QUEUE_BACKLOG_DEPTH, _fmt_k, queue_backlog
 from ui.styles import hud_stylesheet
 from ui.theme_choice import THEME_IDS
+from ui.app_icon import apply_app_icon
 from ui.survey_hud_layout import (
     DEFAULT_SPLITTER_NMEA_RATIO,
+    HUD_MIN_WINDOW_HEIGHT,
+    HUD_MIN_WINDOW_WIDTH,
     TOP_STRIP_BELOW_TITLE_PX,
     TOP_STRIP_H_MARGIN,
     TOP_STRIP_HEIGHT_RATIO,
@@ -28,12 +31,13 @@ from ui.survey_hud_layout import (
 )
 
 _TT_HZ_DOWN = (
-    "Sentences per second from the network (UDP/TCP) toward the serial port "
-    "(rolling 1 second). Assembled NMEA toward the autopilot COM—not raw UDP packets."
+    "Wire rate: network receive bursts per second (rolling 1 s)—usually one TCP send or "
+    "UDP datagram per tick. At 5 Hz stress this stays near 5. Session totals count NMEA sentences."
 )
 _TT_HZ_UP = (
-    "Sentences per second from the serial port toward the network "
-    "(device answering on COM)."
+    "Wire rate: serial read bursts per second toward the network (rolling 1 s). "
+    "On a com0com bench loop, echo can split one COM write into several reads, so this "
+    "may read higher than Into COM until coalesced; on the boat it reflects the GPS/device."
 )
 _TT_HZ_INJ = (
     "Send-tab inject rate toward COM only (rolling 1 second). "
@@ -42,9 +46,16 @@ _TT_HZ_INJ = (
 _TT_SESS_DOWN = "Total complete sentences forwarded network → serial this session."
 _TT_SESS_UP = "Total complete sentences forwarded serial → network this session."
 _TT_TRANSPORT = (
-    "OK when there are no queue drops, no line rejects, and both queues are empty. "
-    "Warn when any backpressure counter is non-zero."
+    "OK when there are no drops, no rejects, and queues are not in backlog "
+    f"(depth ≥ {QUEUE_BACKLOG_DEPTH} on either side — a few chunks in flight is normal). "
+    "Warn on drops, rejects, or sustained queue backlog."
 )
+_TT_GNSS_Q = (
+    "Live GGA assessment (POSPac Ch.16 hints): fix type, satellite count, HDOP. "
+    "Good = RTK fixed with low HDOP; Warn/Bad = weak fix, few sats, or high HDOP."
+)
+_TT_GNSS_SATS = "Satellites in view from the latest GGA."
+_TT_GNSS_HDOP = "Horizontal DOP from the latest GGA (ideal < 2.5, acceptable < 4)."
 _TT_DROP_NS = "Lines dropped because the network→serial queue was full."
 _TT_DROP_SN = "Lines dropped because the serial→network queue was full."
 _TT_REJ_NS = "Lines rejected toward COM (assembler or strict NMEA filter)."
@@ -60,8 +71,6 @@ _TT_DRAG_ORDER = (
 _TT_ROW = "Lay out section groups in one horizontal row (works with panels expanded)."
 _TT_COLLAPSE = "Click to show or hide this group (saved for next time)."
 _TT_CUSTOMIZE = "Choose which groups and metrics appear on this HUD."
-_TT_SCALE = "Scale all stat tiles up/down to better use available space."
-_TT_COLS = "Force metric columns (Auto keeps responsive behavior)."
 _TT_SUB = "Show or hide subtitle lines on metric tiles."
 _TT_LOG = "Show live NMEA log panel on the right side."
 _TT_LOCK = "Lock HUD size (disable edge/corner resize) until unchecked."
@@ -205,8 +214,6 @@ class _HudChromeBar(QtWidgets.QWidget):
         sub_cb: QtWidgets.QCheckBox,
         log_cb: QtWidgets.QCheckBox,
         lock_cb: QtWidgets.QCheckBox,
-        scale_box: QtWidgets.QWidget,
-        cols_box: QtWidgets.QWidget,
     ) -> None:
         super().__init__(hud)
         self._hud = hud
@@ -232,8 +239,6 @@ class _HudChromeBar(QtWidgets.QWidget):
         hl.addWidget(theme_btn)
         hl.addWidget(corner_btn)
         hl.addWidget(readable_btn)
-        hl.addWidget(scale_box)
-        hl.addWidget(cols_box)
         hl.addWidget(sub_cb)
         hl.addWidget(log_cb)
         hl.addWidget(lock_cb)
@@ -811,27 +816,28 @@ class _HudLayoutDialog(QtWidgets.QDialog):
 
 class SurveyStatsPopout(QtWidgets.QWidget):
     def __init__(self, bridge_window: QtWidgets.QWidget) -> None:
-        super().__init__(None)
-        self._bridge = bridge_window
         self._layout_cfg = load_layout()
-        self._theme_id = getattr(bridge_window, "_theme_id", "maroon_classic")
-        self.setObjectName("SurveyStatsPopout")
-        self.setWindowTitle("Survey HUD")
-        self._base_min_width = 236
-        self._base_min_height = 72
-        self.setMinimumSize(self._base_min_width, self._base_min_height)
-        self._geom_save_timer = QtCore.QTimer(self)
-        self._geom_save_timer.setSingleShot(True)
-        self._geom_save_timer.timeout.connect(self._persist_window_geometry)
-        if self._layout_cfg.get("window_customized"):
-            self._restore_custom_window_geometry()
-        self.setAttribute(QtCore.Qt.WidgetAttribute.WA_DeleteOnClose, True)
-        self.setAttribute(QtCore.Qt.WidgetAttribute.WA_StyledBackground, True)
-
         flags = QtCore.Qt.WindowType.Window | QtCore.Qt.WindowType.FramelessWindowHint
         if bool(self._layout_cfg.get("pin_on_top", True)):
             flags |= QtCore.Qt.WindowType.WindowStaysOnTopHint
-        self.setWindowFlags(flags)
+        super().__init__(None, flags)
+
+        self._bridge = bridge_window
+        self._theme_id = getattr(bridge_window, "_theme_id", "maroon_classic")
+        self.setObjectName("SurveyStatsPopout")
+        self.setWindowTitle("Survey HUD")
+        self._base_min_width = HUD_MIN_WINDOW_WIDTH
+        self._base_min_height = HUD_MIN_WINDOW_HEIGHT
+        self.setMinimumSize(self._base_min_width, self._base_min_height)
+        self.setAttribute(QtCore.Qt.WidgetAttribute.WA_DeleteOnClose, True)
+        self.setAttribute(QtCore.Qt.WidgetAttribute.WA_StyledBackground, True)
+        self.setAttribute(QtCore.Qt.WidgetAttribute.WA_DontShowOnScreen, True)
+
+        self._geom_save_timer = QtCore.QTimer(self)
+        self._geom_save_timer.setSingleShot(True)
+        self._geom_save_timer.timeout.connect(self._persist_window_geometry)
+
+        apply_app_icon(self)
         self.setStyleSheet(hud_stylesheet(self._theme_id))
 
         root = QtWidgets.QVBoxLayout(self)
@@ -879,30 +885,6 @@ class SurveyStatsPopout(QtWidgets.QWidget):
         self._chk_lock.setToolTip(_TT_LOCK)
         self._chk_lock.setChecked(bool(self._layout_cfg.get("lock_size", False)))
         self._chk_lock.toggled.connect(self._on_lock_size)
-        self._scale_box = QtWidgets.QComboBox()
-        self._scale_box.setObjectName("surveyHudScale")
-        self._scale_box.setToolTip(_TT_SCALE)
-        self._scale_box.setFixedWidth(68)
-        for txt, v in (
-            ("50%", 0.50),
-            ("60%", 0.60),
-            ("75%", 0.75),
-            ("90%", 0.90),
-            ("100%", 1.00),
-            ("115%", 1.15),
-            ("130%", 1.30),
-            ("150%", 1.50),
-        ):
-            self._scale_box.addItem(txt, v)
-        self._scale_box.currentIndexChanged.connect(self._on_box_scale_changed)
-        self._cols_box = QtWidgets.QComboBox()
-        self._cols_box.setObjectName("surveyHudCols")
-        self._cols_box.setToolTip(_TT_COLS)
-        self._cols_box.setFixedWidth(64)
-        for txt, v in (("Auto", 0), ("1", 1), ("2", 2), ("3", 3), ("4", 4), ("6", 6)):
-            self._cols_box.addItem(txt, v)
-        self._cols_box.currentIndexChanged.connect(self._on_forced_columns_changed)
-
         self._chrome = _HudChromeBar(
             self,
             layout_btn=btn_layout,
@@ -914,8 +896,6 @@ class SurveyStatsPopout(QtWidgets.QWidget):
             sub_cb=self._chk_sub,
             log_cb=self._chk_log,
             lock_cb=self._chk_lock,
-            scale_box=self._scale_box,
-            cols_box=self._cols_box,
         )
         root.addWidget(self._chrome)
 
@@ -996,10 +976,26 @@ class SurveyStatsPopout(QtWidgets.QWidget):
         self._m_sess_dn = _HudMetric("Toward COM", "total lines", tooltip=_TT_SESS_DOWN)
         self._m_sess_up = _HudMetric("Toward network", "total lines", tooltip=_TT_SESS_UP)
         self._m_health = _HudMetric("Transport", "backpressure", tooltip=_TT_TRANSPORT)
-        sec_sess.set_metrics([self._m_sess_dn, self._m_sess_up, self._m_health], col_cap=3)
+        self._m_gnss_q = _HudMetric("GNSS", "GGA quality", tooltip=_TT_GNSS_Q)
+        self._m_gnss_sats = _HudMetric("Sats", "GGA count", tooltip=_TT_GNSS_SATS)
+        self._m_gnss_hdop = _HudMetric("HDOP", "GGA dilution", tooltip=_TT_GNSS_HDOP)
+        sec_sess.set_metrics(
+            [
+                self._m_sess_dn,
+                self._m_sess_up,
+                self._m_health,
+                self._m_gnss_q,
+                self._m_gnss_sats,
+                self._m_gnss_hdop,
+            ],
+            col_cap=3,
+        )
         self._register_metric("sess_dn", self._m_sess_dn)
         self._register_metric("sess_up", self._m_sess_up)
         self._register_metric("health", self._m_health)
+        self._register_metric("gnss_q", self._m_gnss_q)
+        self._register_metric("gnss_sats", self._m_gnss_sats)
+        self._register_metric("gnss_hdop", self._m_gnss_hdop)
         self._sections["session"] = sec_sess
 
         sec_bp = _HudSection(
@@ -1087,6 +1083,25 @@ class SurveyStatsPopout(QtWidgets.QWidget):
         self.apply_layout_config(self._layout_cfg)
         self.apply_snapshot({}, "", "", running=False)
         self._layout_resize_handles()
+        self._prepare_initial_geometry()
+
+    def prepare_for_display(self) -> None:
+        """Size and lay out while hidden, then allow show() (avoids tiny flash on open)."""
+        if self.testAttribute(QtCore.Qt.WidgetAttribute.WA_DontShowOnScreen):
+            self._prepare_initial_geometry()
+            self._finalize_first_show_layout()
+            self.setAttribute(QtCore.Qt.WidgetAttribute.WA_DontShowOnScreen, False)
+
+    def _prepare_initial_geometry(self) -> None:
+        if self._layout_cfg.get("window_customized"):
+            self._restore_custom_window_geometry()
+        else:
+            self._apply_top_strip_geometry()
+        self._recompute_layout_now()
+        w = max(self._base_min_width, self.width(), self.sizeHint().width())
+        h = max(self._base_min_height, self.height(), self.sizeHint().height())
+        if self.width() != w or self.height() != h:
+            self.resize(w, h)
 
     def _layout_resize_handles(self) -> None:
         h = getattr(self, "_resize_handles", None)
@@ -1177,10 +1192,14 @@ class SurveyStatsPopout(QtWidgets.QWidget):
         cfg = self._layout_cfg
         w = int(cfg.get("window_width", 0) or 0)
         h = int(cfg.get("window_height", 0) or 0)
-        if w < 320 or h < 140:
+        if w < HUD_MIN_WINDOW_WIDTH or h < HUD_MIN_WINDOW_HEIGHT:
+            self._layout_cfg["window_customized"] = False
             self._apply_top_strip_geometry()
             return
-        self.resize(min(4096, w), min(2160, h))
+        self.resize(
+            max(HUD_MIN_WINDOW_WIDTH, min(4096, w)),
+            max(HUD_MIN_WINDOW_HEIGHT, min(2160, h)),
+        )
         try:
             x = int(cfg.get("window_x", 0))
             y = int(cfg.get("window_y", 0))
@@ -1197,7 +1216,7 @@ class SurveyStatsPopout(QtWidgets.QWidget):
         if not self.isVisible():
             return
         g = self.geometry()
-        if g.width() < 200 or g.height() < 120:
+        if g.width() < HUD_MIN_WINDOW_WIDTH or g.height() < HUD_MIN_WINDOW_HEIGHT:
             return
         self._layout_cfg["window_customized"] = True
         self._layout_cfg["window_dock"] = "free"
@@ -1362,7 +1381,7 @@ class SurveyStatsPopout(QtWidgets.QWidget):
         cr = self._columns_for_band(uw, hero_tiles=True)
         cs = self._columns_for_band(uw, hero_tiles=False)
         cb = self._columns_for_band(uw, hero_tiles=False)
-        forced = max(0, min(6, int(self._layout_cfg.get("forced_columns", 0) or 0)))
+        forced = 6
         if forced > 0:
             cr = max(1, min(3, forced))
             cs = max(1, min(3, forced))
@@ -1391,14 +1410,8 @@ class SurveyStatsPopout(QtWidgets.QWidget):
         return block
 
     def _box_scale_cfg(self) -> float:
-        raw = self._layout_cfg.get("box_scale", 1.0)
-        try:
-            val = float(raw)
-        except (TypeError, ValueError):
-            val = 1.0
-        val = max(0.50, min(1.9, val))
-        self._layout_cfg["box_scale"] = val
-        return val
+        self._layout_cfg["box_scale"] = 1.0
+        return 1.0
 
     def _apply_metric_style(self, mid: str) -> None:
         w = self._metrics.get(mid)
@@ -1513,32 +1526,8 @@ class SurveyStatsPopout(QtWidgets.QWidget):
         self._chk_lock.blockSignals(True)
         self._chk_lock.setChecked(bool(cfg.get("lock_size", False)))
         self._chk_lock.blockSignals(False)
-        forced = max(0, min(6, int(cfg.get("forced_columns", 0) or 0)))
-        idx = 0
-        for i in range(self._cols_box.count()):
-            data = self._cols_box.itemData(i)
-            if int(data or 0) == forced:
-                idx = i
-                break
-        self._cols_box.blockSignals(True)
-        self._cols_box.setCurrentIndex(idx)
-        self._cols_box.blockSignals(False)
-        scale = self._box_scale_cfg()
-        best_i = 0
-        best_d = 999.0
-        for i in range(self._scale_box.count()):
-            data = self._scale_box.itemData(i)
-            try:
-                v = float(data)
-            except (TypeError, ValueError):
-                continue
-            d = abs(v - scale)
-            if d < best_d:
-                best_d = d
-                best_i = i
-        self._scale_box.blockSignals(True)
-        self._scale_box.setCurrentIndex(best_i)
-        self._scale_box.blockSignals(False)
+        self._layout_cfg["forced_columns"] = 6
+        self._box_scale_cfg()
         self.setWindowFlag(QtCore.Qt.WindowType.WindowStaysOnTopHint, pin_on)
 
     def _swap_section_order(self, a: str, b: str) -> None:
@@ -1557,36 +1546,6 @@ class SurveyStatsPopout(QtWidgets.QWidget):
         self._layout_cfg["sections_row"] = on
         save_layout(self._layout_cfg)
         self._strip_layout_key = None
-        self._schedule_layout_reflow()
-        self._schedule_shrink_to_content()
-
-    def _on_box_scale_changed(self, index: int) -> None:
-        data = self._scale_box.itemData(index)
-        try:
-            scale = float(data)
-        except (TypeError, ValueError):
-            scale = 1.0
-        scale = max(0.50, min(1.9, scale))
-        if abs(scale - self._box_scale_cfg()) < 0.001:
-            return
-        self._layout_cfg["box_scale"] = scale
-        save_layout(self._layout_cfg)
-        for mid in METRIC_IDS:
-            self._apply_metric_style(mid)
-        self._schedule_layout_reflow()
-        self._schedule_shrink_to_content()
-
-    def _on_forced_columns_changed(self, index: int) -> None:
-        data = self._cols_box.itemData(index)
-        try:
-            cols = int(data)
-        except (TypeError, ValueError):
-            cols = 0
-        cols = max(0, min(6, cols))
-        if cols == int(self._layout_cfg.get("forced_columns", 0) or 0):
-            return
-        self._layout_cfg["forced_columns"] = cols
-        save_layout(self._layout_cfg)
         self._schedule_layout_reflow()
         self._schedule_shrink_to_content()
 
@@ -1626,7 +1585,7 @@ class SurveyStatsPopout(QtWidgets.QWidget):
         self._layout_resize_handles()
 
     def _apply_corner_preset(self) -> None:
-        self._layout_cfg["box_scale"] = 0.60
+        self._layout_cfg["box_scale"] = 1.0
         self._layout_cfg["forced_columns"] = 6
         self._layout_cfg["show_subtitles"] = False
         self._layout_cfg["show_nmea_log"] = True
@@ -1640,8 +1599,8 @@ class SurveyStatsPopout(QtWidgets.QWidget):
         self._schedule_shrink_to_content()
 
     def _apply_readable_preset(self) -> None:
-        self._layout_cfg["box_scale"] = 0.90
-        self._layout_cfg["forced_columns"] = 0
+        self._layout_cfg["box_scale"] = 1.0
+        self._layout_cfg["forced_columns"] = 6
         self._layout_cfg["show_subtitles"] = True
         self._layout_cfg["show_nmea_log"] = False
         self._layout_cfg["sections_row"] = False
@@ -1730,6 +1689,9 @@ class SurveyStatsPopout(QtWidgets.QWidget):
                 m.set_value("—", alert=False)
             if self._m_health.isVisible():
                 self._m_health.set_value("Off", alert=False)
+            for m in (self._m_gnss_q, self._m_gnss_sats, self._m_gnss_hdop):
+                if m.isVisible():
+                    m.set_value("—", alert=False)
             return
 
         hz_d = float(d.get("hz_down", 0.0))
@@ -1755,9 +1717,34 @@ class SurveyStatsPopout(QtWidgets.QWidget):
         if self._m_sess_up.isVisible():
             self._m_sess_up.set_value(_fmt_k(lu) if lu else "0", alert=False)
 
-        warn = bool(d_ns or d_sn or r_ns or r_sn or q_ns or q_sn)
+        backlog = queue_backlog(q_ns, q_sn)
+        warn = bool(d_ns or d_sn or r_ns or r_sn or backlog)
         if self._m_health.isVisible():
             self._m_health.set_value("Warn" if warn else "OK", alert=warn)
+
+        nav_stale = bool(d.get("nav_stale"))
+        nav_level = str(d.get("level", ""))
+        nav_alert = nav_stale or nav_level in ("warn", "bad")
+        if self._m_gnss_q.isVisible():
+            if nav_stale or not d.get("summary"):
+                self._m_gnss_q.set_value("Stale", alert=True)
+            else:
+                short = str(d.get("fix_label", "—"))
+                self._m_gnss_q.set_value(short, alert=nav_alert)
+                self._m_gnss_q.setToolTip(str(d.get("detail") or _TT_GNSS_Q))
+        if self._m_gnss_sats.isVisible():
+            sats = d.get("num_sats")
+            self._m_gnss_sats.set_value(str(sats) if sats is not None else "—", alert=nav_alert)
+        if self._m_gnss_hdop.isVisible():
+            hdop = d.get("hdop")
+            if hdop is None:
+                self._m_gnss_hdop.set_value("—", alert=False)
+            else:
+                try:
+                    hv = float(hdop)
+                except (TypeError, ValueError):
+                    hv = 0.0
+                self._m_gnss_hdop.set_value(f"{hv:.1f}", alert=hv >= 4.0 or hv >= 2.5)
 
         if self._m_dr_ns.isVisible():
             self._m_dr_ns.set_value(str(d_ns), alert=bool(d_ns))
@@ -1768,9 +1755,9 @@ class SurveyStatsPopout(QtWidgets.QWidget):
         if self._m_rj_sn.isVisible():
             self._m_rj_sn.set_value(str(r_sn), alert=bool(r_sn))
         if self._m_q_ns.isVisible():
-            self._m_q_ns.set_value(str(q_ns), alert=bool(q_ns))
+            self._m_q_ns.set_value(str(q_ns), alert=q_ns >= QUEUE_BACKLOG_DEPTH)
         if self._m_q_sn.isVisible():
-            self._m_q_sn.set_value(str(q_sn), alert=bool(q_sn))
+            self._m_q_sn.set_value(str(q_sn), alert=q_sn >= QUEUE_BACKLOG_DEPTH)
 
     def set_status_lines(self, serial: str, network: str) -> None:
         if self._foot_panel.isVisible():

@@ -9,6 +9,7 @@ from typing import List, Optional, Set, Tuple
 class NmeaMode(str, Enum):
     PASSTHROUGH = "passthrough"
     STRICT = "strict"
+    RAW = "raw"  # binary / RTCM — forward bytes without line assembly
 
 
 NMEA_SENTENCE_TYPES: tuple[str, ...] = (
@@ -21,7 +22,7 @@ NMEA_SENTENCE_TYPES: tuple[str, ...] = (
     "GLL",
     "HDT",
     "HDG",
-    "DBT",
+    "DPT",
     "DTM",
     "GBS",
     "GST",
@@ -50,6 +51,33 @@ def nmea_sentence_type(line: str) -> Optional[str]:
     if s[0] == "$":
         return s[3:6].upper()
     return s[2:5].upper()
+
+
+def format_binary_log_preview(data: bytes, *, max_bytes: int = 32) -> str:
+    """Compact hex preview for raw-mode live log (binary chunks)."""
+    n = len(data)
+    if n == 0:
+        return "(0 B)"
+    show = data[:max_bytes]
+    hex_part = " ".join(f"{b:02x}" for b in show)
+    if n > max_bytes:
+        hex_part += f" … (+{n - max_bytes} B)"
+    return f"{hex_part} ({n} B)"
+
+
+def log_line_matches_sentence_filter(line: str, filter_key: str) -> bool:
+    """Filter verbose live-log NMEA payloads. filter_key: '' | 'GGA' | 'RMC' | 'GGA,RMC'."""
+    key = (filter_key or "").strip().upper()
+    if not key:
+        return True
+    allowed = {p.strip() for p in key.split(",") if p.strip()}
+    if not allowed:
+        return True
+    payload = line.split("|")[-1].strip() if "|" in line else line.strip()
+    st = nmea_sentence_type(payload)
+    if st is None:
+        return True
+    return st in allowed
 
 
 # NMEA 0183 max sentence length 82 chars; allow headroom for buffering mistakes

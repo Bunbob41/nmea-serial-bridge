@@ -1,0 +1,16 @@
+# Hide/Rearrange Consistency Always
+
+For every UI touch in this repo (Standard/Minimal/Log-first/Field/HUD):
+
+- Keep core controls reachable at launch and after any hide action.
+- Every hide action must have an obvious restore path in the same window.
+- Prefer reorderable controls where order affects daily workflow.
+- Persist layout choices (order, visibility, docking position) per UI mode.
+- Keep resize behavior deterministic: no jumpy reflow, no clipped primary controls.
+- Avoid introducing UI states that can strand users without a recovery affordance.
+
+Before finishing UI work:
+
+- Verify hidden items are restorable without restarting.
+- Verify reordered controls remain in the saved order on restart.
+- Verify top-level actions remain visible at common laptop window sizes.

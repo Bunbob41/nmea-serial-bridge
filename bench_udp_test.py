@@ -8,10 +8,12 @@ import sys
 import time
 from datetime import datetime, timezone
 
-from nmea_static_edh import build_gga, build_rmc
+from bench_config import desk_udp_send_host, load_bench_defaults
+from nmea_static_sample import SAMPLE_ALT_M, SAMPLE_LAT_DEG, SAMPLE_LON_DEG, build_gga, build_rmc
 
-DEFAULT_HOST = "127.0.0.1"
-DEFAULT_PORT = 10110
+_d = load_bench_defaults()
+DEFAULT_HOST = desk_udp_send_host(_d)
+DEFAULT_PORT = int(_d["udp_port"])
 
 
 def port_has_listener(port: int) -> bool:
@@ -28,7 +30,7 @@ def port_has_listener(port: int) -> bool:
 
 def main() -> None:
     p = argparse.ArgumentParser(
-        description="UDP bench test: needs bridge listening on port 10110 first."
+        description=f"UDP bench test: needs bridge listening on UDP :{DEFAULT_PORT} first."
     )
     p.add_argument("--host", default=DEFAULT_HOST)
     p.add_argument("--port", type=int, default=DEFAULT_PORT)
@@ -45,14 +47,17 @@ def main() -> None:
             "  The bridge must be running first:\n"
             "    1) Open NMEA Serial Bridge (desktop shortcut)\n"
             "    2) Apply bench preset -> Start bridge\n"
-            "    3) Log must say: UDP listen on ('0.0.0.0', 10110)\n"
+            f"    3) Log must say: UDP listen on ('0.0.0.0', {args.port})\n"
             "    4) Run this script again\n"
             "  Or run:  python check_setup.py"
         )
         sys.exit(1)
 
     print(f"[bench_udp_test] OK: port {args.port} is in use (bridge should be listening).")
-    print("[bench_udp_test] Watch Tera Term on COM12 and the bridge live log.")
+    print(
+        f"[bench_udp_test] Watch the paired com0com port (bridge uses {load_bench_defaults()['com']}) "
+        "and the bridge live log."
+    )
 
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     interval = 1.0 / args.hz if args.hz > 0 else 0
@@ -61,7 +66,10 @@ def main() -> None:
     try:
         while True:
             t = datetime.now(timezone.utc)
-            for line in (build_gga(t, 38.685746, -121.082524, 255.0), build_rmc(t, 38.685746, -121.082524)):
+            for line in (
+                build_gga(t, SAMPLE_LAT_DEG, SAMPLE_LON_DEG, SAMPLE_ALT_M),
+                build_rmc(t, SAMPLE_LAT_DEG, SAMPLE_LON_DEG),
+            ):
                 sock.sendto((line + "\r\n").encode("ascii"), dest)
             n += 1
             if args.seconds <= 0:

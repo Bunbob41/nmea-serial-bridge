@@ -8,7 +8,7 @@ from typing import Any
 
 CONFIG_PATH = Path.home() / ".cursor-udp-com-bridge" / "survey_hud_layout.json"
 
-LAYOUT_VERSION = 2
+LAYOUT_VERSION = 3
 
 # Default: wide strip along the top of the main bridge window (log-first / survey HUD).
 DEFAULT_WINDOW_DOCK = "top_strip"
@@ -18,6 +18,10 @@ TOP_STRIP_MAX_HEIGHT = 235
 TOP_STRIP_H_MARGIN = 6
 TOP_STRIP_BELOW_TITLE_PX = 50
 DEFAULT_SPLITTER_NMEA_RATIO = 0.34
+
+# Smaller saved sizes are treated as corrupt (avoids a tiny “flash” window on open).
+HUD_MIN_WINDOW_WIDTH = 420
+HUD_MIN_WINDOW_HEIGHT = 168
 
 # Legacy free-floating size (only when window_customized is true).
 DEFAULT_WINDOW_WIDTH = 0
@@ -38,6 +42,9 @@ METRIC_IDS = (
     "sess_dn",
     "sess_up",
     "health",
+    "gnss_q",
+    "gnss_sats",
+    "gnss_hdop",
     "dr_ns",
     "dr_sn",
     "rj_ns",
@@ -53,6 +60,9 @@ METRIC_LABELS = {
     "sess_dn": "Toward COM (total)",
     "sess_up": "Toward network (total)",
     "health": "Transport",
+    "gnss_q": "GNSS quality",
+    "gnss_sats": "GNSS satellites",
+    "gnss_hdop": "GNSS HDOP",
     "dr_ns": "Drops network → COM",
     "dr_sn": "Drops COM → network",
     "rj_ns": "Rejected toward COM",
@@ -68,6 +78,9 @@ METRIC_SECTION: dict[str, str] = {
     "sess_dn": "session",
     "sess_up": "session",
     "health": "session",
+    "gnss_q": "session",
+    "gnss_sats": "session",
+    "gnss_hdop": "session",
     "dr_ns": "backpressure",
     "dr_sn": "backpressure",
     "rj_ns": "backpressure",
@@ -83,13 +96,17 @@ def default_layout() -> dict[str, Any]:
             sid: {"visible": True, "collapsed": sid == "backpressure"}
             for sid in SECTION_IDS
         },
-        "metrics": {mid: True for mid in METRIC_IDS},
+        "metrics": {
+            mid: True
+            for mid in METRIC_IDS
+            if mid not in ("gnss_hdop",)
+        },
         "footer": True,
         # Section strips: drag handles swap order; persisted here.
         "section_order": list(SECTION_IDS),
         "sections_row": True,
         "pin_on_top": True,
-        "box_scale": 0.60,
+        "box_scale": 1.0,
         "forced_columns": 6,
         "show_subtitles": False,
         "show_nmea_log": True,
@@ -119,6 +136,27 @@ def normalized_section_order(raw: Any) -> list[str]:
     for sid in base:
         if sid not in seen:
             out.append(sid)
+    return out
+
+
+def sanitize_window_geometry(cfg: dict[str, Any]) -> dict[str, Any]:
+    """Drop invalid saved window sizes so the HUD never opens as a postage stamp."""
+    if not cfg.get("window_customized"):
+        return cfg
+    try:
+        w = int(cfg.get("window_width") or 0)
+        h = int(cfg.get("window_height") or 0)
+    except (TypeError, ValueError):
+        w, h = 0, 0
+    if w >= HUD_MIN_WINDOW_WIDTH and h >= HUD_MIN_WINDOW_HEIGHT:
+        return cfg
+    out = deepcopy(cfg)
+    out["window_customized"] = False
+    out["window_width"] = DEFAULT_WINDOW_WIDTH
+    out["window_height"] = DEFAULT_WINDOW_HEIGHT
+    out["window_x"] = 0
+    out["window_y"] = 0
+    out["window_dock"] = DEFAULT_WINDOW_DOCK
     return out
 
 
@@ -187,16 +225,14 @@ def load_layout() -> dict[str, Any]:
         out["pin_on_top"] = bool(raw["pin_on_top"])
     if "box_scale" in raw:
         try:
-            out["box_scale"] = float(raw["box_scale"])
+            out["box_scale"] = max(0.5, min(2.0, float(raw["box_scale"])))
         except (TypeError, ValueError):
             out["box_scale"] = 1.0
-    out["box_scale"] = max(0.50, min(1.9, float(out.get("box_scale", 1.0))))
     if "forced_columns" in raw:
         try:
-            out["forced_columns"] = int(raw["forced_columns"])
+            out["forced_columns"] = max(1, min(12, int(raw["forced_columns"])))
         except (TypeError, ValueError):
-            out["forced_columns"] = 0
-    out["forced_columns"] = max(0, min(6, int(out.get("forced_columns", 0))))
+            out["forced_columns"] = 6
     if "show_subtitles" in raw:
         out["show_subtitles"] = bool(raw["show_subtitles"])
     if "show_nmea_log" in raw:
@@ -236,7 +272,7 @@ def load_layout() -> dict[str, Any]:
                 out["metric_style"][mid]["value_on_top"] = bool(block["value_on_top"])
             if "compact" in block:
                 out["metric_style"][mid]["compact"] = bool(block["compact"])
-    return out
+    return sanitize_window_geometry(out)
 
 
 def save_layout(cfg: dict[str, Any]) -> None:

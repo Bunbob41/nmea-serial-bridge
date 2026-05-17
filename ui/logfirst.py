@@ -8,7 +8,9 @@ from ui.controls import (
     create_diagnostics_controls,
     create_log_panel,
     create_nmea_controls,
+    create_presets_tab,
     create_send_controls,
+    create_theme_controls,
 )
 from ui.mixin import BridgeLogicMixin
 from ui.styles import bridge_stylesheet
@@ -33,9 +35,10 @@ class BridgeWindowLogFirst(BridgeLogicMixin, QtWidgets.QWidget):
         self.status_line.setObjectName("statusLine")
         self.status_banner = self.status_line
         self.status_banner_text = self.status_line
+        self._compact_intent_hint = True
         self.intent_hint = QtWidgets.QLabel()
-        self.intent_hint.setWordWrap(True)
-        self.intent_hint.setVisible(False)
+        self.intent_hint.setObjectName("intentHint")
+        self.intent_hint.setWordWrap(False)
 
         log_panel = create_log_panel(self)
         self.chk_show_log.setChecked(True)
@@ -45,16 +48,6 @@ class BridgeWindowLogFirst(BridgeLogicMixin, QtWidgets.QWidget):
         strip.setObjectName("controlStrip")
         sl = QtWidgets.QVBoxLayout(strip)
         sl.setContentsMargins(8, 6, 8, 6)
-        r0 = QtWidgets.QHBoxLayout()
-        r0.setSpacing(6)
-        self.btn_bench_preset.setMinimumWidth(96)
-        self.btn_production_preset.setMinimumWidth(96)
-        self.refresh_btn.setMinimumWidth(64)
-        r0.addWidget(self.btn_bench_preset)
-        r0.addWidget(self.btn_production_preset)
-        r0.addStretch(1)
-        sl.addLayout(r0)
-
         r1 = QtWidgets.QHBoxLayout()
         r1.setSpacing(6)
         self.com_cb.setMinimumWidth(170)
@@ -67,7 +60,7 @@ class BridgeWindowLogFirst(BridgeLogicMixin, QtWidgets.QWidget):
         r1.addWidget(self.baud_edit)
         r1.addWidget(QtWidgets.QLabel("UDP"))
         self.udp_host.setMaximumWidth(100)
-        self.udp_host.setToolTip("UDP listen bind address (see Network+ tab for TCP modes).")
+        self.udp_host.setToolTip("UDP listen bind address (Tools → Presets for TCP modes).")
         r1.addWidget(self.udp_host)
         r1.addWidget(QtWidgets.QLabel(":"))
         self.udp_port.setMaximumWidth(64)
@@ -75,22 +68,26 @@ class BridgeWindowLogFirst(BridgeLogicMixin, QtWidgets.QWidget):
         r1.addWidget(self.udp_port)
         sl.addLayout(r1)
         sl.addWidget(self.status_line)
+        sl.addWidget(self.intent_hint)
 
         drawer = QtWidgets.QToolButton()
         self._drawer_btn = drawer
         drawer.setText("Tools ▾")
+        drawer.setToolTip(
+            "Presets (TCP/UDP modes), NMEA mode, manual Send, and Diagnostics bench checks."
+        )
         drawer.setCheckable(True)
         drawer_tabs = QtWidgets.QTabWidget()
+        self._drawer_tabs = drawer_tabs
+        drawer_tabs.setUsesScrollButtons(True)
+        drawer_tabs.addTab(create_presets_tab(self), "Presets")
         drawer_tabs.addTab(create_nmea_controls(self), "NMEA")
+        drawer_tabs.addTab(create_theme_controls(self), "Theme")
         drawer_tabs.addTab(create_send_controls(self), "Send")
-        drawer_tabs.addTab(create_diagnostics_controls(self), "Diag")
-        adv = QtWidgets.QWidget()
-        av = QtWidgets.QVBoxLayout(adv)
-        av.addWidget(self.chk_advanced_net)
-        av.addWidget(self._advanced_net)
-        drawer_tabs.addTab(adv, "Net")
+        drawer_tabs.addTab(create_diagnostics_controls(self), "Diagnostics")
+        self._setup_reorderable_tabs(drawer_tabs, "tools_tabs")
         drawer_tabs.setVisible(False)
-        drawer_tabs.setMinimumHeight(260)
+        drawer_tabs.setMinimumHeight(280)
 
         def _toggle(on: bool) -> None:
             drawer_tabs.setVisible(on)
@@ -168,11 +165,16 @@ class BridgeWindowLogFirst(BridgeLogicMixin, QtWidgets.QWidget):
         self.statusBar = QtWidgets.QStatusBar()
         self.status_serial = QtWidgets.QLabel("Serial: stopped")
         self.status_network = QtWidgets.QLabel("Network: stopped")
+        self.status_nmea = QtWidgets.QLabel("NMEA: passthrough")
+        self.status_gnss = QtWidgets.QLabel("GNSS: —")
+        self.status_gnss.setToolTip("Live GGA fix, satellites, and HDOP while Running.")
         self.lbl_stats = QtWidgets.QLabel(
             "Stopped — when Running, Hz + transport + session totals (hover)"
         )
         self.statusBar.addWidget(self.status_serial, 1)
         self.statusBar.addWidget(self.status_network, 1)
+        self.statusBar.addWidget(self.status_nmea, 0)
+        self.statusBar.addWidget(self.status_gnss, 1)
         self.statusBar.addPermanentWidget(self.lbl_stats)
 
         outer = QtWidgets.QVBoxLayout(self)
@@ -183,6 +185,10 @@ class BridgeWindowLogFirst(BridgeLogicMixin, QtWidgets.QWidget):
         self._finalize_ui()
         self._apply_log_density(0)
         self._restore_logfirst_ui_prefs(drawer)
+
+    def resizeEvent(self, event: QtGui.QResizeEvent) -> None:
+        super().resizeEvent(event)
+        self._apply_intent_hint_display()
 
     def _set_status_banner(self, state: str, title: str, detail: str = "") -> None:
         self.status_line.setProperty("state", state)

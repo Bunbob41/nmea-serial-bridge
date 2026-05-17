@@ -1,5 +1,5 @@
 @echo off
-REM Interactive UI menu in this console (optional).
+REM Console layout menu: Standard or Field (v1.1+). Saves choice to %%USERPROFILE%%\.cursor-udp-com-bridge\ui_choice.json
 cd /d "%~dp0"
 where python >nul 2>&1 && (
     python "%~dp0launcher.py" --console-menu
