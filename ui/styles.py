@@ -512,61 +512,29 @@ QCheckBox#surveyHudPin::indicator {
 """
 
 THEME_LABELS = {
-    "maroon_classic": "Maroon Classic",
-    "maroon_high_contrast": "Maroon High Contrast",
+    "maroon_classic": "Maroon & Gold",
+    "ocean_survey": "Ocean Survey",
+    "field_slate": "Field Slate",
+    "forest_night": "Forest Night",
+    "sunset_copper": "Sunset Copper",
 }
-
-_HC_STANDARD_APPEND = """
-QWidget#BridgeRoot { color: #fff4db; }
-QLabel#intentHint { color: #1f1408; background-color: #f1cc63; border-color: #b28a42; }
-QStatusBar { color: #ffe7bb; }
-QStatusBar QLabel { color: #fff1cf; }
-QPlainTextEdit { color: #fff1cf; border-color: #d4af37; }
-QLineEdit, QComboBox, QSpinBox { border-color: #d4af37; }
-QPushButton#btnStart { background-color: #f1cc63; }
-"""
-
-_HC_MINIMAL_APPEND = """
-QWidget#BridgeRoot { color: #4a1f2a; }
-QStatusBar { color: #4a1f2a; }
-QPlainTextEdit { color: #4a1f2a; border-color: #9b6a18; }
-QLineEdit, QComboBox, QSpinBox { border-color: #9b6a18; }
-QPushButton#btnStart { background-color: #e5be4f; }
-"""
-
-_HC_LOGFIRST_APPEND = """
-QWidget#BridgeRoot { color: #fff4db; }
-QStatusBar { color: #ffe7bb; }
-QStatusBar QLabel { color: #fff1cf; }
-QLabel#intentHint { color: #1f1408; background-color: #f1cc63; border-color: #b28a42; }
-QPlainTextEdit#logView { color: #ffe9bf; }
-QLineEdit { border-color: #d4af37; }
-QPushButton#btnStart { background-color: #f1cc63; }
-"""
-
-_HC_HUD_APPEND = """
-QLabel#surveyHudMetricValueHero, QLabel#surveyHudMetricValue { color: #ffe9bf; }
-QLabel#surveyHudMetricTitle { color: #fff2d7; }
-QPlainTextEdit#surveyHudNmeaLog { color: #ffe9bf; border-color: rgba(212, 175, 55, 0.95); }
-"""
 
 
 def bridge_stylesheet(ui_mode: str, theme_id: str) -> str:
+    from ui.theme_choice import _normalize_theme_id
+    from ui.theme_palette import apply_theme_colors
+
+    theme_id = _normalize_theme_id(theme_id)
     base = {
         "standard": BRIDGE_STYLESHEET_STANDARD,
         "minimal": BRIDGE_STYLESHEET_MINIMAL,
         "logfirst": BRIDGE_STYLESHEET_LOGFIRST,
     }.get(ui_mode, BRIDGE_STYLESHEET_STANDARD)
-    if theme_id != "maroon_high_contrast":
-        return base
-    return base + {
-        "standard": _HC_STANDARD_APPEND,
-        "minimal": _HC_MINIMAL_APPEND,
-        "logfirst": _HC_LOGFIRST_APPEND,
-    }.get(ui_mode, _HC_STANDARD_APPEND)
+    return apply_theme_colors(base, theme_id)
 
 
 def hud_stylesheet(theme_id: str) -> str:
-    if theme_id != "maroon_high_contrast":
-        return SURVEY_STATS_POPOUT_STYLESHEET
-    return SURVEY_STATS_POPOUT_STYLESHEET + _HC_HUD_APPEND
+    from ui.theme_choice import _normalize_theme_id
+    from ui.theme_palette import apply_theme_colors
+
+    return apply_theme_colors(SURVEY_STATS_POPOUT_STYLESHEET, _normalize_theme_id(theme_id))

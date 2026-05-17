@@ -11,6 +11,7 @@ from bridge_core import (  # noqa: F401 — re-export for older scripts
     SerialNetBridge,
     configure_windows_event_loop_policy,
 )
+from ui.app_icon import apply_app_icon
 from ui.registry import create_window
 from ui.standard import BridgeWindowStandard
 
@@ -32,6 +33,7 @@ def main() -> None:
     )
     args = parser.parse_args()
     app = QtWidgets.QApplication(sys.argv)
+    apply_app_icon(app)
     from ui.picker import load_saved_ui, resolve_ui_id
 
     show_picker = args.pick_ui or (

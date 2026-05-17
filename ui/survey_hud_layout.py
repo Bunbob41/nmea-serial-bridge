@@ -8,6 +8,21 @@ from typing import Any
 
 CONFIG_PATH = Path.home() / ".cursor-udp-com-bridge" / "survey_hud_layout.json"
 
+LAYOUT_VERSION = 2
+
+# Default: wide strip along the top of the main bridge window (log-first / survey HUD).
+DEFAULT_WINDOW_DOCK = "top_strip"
+TOP_STRIP_HEIGHT_RATIO = 0.21
+TOP_STRIP_MIN_HEIGHT = 168
+TOP_STRIP_MAX_HEIGHT = 235
+TOP_STRIP_H_MARGIN = 6
+TOP_STRIP_BELOW_TITLE_PX = 50
+DEFAULT_SPLITTER_NMEA_RATIO = 0.34
+
+# Legacy free-floating size (only when window_customized is true).
+DEFAULT_WINDOW_WIDTH = 0
+DEFAULT_WINDOW_HEIGHT = 0
+
 SECTION_IDS = ("rates", "session", "backpressure")
 
 SECTION_LABELS = {
@@ -72,12 +87,17 @@ def default_layout() -> dict[str, Any]:
         "footer": True,
         # Section strips: drag handles swap order; persisted here.
         "section_order": list(SECTION_IDS),
-        "sections_row": False,
+        "sections_row": True,
         "pin_on_top": True,
-        "box_scale": 1.0,
-        "forced_columns": 0,
-        "show_subtitles": True,
-        "show_nmea_log": False,
+        "box_scale": 0.60,
+        "forced_columns": 6,
+        "show_subtitles": False,
+        "show_nmea_log": True,
+        "layout_version": LAYOUT_VERSION,
+        "window_dock": DEFAULT_WINDOW_DOCK,
+        "window_customized": False,
+        "window_width": DEFAULT_WINDOW_WIDTH,
+        "window_height": DEFAULT_WINDOW_HEIGHT,
         "lock_size": False,
         "metric_style": {
             mid: {"value_on_top": False, "compact": False} for mid in METRIC_IDS
@@ -111,6 +131,39 @@ def load_layout() -> dict[str, Any]:
     if not isinstance(raw, dict):
         return base
     out = deepcopy(base)
+    try:
+        ver = int(raw.get("layout_version", 1))
+    except (TypeError, ValueError):
+        ver = 1
+    if ver < LAYOUT_VERSION:
+        opening = default_layout()
+        for key in (
+            "box_scale",
+            "forced_columns",
+            "show_subtitles",
+            "show_nmea_log",
+            "sections_row",
+            "layout_version",
+            "window_dock",
+            "window_customized",
+            "window_width",
+            "window_height",
+        ):
+            out[key] = opening[key]
+    elif "window_width" not in raw:
+        opening = default_layout()
+        for key in (
+            "box_scale",
+            "forced_columns",
+            "show_subtitles",
+            "show_nmea_log",
+            "sections_row",
+            "window_dock",
+            "window_customized",
+            "window_width",
+            "window_height",
+        ):
+            out[key] = opening[key]
     sec = raw.get("sections")
     if isinstance(sec, dict):
         for sid in SECTION_IDS:
@@ -150,6 +203,29 @@ def load_layout() -> dict[str, Any]:
         out["show_nmea_log"] = bool(raw["show_nmea_log"])
     if "lock_size" in raw:
         out["lock_size"] = bool(raw["lock_size"])
+    if "window_dock" in raw:
+        dock = str(raw["window_dock"])
+        if dock in ("top_strip", "free"):
+            out["window_dock"] = dock
+    if "window_customized" in raw:
+        out["window_customized"] = bool(raw["window_customized"])
+    if "layout_version" in raw:
+        try:
+            out["layout_version"] = max(1, int(raw["layout_version"]))
+        except (TypeError, ValueError):
+            pass
+    for key, lo, hi, default in (
+        ("window_width", 0, 4096, DEFAULT_WINDOW_WIDTH),
+        ("window_height", 0, 2160, DEFAULT_WINDOW_HEIGHT),
+        ("window_x", -4096, 8192, 0),
+        ("window_y", -4096, 8192, 0),
+    ):
+        if key in raw:
+            try:
+                val = int(raw[key])
+                out[key] = max(lo, min(hi, val))
+            except (TypeError, ValueError):
+                out[key] = default
     metric_style = raw.get("metric_style")
     if isinstance(metric_style, dict):
         for mid in METRIC_IDS:

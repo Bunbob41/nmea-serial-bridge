@@ -7,6 +7,7 @@ from typing import Optional
 
 from PySide6 import QtCore, QtWidgets
 
+from ui.app_icon import apply_app_icon
 from ui.registry import UI_DEFAULT, UI_LABELS, UI_ORDER
 from ui.styles import UI_PICKER_STYLESHEET
 
@@ -34,6 +35,7 @@ def pick_ui_dialog(parent: Optional[QtWidgets.QWidget] = None) -> Optional[str]:
     dlg = QtWidgets.QDialog(parent)
     dlg.setObjectName("UiPickerDialog")
     dlg.setStyleSheet(UI_PICKER_STYLESHEET)
+    apply_app_icon(dlg)
     dlg.setWindowTitle("NMEA Serial Bridge — choose layout")
     dlg.setMinimumWidth(420)
     lay = QtWidgets.QVBoxLayout(dlg)

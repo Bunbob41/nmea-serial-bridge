@@ -32,8 +32,9 @@ from log_serial_coalesce import serial_timeout_line_suppress
 from py_interpreter import cli_python_executable
 from ui.stats_line import format_live_stats_line
 from ui.stats_popout import SurveyStatsPopout
+from ui.app_icon import apply_app_icon
 from ui.styles import THEME_LABELS, bridge_stylesheet
-from ui.theme_choice import load_theme_choice, save_theme_choice
+from ui.theme_choice import THEME_IDS, load_theme_choice, save_theme_choice
 from ui.picker import save_ui_choice
 from ui.registry import create_window
 from ui.ui_prefs import load_diag_card_states, save_diag_card_states
@@ -71,6 +72,7 @@ class BridgeLogicMixin:
         self._ui_log_serial_dup_last: Optional[str] = None
         self._ui_log_serial_dup_mono: float = 0.0
         self._theme_id = load_theme_choice()
+        self._theme_actions: dict[str, QtGui.QAction] = {}
         self._log_pause = False
         self._log_autoscroll = True
         self._log_filter_rx = True
@@ -95,6 +97,8 @@ class BridgeLogicMixin:
         self._mode_toggle()
         self._log_flush_timer.start(UI_LOG_FLUSH_MS)
         self._stats_timer.start(400)
+        self._apply_theme(self._theme_id, persist=False)
+        apply_app_icon(self)
         self._on_ui_ready()
 
     def _create_survey_menu_bar(self) -> QtWidgets.QMenuBar:
@@ -118,21 +122,28 @@ class BridgeLogicMixin:
         tm = vm.addMenu("Theme")
         g = QtGui.QActionGroup(self)
         g.setExclusive(True)
-        for tid in ("maroon_classic", "maroon_high_contrast"):
+        self._theme_actions = {}
+        for tid in THEME_IDS:
             act = QtGui.QAction(THEME_LABELS.get(tid, tid), self)
             act.setCheckable(True)
             act.setChecked(self._theme_id == tid)
             act.triggered.connect(lambda checked=False, t=tid: self._apply_theme(t))
             g.addAction(act)
             tm.addAction(act)
+            self._theme_actions[tid] = act
 
         return mb
 
     def _apply_theme(self, theme_id: str, *, persist: bool = True) -> None:
+        if theme_id not in THEME_IDS:
+            theme_id = load_theme_choice()
         self._theme_id = theme_id
         if persist:
             save_theme_choice(theme_id)
+        for tid, act in self._theme_actions.items():
+            act.setChecked(tid == theme_id)
         ui_mode = getattr(self, "_ui_mode", "standard")
+        self.setStyleSheet("")  # clear cached rules so theme swap is visible
         self.setStyleSheet(bridge_stylesheet(ui_mode, theme_id))
         pop = getattr(self, "_stats_popout_window", None)
         if pop is not None:

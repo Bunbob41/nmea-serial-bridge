@@ -8,8 +8,14 @@ from PySide6 import QtCore, QtGui, QtWidgets
 
 from ui.stats_line import _fmt_k
 from ui.styles import hud_stylesheet
-from ui.theme_choice import THEME_MAROON_CLASSIC, THEME_MAROON_HC
+from ui.theme_choice import THEME_IDS
 from ui.survey_hud_layout import (
+    DEFAULT_SPLITTER_NMEA_RATIO,
+    TOP_STRIP_BELOW_TITLE_PX,
+    TOP_STRIP_H_MARGIN,
+    TOP_STRIP_HEIGHT_RATIO,
+    TOP_STRIP_MAX_HEIGHT,
+    TOP_STRIP_MIN_HEIGHT,
     METRIC_IDS,
     METRIC_LABELS,
     METRIC_SECTION,
@@ -814,7 +820,11 @@ class SurveyStatsPopout(QtWidgets.QWidget):
         self._base_min_width = 236
         self._base_min_height = 72
         self.setMinimumSize(self._base_min_width, self._base_min_height)
-        self.resize(620, 360)
+        self._geom_save_timer = QtCore.QTimer(self)
+        self._geom_save_timer.setSingleShot(True)
+        self._geom_save_timer.timeout.connect(self._persist_window_geometry)
+        if self._layout_cfg.get("window_customized"):
+            self._restore_custom_window_geometry()
         self.setAttribute(QtCore.Qt.WidgetAttribute.WA_DeleteOnClose, True)
         self.setAttribute(QtCore.Qt.WidgetAttribute.WA_StyledBackground, True)
 
@@ -1071,7 +1081,7 @@ class SurveyStatsPopout(QtWidgets.QWidget):
         self._content_splitter.addWidget(self._nmea_panel)
         self._content_splitter.setStretchFactor(0, 3)
         self._content_splitter.setStretchFactor(1, 2)
-        self._content_splitter.setSizes([720, 360])
+        self._content_splitter.setSizes([640, 320])
         root.addWidget(self._content_splitter, 1)
 
         self.apply_layout_config(self._layout_cfg)
@@ -1120,6 +1130,8 @@ class SurveyStatsPopout(QtWidgets.QWidget):
         self._layout_resize_handles()
         if not self._interactive_resize_active:
             self._schedule_layout_reflow()
+        if not bool(self._layout_cfg.get("lock_size", False)):
+            self._geom_save_timer.start(400)
 
     def showEvent(self, event: QtGui.QShowEvent) -> None:
         super().showEvent(event)
@@ -1128,7 +1140,76 @@ class SurveyStatsPopout(QtWidgets.QWidget):
         QtCore.QTimer.singleShot(0, self._reset_sections_scroll_origin)
         self._schedule_layout_reflow()
         self._schedule_shrink_to_content()
+        if not self._layout_cfg.get("window_customized"):
+            QtCore.QTimer.singleShot(0, self._apply_top_strip_geometry)
+            QtCore.QTimer.singleShot(100, self._apply_top_strip_geometry)
         QtCore.QTimer.singleShot(40, self._finalize_first_show_layout)
+
+    def _bridge_frame(self) -> Optional[QtCore.QRect]:
+        bridge = self._bridge
+        if bridge is None:
+            return None
+        try:
+            return bridge.frameGeometry()
+        except RuntimeError:
+            return None
+
+    def _apply_top_strip_geometry(self) -> None:
+        """Wide, short HUD bar along the top of the main bridge window."""
+        if self._layout_cfg.get("window_customized"):
+            return
+        bg = self._bridge_frame()
+        if bg is None:
+            self.resize(1000, TOP_STRIP_MIN_HEIGHT)
+            return
+        w = max(480, bg.width() - 2 * TOP_STRIP_H_MARGIN)
+        h = max(
+            TOP_STRIP_MIN_HEIGHT,
+            min(TOP_STRIP_MAX_HEIGHT, int(bg.height() * TOP_STRIP_HEIGHT_RATIO)),
+        )
+        self.resize(w, h)
+        self.move(bg.x() + TOP_STRIP_H_MARGIN, bg.y() + TOP_STRIP_BELOW_TITLE_PX)
+        if self._nmea_panel.isVisible():
+            nmea = max(180, int(w * DEFAULT_SPLITTER_NMEA_RATIO))
+            self._content_splitter.setSizes([w - nmea, nmea])
+
+    def _restore_custom_window_geometry(self) -> None:
+        cfg = self._layout_cfg
+        w = int(cfg.get("window_width", 0) or 0)
+        h = int(cfg.get("window_height", 0) or 0)
+        if w < 320 or h < 140:
+            self._apply_top_strip_geometry()
+            return
+        self.resize(min(4096, w), min(2160, h))
+        try:
+            x = int(cfg.get("window_x", 0))
+            y = int(cfg.get("window_y", 0))
+        except (TypeError, ValueError):
+            x, y = 0, 0
+        if x or y:
+            self.move(x, y)
+        else:
+            bg = self._bridge_frame()
+            if bg is not None:
+                self.move(bg.x() + TOP_STRIP_H_MARGIN, bg.y() + TOP_STRIP_BELOW_TITLE_PX)
+
+    def _persist_window_geometry(self) -> None:
+        if not self.isVisible():
+            return
+        g = self.geometry()
+        if g.width() < 200 or g.height() < 120:
+            return
+        self._layout_cfg["window_customized"] = True
+        self._layout_cfg["window_dock"] = "free"
+        self._layout_cfg["window_width"] = int(g.width())
+        self._layout_cfg["window_height"] = int(g.height())
+        self._layout_cfg["window_x"] = int(g.x())
+        self._layout_cfg["window_y"] = int(g.y())
+        save_layout(self._layout_cfg)
+
+    def closeEvent(self, event: QtGui.QCloseEvent) -> None:
+        self._persist_window_geometry()
+        super().closeEvent(event)
 
     def _reset_sections_scroll_origin(self) -> None:
         # Avoid reopening at stale scrolled positions after previous resizes.
@@ -1141,6 +1222,12 @@ class SurveyStatsPopout(QtWidgets.QWidget):
         self._recompute_layout_now()
         self._reset_sections_scroll_origin()
         self._sections_scroll.ensureVisible(0, 0, 0, 0)
+        if self._nmea_panel.isVisible():
+            total = max(400, self.width())
+            nmea = max(180, int(total * DEFAULT_SPLITTER_NMEA_RATIO))
+            self._content_splitter.setSizes([total - nmea, nmea])
+        if not self._layout_cfg.get("window_customized"):
+            self._apply_top_strip_geometry()
         self._first_show_layout_pending = False
 
     def changeEvent(self, event: QtCore.QEvent) -> None:
@@ -1523,7 +1610,9 @@ class SurveyStatsPopout(QtWidgets.QWidget):
     def _set_nmea_panel_visible(self, on: bool) -> None:
         self._nmea_panel.setVisible(on)
         if on:
-            self._content_splitter.setSizes([720, 360])
+            total = max(400, self.width())
+            nmea = max(180, int(total * DEFAULT_SPLITTER_NMEA_RATIO))
+            self._content_splitter.setSizes([total - nmea, nmea])
         self._schedule_layout_reflow()
         self._schedule_shrink_to_content()
 
@@ -1706,11 +1795,11 @@ class SurveyStatsPopout(QtWidgets.QWidget):
         self.setStyleSheet(hud_stylesheet(theme_id))
 
     def _toggle_theme_quick(self) -> None:
-        nxt = (
-            THEME_MAROON_HC
-            if self._theme_id == THEME_MAROON_CLASSIC
-            else THEME_MAROON_CLASSIC
-        )
+        try:
+            idx = THEME_IDS.index(self._theme_id)
+            nxt = THEME_IDS[(idx + 1) % len(THEME_IDS)]
+        except ValueError:
+            nxt = THEME_IDS[0]
         bridge = self.bridge_window()
         fn = getattr(bridge, "_apply_theme", None)
         if callable(fn):
