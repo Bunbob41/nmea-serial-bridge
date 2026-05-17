@@ -34,6 +34,7 @@ _DEFAULT_PANEL_HEIGHTS: dict[str, int] = {
 }
 
 _COLLAPSED_STRIP_HEIGHT = 26
+_WIDGET_SIZE_MAX = 16777215
 
 
 def expand_connect_panel(win: QtWidgets.QWidget, key: str) -> None:
@@ -56,6 +57,7 @@ def setup_connect_tab_panels(
     lay = QtWidgets.QVBoxLayout(connect_tab)
     lay.setContentsMargins(0, 0, 0, 0)
     lay.setSpacing(4)
+    win._connect_tab_layout = lay
 
     tool_row = QtWidgets.QHBoxLayout()
     btn_arrange = QtWidgets.QPushButton("Arrange panels…")
@@ -77,6 +79,10 @@ def setup_connect_tab_panels(
 
     host = QtWidgets.QWidget()
     host.setObjectName("connectPanelHost")
+    host.setSizePolicy(
+        QtWidgets.QSizePolicy.Policy.Preferred,
+        QtWidgets.QSizePolicy.Policy.Preferred,
+    )
     host_lay = QtWidgets.QVBoxLayout(host)
     host_lay.setContentsMargins(6, 0, 6, 6)
     host_lay.setSpacing(0)
@@ -85,9 +91,11 @@ def setup_connect_tab_panels(
     splitter.setObjectName("connectPanelSplitter")
     splitter.setChildrenCollapsible(False)
     splitter.setHandleWidth(6)
-    host_lay.addWidget(splitter, 1)
-    lay.addWidget(host, 1)
+    host_lay.addWidget(splitter, 0)
+    lay.addWidget(host, 0)
+    lay.addStretch(1)
 
+    win._connect_panel_host = host
     win._connect_panel_widgets = dict(panels)
     win._connect_panel_splitter = splitter
     win._connect_panel_disclosures: dict[str, DisclosureRow] = {}
@@ -136,6 +144,7 @@ def _rebuild_connect_panels(win: QtWidgets.QWidget) -> None:
             start_open=start_open,
             button_object_name="connectPanelDisclosure",
             fill_vertical=True,
+            on_layout_changed=lambda w=win: _apply_connect_splitter_sizes(w),
         )
         row.tool_button().toggled.connect(
             lambda on, k=key, w=win: _on_connect_panel_toggled(w, k, on)
@@ -150,8 +159,9 @@ def _rebuild_connect_panels(win: QtWidgets.QWidget) -> None:
     _schedule_connect_splitter_sizes(win, use_defaults=use_default_sizes)
 
 
-def _default_collapsed(_key: str) -> bool:
-    return False
+def _default_collapsed(key: str) -> bool:
+    """Compact Connect by default — only Run + Serial/network start expanded."""
+    return key in {"hint", "quick_log", "quick_terminal", "ntrip"}
 
 
 def _panel_collapsed_in_prefs(collapsed: dict[str, bool], key: str) -> bool:
@@ -163,11 +173,9 @@ def _normalize_connect_launch_prefs(
     sizes: dict[str, int],
     order: list[str],
 ) -> tuple[dict[str, bool], dict[str, int], bool]:
-    """Open Connect expanded with sensible splitter sizes unless the user left some panels open."""
+    """Keep saved collapse state; only discard strip-only size prefs from old bugs."""
     if not order:
         return collapsed, sizes, not bool(sizes)
-    if all(_panel_collapsed_in_prefs(collapsed, k) for k in order):
-        return {}, {}, True
     use_defaults = not sizes
     if sizes and all(
         sizes.get(k, _DEFAULT_PANEL_HEIGHTS.get(k, 80)) <= _COLLAPSED_STRIP_HEIGHT + 4 for k in order
@@ -175,6 +183,88 @@ def _normalize_connect_launch_prefs(
         use_defaults = True
         sizes = {}
     return collapsed, sizes, use_defaults
+
+
+def _splitter_content_height(splitter: QtWidgets.QSplitter, sizes: list[int]) -> int:
+    handles = max(0, len(sizes) - 1) * splitter.handleWidth()
+    return sum(sizes) + handles
+
+
+def _any_panel_expanded(disclosures: dict[str, DisclosureRow], order: list[str]) -> bool:
+    return any(_panel_expanded(disclosures.get(key)) for key in order)
+
+
+def _release_height_lock(widget: QtWidgets.QWidget) -> None:
+    widget.setMinimumHeight(0)
+    widget.setMaximumHeight(_WIDGET_SIZE_MAX)
+    widget.setSizePolicy(
+        QtWidgets.QSizePolicy.Policy.Preferred,
+        QtWidgets.QSizePolicy.Policy.Preferred,
+    )
+
+
+def _connect_splitter_target_height(win: QtWidgets.QWidget) -> int:
+    host: QtWidgets.QWidget | None = getattr(win, "_connect_panel_host", None)
+    if host is None:
+        return 360
+    tab = host.parentWidget()
+    if tab is not None and tab.height() > 120:
+        return max(tab.height() - 44, 220)
+    return 360
+
+
+def _set_connect_tab_stretch(win: QtWidgets.QWidget, *, compact: bool) -> None:
+    lay: QtWidgets.QVBoxLayout | None = getattr(win, "_connect_tab_layout", None)
+    host: QtWidgets.QWidget | None = getattr(win, "_connect_panel_host", None)
+    if lay is None or host is None:
+        return
+    host_idx = lay.indexOf(host)
+    if host_idx < 0:
+        return
+    if compact:
+        lay.setStretch(host_idx, 0)
+        if lay.count() > 0:
+            lay.setStretch(lay.count() - 1, 1)
+    else:
+        lay.setStretch(host_idx, 1)
+        if lay.count() > 0:
+            lay.setStretch(lay.count() - 1, 0)
+
+
+def _reflow_connect_panel_host(win: QtWidgets.QWidget, sizes: list[int]) -> None:
+    """Collapse = short stack at top; expand = host grows into the Connect tab."""
+    splitter: QtWidgets.QSplitter | None = getattr(win, "_connect_panel_splitter", None)
+    host: QtWidgets.QWidget | None = getattr(win, "_connect_panel_host", None)
+    order: list[str] = getattr(win, "_connect_panel_order", [])
+    disclosures: dict[str, DisclosureRow] = getattr(win, "_connect_panel_disclosures", {})
+    if splitter is None or host is None or not sizes:
+        return
+    content_h = _splitter_content_height(splitter, sizes)
+    expanded_any = _any_panel_expanded(disclosures, order)
+    _set_connect_tab_stretch(win, compact=not expanded_any)
+    if expanded_any:
+        _release_height_lock(host)
+        _release_height_lock(splitter)
+        splitter.setSizePolicy(
+            QtWidgets.QSizePolicy.Policy.Expanding,
+            QtWidgets.QSizePolicy.Policy.Expanding,
+        )
+        host.setSizePolicy(
+            QtWidgets.QSizePolicy.Policy.Preferred,
+            QtWidgets.QSizePolicy.Policy.Expanding,
+        )
+    else:
+        host.setSizePolicy(
+            QtWidgets.QSizePolicy.Policy.Preferred,
+            QtWidgets.QSizePolicy.Policy.Fixed,
+        )
+        splitter.setSizePolicy(
+            QtWidgets.QSizePolicy.Policy.Preferred,
+            QtWidgets.QSizePolicy.Policy.Fixed,
+        )
+        splitter.setFixedHeight(content_h)
+        host.setFixedHeight(content_h)
+    host.updateGeometry()
 
 
 def _schedule_connect_splitter_sizes(win: QtWidgets.QWidget, *, use_defaults: bool = False) -> None:
@@ -313,27 +403,36 @@ def _apply_connect_splitter_sizes(win: QtWidgets.QWidget, *, use_defaults: bool 
             continue
         sizes.append(max(int(saved.get(key, _DEFAULT_PANEL_HEIGHTS.get(key, 80))), 48))
 
-    total_target = max(splitter.height(), 320)
-    collapsed_count = sum(1 for key in order if not _panel_expanded(disclosures.get(key)))
-    collapsed_sum = collapsed_count * _COLLAPSED_STRIP_HEIGHT
-    expanded_sum = sum(sizes) - collapsed_sum
-    avail = max(total_target - collapsed_sum, 80)
-    if expanded_sum > 0 and avail > 0:
-        scale = avail / expanded_sum
-        scaled: list[int] = []
-        for i, key in enumerate(order):
-            row = disclosures.get(key)
-            if not _panel_expanded(row):
-                scaled.append(_COLLAPSED_STRIP_HEIGHT)
-            else:
-                scaled.append(max(int(sizes[i] * scale), 48))
-        sizes = scaled
+    expanded_any = _any_panel_expanded(disclosures, order)
+    if expanded_any:
+        collapsed_sum = sum(
+            _COLLAPSED_STRIP_HEIGHT
+            for key in order
+            if not _panel_expanded(disclosures.get(key))
+        )
+        expanded_sum = sum(sizes) - collapsed_sum
+        total_target = _connect_splitter_target_height(win)
+        avail = max(total_target - collapsed_sum, 80)
+        if expanded_sum > 0 and avail > 0:
+            scale = avail / expanded_sum
+            scaled: list[int] = []
+            for i, key in enumerate(order):
+                row = disclosures.get(key)
+                if not _panel_expanded(row):
+                    scaled.append(_COLLAPSED_STRIP_HEIGHT)
+                else:
+                    scaled.append(max(int(sizes[i] * scale), 48))
+            sizes = scaled
 
     splitter.blockSignals(True)
     try:
+        for i, key in enumerate(order):
+            stretch = 1 if _panel_expanded(disclosures.get(key)) else 0
+            splitter.setStretchFactor(i, stretch)
         splitter.setSizes(sizes)
     finally:
         splitter.blockSignals(False)
+    _reflow_connect_panel_host(win, sizes)
 
 
 def _persist_connect_splitter_sizes(win: QtWidgets.QWidget) -> None:

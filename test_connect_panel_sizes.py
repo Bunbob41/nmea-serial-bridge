@@ -27,15 +27,20 @@ class _MockWin:
 
 
 class ConnectPanelSizesTests(unittest.TestCase):
-    def test_normalize_all_collapsed_opens_expanded(self) -> None:
+    def test_normalize_keeps_all_collapsed_state(self) -> None:
         order = list(connect_panels.CONNECT_PANEL_KEYS)
         collapsed = {k: True for k in order}
         out_c, out_s, use_def = connect_panels._normalize_connect_launch_prefs(
             collapsed, {"run": 26, "hint": 28}, order
         )
-        self.assertEqual(out_c, {})
-        self.assertEqual(out_s, {})
-        self.assertTrue(use_def)
+        self.assertTrue(all(out_c.get(k) for k in order))
+        _ = use_def
+
+    def test_splitter_content_height_includes_handles(self) -> None:
+        splitter = MagicMock()
+        splitter.handleWidth.return_value = 6
+        h = connect_panels._splitter_content_height(splitter, [26, 26, 80])
+        self.assertEqual(h, 26 + 26 + 80 + 12)
 
     def test_normalize_keeps_partial_collapse(self) -> None:
         order = ["run", "quick_log", "connection"]
@@ -80,8 +85,17 @@ class ConnectPanelSizesTests(unittest.TestCase):
         splitter = MagicMock()
         splitter.count.return_value = 2
         splitter.height.return_value = 500
+        host = MagicMock()
+        tab = MagicMock()
+        tab.height.return_value = 480
+        host.parentWidget.return_value = tab
+        lay = MagicMock()
+        lay.indexOf.return_value = 1
+        lay.count.return_value = 3
         win = MagicMock()
         win._connect_panel_splitter = splitter
+        win._connect_panel_host = host
+        win._connect_tab_layout = lay
         win._connect_panel_order = ["run", "quick_log"]
         win._connect_panel_disclosures = {
             "run": _mock_row(True),
@@ -96,6 +110,21 @@ class ConnectPanelSizesTests(unittest.TestCase):
             connect_panels._apply_connect_splitter_sizes(win)
         sizes_arg = splitter.setSizes.call_args[0][0]
         self.assertEqual(sizes_arg[1], connect_panels._COLLAPSED_STRIP_HEIGHT)
+
+    def test_default_collapsed_only_run_and_connection_open(self) -> None:
+        self.assertFalse(connect_panels._default_collapsed("run"))
+        self.assertFalse(connect_panels._default_collapsed("connection"))
+        self.assertTrue(connect_panels._default_collapsed("hint"))
+        self.assertTrue(connect_panels._default_collapsed("ntrip"))
+
+    def test_splitter_target_uses_tab_height(self) -> None:
+        host = MagicMock()
+        tab = MagicMock()
+        tab.height.return_value = 400
+        host.parentWidget.return_value = tab
+        win = MagicMock()
+        win._connect_panel_host = host
+        self.assertGreaterEqual(connect_panels._connect_splitter_target_height(win), 220)
 
 
 if __name__ == "__main__":

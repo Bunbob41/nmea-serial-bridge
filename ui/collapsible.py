@@ -1,7 +1,7 @@
 """Collapsible disclosure rows with clean parent-window reflow (dialogs, panels)."""
 from __future__ import annotations
 
-from typing import Optional
+from typing import Callable, Optional
 
 from PySide6 import QtCore, QtWidgets
 
@@ -43,6 +43,7 @@ class DisclosureRow(QtWidgets.QWidget):
         indent_px: int = 20,
         button_object_name: str = "pickerDisclosure",
         fill_vertical: bool = False,
+        on_layout_changed: Optional[Callable[[], None]] = None,
     ) -> None:
         super().__init__(parent)
         self._title = title
@@ -50,6 +51,7 @@ class DisclosureRow(QtWidgets.QWidget):
         self._indent = indent_px
         self._open_bottom = 4
         self._fill_vertical = fill_vertical
+        self._on_layout_changed = on_layout_changed
 
         v_pol = (
             QtWidgets.QSizePolicy.Policy.Expanding
@@ -100,6 +102,9 @@ class DisclosureRow(QtWidgets.QWidget):
             self._body.setVisible(False)
         self._set_body_margins(expanded)
         if self._fill_vertical:
+            self.updateGeometry()
+            if self._on_layout_changed is not None:
+                QtCore.QTimer.singleShot(0, self._on_layout_changed)
             return
         host = self.window()
         if host is not None and isinstance(host, QtWidgets.QDialog):

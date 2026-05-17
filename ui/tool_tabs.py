@@ -60,9 +60,23 @@ def _add_collapsible_card(
             QtCore.Qt.ArrowType.DownArrow if on else QtCore.Qt.ArrowType.RightArrow
         )
         if on:
+            outer.setContentsMargins(8, 8, 8, 8)
+            card.setSizePolicy(
+                QtWidgets.QSizePolicy.Policy.Preferred,
+                QtWidgets.QSizePolicy.Policy.Preferred,
+            )
+            card.setMaximumHeight(16777215)
+            body.setMinimumHeight(0)
             body.setMaximumHeight(16777215)
             body.setVisible(True)
         else:
+            outer.setContentsMargins(8, 4, 8, 4)
+            card.setSizePolicy(
+                QtWidgets.QSizePolicy.Policy.Preferred,
+                QtWidgets.QSizePolicy.Policy.Fixed,
+            )
+            strip_h = toggle.sizeHint().height() + 8
+            card.setMaximumHeight(strip_h)
             body.setMaximumHeight(0)
             body.setVisible(False)
         card.updateGeometry()
@@ -185,7 +199,7 @@ def build_diagnostics_tab(parent: QtWidgets.QWidget) -> QtWidgets.QWidget:
     quick = _add_collapsible_card(
         lay,
         "Quick UI switch",
-        start_open=True,
+        start_open=_card_open("quick_ui_switch", False),
         on_toggled=lambda on: _persist_card("quick_ui_switch", on),
     )
     _register_card("quick_ui_switch")
@@ -214,7 +228,7 @@ def build_diagnostics_tab(parent: QtWidgets.QWidget) -> QtWidgets.QWidget:
     fv = _add_collapsible_card(
         lay,
         "Rotating file log",
-        start_open=_card_open("file_log", True),
+        start_open=_card_open("file_log", False),
         on_toggled=lambda on: _persist_card("file_log", on),
     )
     _register_card("file_log")
@@ -449,6 +463,7 @@ def build_diagnostics_tab(parent: QtWidgets.QWidget) -> QtWidgets.QWidget:
     parent.btn_ui_field.clicked.connect(lambda: parent._switch_ui_layout("field"))
     parent._diag_card_widgets = card_widgets
     parent._diag_cards_layout = lay
+    lay.addStretch(1)
     if hasattr(parent, "_apply_diag_card_order"):
         parent._apply_diag_card_order()
 

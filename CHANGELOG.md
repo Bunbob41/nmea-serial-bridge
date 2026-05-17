@@ -3,6 +3,15 @@
 High-level notes for **this fork / branch** (`feature/multi-ui-layouts-v0.5`).  
 Version = `version.py` / Git tag when you run `.\release.ps1` or tag manually.
 
+## v1.2.2
+
+- **Connect expand/collapse polish** — releasing fixed height when any panel expands; splitter target height uses the Connect tab (not a shrunken post-collapse splitter). Tab stretch keeps collapsed stacks at the top; expanding a section grows the host again. Disclosure toggles reflow the splitter immediately.
+- **Diagnostics cards** — all sections default collapsed (including Quick UI switch and file log); closed cards use a compact strip; spare space packs below the card stack.
+
+## v1.2.1
+
+- **Connect tab compact collapse** — collapsed panels stack at the top with no dead space inside the splitter; **Collapse all** shrinks the panel host to strip height only. Stretch goes below the stack (not between headers). Default: only **Run** and **Serial & network** expanded; optional sections start collapsed. Removed launch logic that forced all panels open when prefs were collapsed.
+
 ## v1.2.0 — survey bridge release
 
 **Operator-facing**
