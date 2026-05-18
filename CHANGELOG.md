@@ -3,6 +3,12 @@
 High-level notes for **this fork / branch** (`feature/multi-ui-layouts-v0.5`).  
 Version = `version.py` / Git tag when you run `.\release.ps1` or tag manually.
 
+## v1.3.1
+
+- **UI workflow polish shipped** — Connect panel stability improvements and UI editor/log-view/top-bar tooling are now committed together with targeted regression tests for collapsibles, field strip sizing, top-bar chips, log filtering, and editor behavior.
+- **Launcher reliability pass** — launcher and Windows launch scripts now run with safer cwd/interpreter handling and no-console subprocess helpers for smoother GUI startup and diagnostics scripts.
+- **NTRIP mux hardening** — serial correction injection now uses a write lock to avoid write interleaving under concurrent bridge/NTRIP traffic, with benchmark helper and parser-tail test coverage.
+
 ## v1.3.0
 
 - **Backend runtime invariants hardened** — UI timer/chip code now uses object-safe bridge-running checks, eliminating `bridge.running` attribute tracebacks during mixed test/mocked UI states.

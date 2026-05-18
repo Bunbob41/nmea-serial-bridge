@@ -325,6 +325,7 @@ class SerialNetBridge:
         self._last_stats_emit_mono: float = 0.0
         self._pending_stats_emit: Optional[asyncio.Handle] = None
         self._ui_event_log_state: dict[str, tuple[float, int]] = {}
+        self._serial_write_lock: Optional[asyncio.Lock] = None
 
     def _set_status(self, serial_line: str, network_line: str) -> None:
         self._last_network_status = network_line
@@ -378,6 +379,12 @@ class SerialNetBridge:
         """Write to COM. On Windows, bypass pyserial-asyncio poll writer (can stall under Qt)."""
         if not self.running or not chunk or not self.serial_writer:
             return
+        if self._serial_write_lock is None:
+            self._serial_write_lock = asyncio.Lock()
+        async with self._serial_write_lock:
+            await self._write_serial_bytes_locked(chunk)
+
+    async def _write_serial_bytes_locked(self, chunk: bytes) -> None:
         if sys.platform == "win32":
             ser = self._underlying_serial()
             if ser is not None:

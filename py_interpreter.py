@@ -34,3 +34,21 @@ def cli_python_gui_spawn() -> str:
         if pyw.is_file():
             return str(pyw)
     return str(exe)
+
+
+def qprocess_attach_no_console(proc: object) -> None:
+    """Hide console windows for QProcess children on Windows (Diagnostics / preflight)."""
+    if sys.platform != "win32":
+        return
+    flag = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+    if not flag:
+        return
+    try:
+        from PySide6 import QtCore
+    except ImportError:
+        return
+
+    def _modifier(args: QtCore.QProcess.CreateProcessArguments) -> None:
+        args.flags |= int(flag)
+
+    proc.setCreateProcessArgumentsModifier(_modifier)  # type: ignore[attr-defined]

@@ -103,6 +103,14 @@ def _spawn_gui(ui_arg: list[str], *, foreground: bool = False) -> None:
         raise SystemExit(subprocess.call([str(exe), str(script), *ui_arg], cwd=str(ROOT)))
     exe = _resolve_pythonw_for_spawn()
     subprocess.Popen([str(exe), str(script), *ui_arg], cwd=str(ROOT))
+    if sys.stdin.isatty():
+        print(
+            f"Started GUI in background ({exe.name}). "
+            "If no window appears, run:\n"
+            f"  python \"{script}\"\n"
+            "or:\n"
+            f"  python launcher.py --foreground\n"
+        )
 
 
 def main() -> int:
@@ -124,7 +132,14 @@ def main() -> int:
         action="store_true",
         help="Interactive numbered menu in this terminal",
     )
+    parser.add_argument(
+        "--foreground",
+        "-f",
+        action="store_true",
+        help="Run GUI in this terminal (shows errors; blocks until you close the app)",
+    )
     args = parser.parse_args()
+    foreground = bool(args.foreground)
 
     if args.console_menu:
         ui = _menu()
@@ -135,25 +150,26 @@ def main() -> int:
             from ui.picker import clear_saved_ui_choice
 
             clear_saved_ui_choice()
-        _spawn_gui(["--ui", ui])
-        print(f"\nLaunched: {UI_LABELS[ui]}\n")
+        _spawn_gui(["--ui", ui], foreground=foreground)
+        if not foreground:
+            print(f"\nLaunched: {UI_LABELS[ui]}\n")
         return 0
 
     if args.ui:
         ui = normalize_ui_id(args.ui)
         if ui in UI_ORDER:
-            _spawn_gui(["--ui", ui])
+            _spawn_gui(["--ui", ui], foreground=foreground)
             return 0
 
     if args.pick_ui:
-        _spawn_gui(["--pick-ui"], foreground=sys.stdin.isatty())
+        _spawn_gui(["--pick-ui"], foreground=foreground or sys.stdin.isatty())
         return 0
 
     saved = _load_choice()
     if saved:
-        _spawn_gui(["--ui", saved])
+        _spawn_gui(["--ui", saved], foreground=foreground)
     else:
-        _spawn_gui(["--pick-ui"])
+        _spawn_gui(["--pick-ui"], foreground=foreground)
     return 0
 
 
