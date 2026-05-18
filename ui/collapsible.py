@@ -110,5 +110,16 @@ class DisclosureRow(QtWidgets.QWidget):
         if host is not None and isinstance(host, QtWidgets.QDialog):
             QtCore.QTimer.singleShot(0, lambda w=host: reflow_window(w))
 
+    def set_expanded(self, expanded: bool) -> None:
+        """Set open/closed state and sync body visibility (use when signals are blocked)."""
+        if self._btn.isChecked() != expanded:
+            self._btn.blockSignals(True)
+            self._btn.setChecked(expanded)
+            self._btn.blockSignals(False)
+        self._set_expanded(expanded)
+
     def tool_button(self) -> QtWidgets.QToolButton:
         return self._btn
+
+    def body_widget(self) -> QtWidgets.QWidget:
+        return self._body

@@ -44,6 +44,23 @@ class TestDisclosureReflow(unittest.TestCase):
         self._app.processEvents()
         self.assertLessEqual(dlg.height(), closed_h + 4)
 
+    def test_set_expanded_with_blocked_signals(self) -> None:
+        body = QtWidgets.QWidget()
+        body.setMinimumHeight(48)
+        bl = QtWidgets.QVBoxLayout(body)
+        bl.addWidget(QtWidgets.QLabel("panel body"))
+        row = DisclosureRow("Section", body, start_open=False)
+        btn = row.tool_button()
+        btn.blockSignals(True)
+        btn.setChecked(True)
+        self.assertEqual(body.maximumHeight(), 0)
+        row.set_expanded(True)
+        self.assertTrue(btn.isChecked())
+        self.assertGreater(body.maximumHeight(), 0)
+        row.set_expanded(False)
+        self.assertEqual(body.maximumHeight(), 0)
+        self.assertFalse(body.isVisible())
+
 
 if __name__ == "__main__":
     unittest.main()

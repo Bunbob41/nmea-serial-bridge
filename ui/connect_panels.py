@@ -23,18 +23,57 @@ CONNECT_PANEL_LABELS: dict[str, str] = {
     "connection": "Serial & network",
     "ntrip": "NTRIP corrections",
 }
+CONNECT_PANEL_COLLAPSED_HINTS: dict[str, str] = {
+    "run": "Start/Stop, bench setup",
+    "hint": "Current workflow guidance",
+    "quick_log": "Recent bridge messages",
+    "quick_terminal": "Bench script output",
+    "connection": "COM, baud, UDP/TCP",
+    "ntrip": "Caster host, mount, credentials",
+}
+
+CONNECT_TOOLBAR_KEYS: tuple[str, ...] = (
+    "ui_editor",
+    "expand_all",
+    "collapse_all",
+    "reset_sizes",
+)
+CONNECT_TOOLBAR_LABELS: dict[str, str] = {
+    "ui_editor": "UI editor…",
+    "expand_all": "Expand all",
+    "collapse_all": "Collapse all",
+    "reset_sizes": "Reset sizes",
+}
+
+# Must stay in the splitter (UI editor shows them as non-toggleable).
+REQUIRED_CONNECT_PANELS = frozenset({"run", "connection"})
+
+# Recommended hidden-until-needed sections (UI editor Restore defaults).
+DEFAULT_CONNECT_HIDDEN = frozenset({"ntrip"})
 
 _DEFAULT_PANEL_HEIGHTS: dict[str, int] = {
-    "run": 56,
-    "hint": 40,
+    "run": 84,
+    "hint": 48,
     "quick_log": 120,
     "quick_terminal": 120,
     "connection": 260,
     "ntrip": 110,
 }
 
-_COLLAPSED_STRIP_HEIGHT = 26
+# Cap scaled height for compact sections (avoids giant Start row when alone expanded).
+_PANEL_EXPANDED_CAP: dict[str, int] = {
+    "run": 72,
+    "hint": 64,
+    "quick_log": 220,
+    "quick_terminal": 220,
+    "connection": 520,
+    "ntrip": 200,
+}
+
+# Collapsed disclosure strip must fit rounded header padding/text.
+_COLLAPSED_STRIP_HEIGHT = 44
 _WIDGET_SIZE_MAX = 16777215
+_STANDARD_CONNECT_WINDOW_HEIGHT = 520
 
 
 def expand_connect_panel(win: QtWidgets.QWidget, key: str) -> None:
@@ -43,9 +82,42 @@ def expand_connect_panel(win: QtWidgets.QWidget, key: str) -> None:
     row = disclosures.get(key)
     if row is None:
         return
-    btn = row.tool_button()
-    if not btn.isChecked():
-        btn.setChecked(True)
+    row.set_expanded(True)
+    _apply_row_expand_style(row, True, sole_expanded=False)
+    if not getattr(win, "_connect_panel_syncing", False):
+        QtCore.QTimer.singleShot(0, lambda w=win: _apply_connect_splitter_sizes(w))
+
+
+def _connect_panel_display_title(key: str) -> str:
+    base = CONNECT_PANEL_LABELS.get(key, key)
+    hint = CONNECT_PANEL_COLLAPSED_HINTS.get(key, "").strip()
+    return base if not hint else f"{base}  |  {hint}"
+
+
+def sync_connect_panel_layout(win: QtWidgets.QWidget) -> None:
+    """Force a fresh Connect reflow (use when tab becomes active)."""
+    splitter: QtWidgets.QSplitter | None = getattr(win, "_connect_panel_splitter", None)
+    if splitter is None:
+        return
+    _apply_connect_splitter_sizes(win)
+    QtCore.QTimer.singleShot(0, lambda w=win: _flush_connect_scroll_geometry(w))
+    # One extra pass after Qt finishes tab/page geometry updates.
+    QtCore.QTimer.singleShot(24, lambda w=win: _apply_connect_splitter_sizes(w))
+
+
+def apply_connect_toolbar_order(win: QtWidgets.QWidget) -> None:
+    lay: QtWidgets.QHBoxLayout | None = getattr(win, "_connect_toolbar_layout", None)
+    buttons: dict[str, QtWidgets.QPushButton] = getattr(win, "_connect_toolbar_buttons", {})
+    if lay is None or not isinstance(buttons, dict):
+        return
+    prefs = load_connect_panel_prefs(getattr(win, "_ui_mode", "standard"))
+    order = [k for k in prefs.get("toolbar_order", []) if k in buttons]
+    for key in CONNECT_TOOLBAR_KEYS:
+        if key not in order:
+            order.append(key)
+    for key in order:
+        lay.removeWidget(buttons[key])
+        lay.addWidget(buttons[key])
 
 
 def setup_connect_tab_panels(
@@ -54,28 +126,43 @@ def setup_connect_tab_panels(
     panels: dict[str, QtWidgets.QWidget],
 ) -> None:
     """Mount collapsible panels on Connect tab; call after all panel widgets exist on win."""
+    win._connect_tab_widget = connect_tab
     lay = QtWidgets.QVBoxLayout(connect_tab)
     lay.setContentsMargins(0, 0, 0, 0)
     lay.setSpacing(4)
+    lay.setAlignment(QtCore.Qt.AlignmentFlag.AlignTop)
     win._connect_tab_layout = lay
 
     tool_row = QtWidgets.QHBoxLayout()
-    btn_arrange = QtWidgets.QPushButton("Arrange panels…")
-    btn_arrange.setToolTip("Drag to reorder Connect tab sections; check to show when collapsed.")
-    btn_arrange.clicked.connect(lambda: _open_connect_panel_manager(win))
-    btn_expand = QtWidgets.QPushButton("Expand all")
+    btn_ui_editor = QtWidgets.QPushButton(CONNECT_TOOLBAR_LABELS["ui_editor"])
+    btn_ui_editor.setToolTip(
+        "Reorder or hide Connect sections, top bar chips, and main tabs (checkbox dialog)."
+    )
+    btn_ui_editor.clicked.connect(lambda: _open_connect_ui_editor(win))
+    btn_expand = QtWidgets.QPushButton(CONNECT_TOOLBAR_LABELS["expand_all"])
     btn_expand.clicked.connect(lambda: _set_all_connect_panels(win, True))
-    btn_collapse = QtWidgets.QPushButton("Collapse all")
+    btn_collapse = QtWidgets.QPushButton(CONNECT_TOOLBAR_LABELS["collapse_all"])
     btn_collapse.clicked.connect(lambda: _set_all_connect_panels(win, False))
-    btn_reset = QtWidgets.QPushButton("Reset sizes")
+    btn_reset = QtWidgets.QPushButton(CONNECT_TOOLBAR_LABELS["reset_sizes"])
     btn_reset.setToolTip("Restore default vertical sizes for Connect panels.")
     btn_reset.clicked.connect(lambda: _reset_connect_splitter_sizes(win))
-    tool_row.addWidget(btn_arrange)
-    tool_row.addWidget(btn_expand)
-    tool_row.addWidget(btn_collapse)
-    tool_row.addWidget(btn_reset)
+    toolbar_buttons: dict[str, QtWidgets.QPushButton] = {
+        "ui_editor": btn_ui_editor,
+        "expand_all": btn_expand,
+        "collapse_all": btn_collapse,
+        "reset_sizes": btn_reset,
+    }
+    prefs = load_connect_panel_prefs(getattr(win, "_ui_mode", "standard"))
+    toolbar_order = [k for k in prefs.get("toolbar_order", []) if k in toolbar_buttons]
+    for key in CONNECT_TOOLBAR_KEYS:
+        if key not in toolbar_order:
+            toolbar_order.append(key)
+    for key in toolbar_order:
+        tool_row.addWidget(toolbar_buttons[key])
     tool_row.addStretch(1)
     lay.addLayout(tool_row)
+    win._connect_toolbar_buttons = toolbar_buttons
+    win._connect_toolbar_layout = tool_row
 
     host = QtWidgets.QWidget()
     host.setObjectName("connectPanelHost")
@@ -90,12 +177,42 @@ def setup_connect_tab_panels(
     splitter = QtWidgets.QSplitter(QtCore.Qt.Orientation.Vertical)
     splitter.setObjectName("connectPanelSplitter")
     splitter.setChildrenCollapsible(False)
-    splitter.setHandleWidth(6)
-    host_lay.addWidget(splitter, 0)
-    lay.addWidget(host, 0)
-    lay.addStretch(1)
+    splitter.setHandleWidth(8)
+    splitter.setOpaqueResize(True)
+    host_lay.addWidget(splitter, 1)
+
+    panel_page = QtWidgets.QWidget()
+    panel_page.setObjectName("toolTabScrollHost")
+    panel_page.setAttribute(QtCore.Qt.WidgetAttribute.WA_StyledBackground, True)
+    panel_page.setSizePolicy(
+        QtWidgets.QSizePolicy.Policy.Preferred,
+        QtWidgets.QSizePolicy.Policy.Minimum,
+    )
+    page_lay = QtWidgets.QVBoxLayout(panel_page)
+    page_lay.setContentsMargins(0, 0, 0, 0)
+    page_lay.setSpacing(0)
+    page_lay.setAlignment(QtCore.Qt.AlignmentFlag.AlignTop)
+    page_lay.addWidget(host, 0)
+    page_lay.addStretch(1)
+
+    panel_scroll = QtWidgets.QScrollArea()
+    panel_scroll.setObjectName("toolTabScroll")
+    panel_scroll.setWidgetResizable(True)
+    panel_scroll.setFrameShape(QtWidgets.QFrame.Shape.NoFrame)
+    panel_scroll.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+    panel_scroll.setVerticalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+    panel_scroll.setFocusPolicy(QtCore.Qt.FocusPolicy.WheelFocus)
+    panel_scroll.setAttribute(QtCore.Qt.WidgetAttribute.WA_StyledBackground, True)
+    panel_scroll.viewport().setObjectName("toolTabScrollViewport")
+    panel_scroll.viewport().setAttribute(QtCore.Qt.WidgetAttribute.WA_StyledBackground, True)
+    panel_scroll.setWidget(panel_page)
+    lay.addWidget(panel_scroll, 0)
 
     win._connect_panel_host = host
+    win._connect_panel_host_lay = host_lay
+    win._connect_panel_page = panel_page
+    win._connect_panel_scroll = panel_scroll
+    win._connect_page_in_main_scroll = True
     win._connect_panel_widgets = dict(panels)
     win._connect_panel_splitter = splitter
     win._connect_panel_disclosures: dict[str, DisclosureRow] = {}
@@ -106,7 +223,17 @@ def setup_connect_tab_panels(
         t.setSingleShot(True)
         t.timeout.connect(lambda: _persist_connect_splitter_sizes(win))
         win._connect_splitter_save_timer = t
-    splitter.splitterMoved.connect(lambda *_a, w=win: w._connect_splitter_save_timer.start(250))  # type: ignore[attr-defined]
+    if not hasattr(win, "_connect_sync_geom_timer"):
+        gt = QtCore.QTimer(win)
+        gt.setSingleShot(True)
+        gt.timeout.connect(lambda w=win: _flush_connect_scroll_geometry(w))
+        win._connect_sync_geom_timer = gt
+    win._connect_sync_geom_pending = None
+    def _on_splitter_moved(*_a: object, w: QtWidgets.QWidget = win) -> None:
+        w._connect_splitter_save_timer.start(250)  # type: ignore[attr-defined]
+        _reflow_connect_panel_host(w, list(splitter.sizes()), user_resize=True)
+
+    splitter.splitterMoved.connect(_on_splitter_moved)
     _rebuild_connect_panels(win)
 
 
@@ -123,8 +250,14 @@ def _rebuild_connect_panels(win: QtWidgets.QWidget) -> None:
             order.append(k)
     collapsed: dict[str, bool] = dict(prefs.get("collapsed", {}))
     saved_sizes: dict[str, int] = dict(prefs.get("sizes", {}))
+    hidden_set = {
+        str(x).strip()
+        for x in sanitize_connect_panel_hidden(prefs.get("hidden", []))
+        if str(x).strip()
+    }
+    visible_order = [k for k in order if k not in hidden_set]
     collapsed, saved_sizes, use_default_sizes = _normalize_connect_launch_prefs(
-        collapsed, saved_sizes, order
+        collapsed, saved_sizes, visible_order
     )
 
     while splitter.count():
@@ -133,35 +266,71 @@ def _rebuild_connect_panels(win: QtWidgets.QWidget) -> None:
             w.setParent(None)
 
     disclosures: dict[str, DisclosureRow] = {}
-    for key in order:
+    for key in visible_order:
         body = widgets.get(key)
         if body is None:
             continue
         start_open = not bool(collapsed.get(key, _default_collapsed(key)))
         row = DisclosureRow(
-            CONNECT_PANEL_LABELS.get(key, key),
+            _connect_panel_display_title(key),
             body,
             start_open=start_open,
             button_object_name="connectPanelDisclosure",
             fill_vertical=True,
             on_layout_changed=lambda w=win: _apply_connect_splitter_sizes(w),
         )
+        row.setObjectName("connectPanelRow")
+        row.setProperty("connectPanelKey", key)
         row.tool_button().toggled.connect(
             lambda on, k=key, w=win: _on_connect_panel_toggled(w, k, on)
         )
-        _apply_row_expand_style(row, start_open)
+        _apply_row_expand_style(row, start_open, sole_expanded=False)
         disclosures[key] = row
         splitter.addWidget(row)
 
     win._connect_panel_disclosures = disclosures
-    win._connect_panel_order = list(order)
-    save_connect_panel_prefs(ui_mode, order, collapsed, sizes=saved_sizes)
+    win._connect_panel_order = list(visible_order)
+    save_connect_panel_prefs(
+        ui_mode,
+        order,
+        collapsed,
+        sizes=saved_sizes,
+        hidden=list(hidden_set),
+    )
     _schedule_connect_splitter_sizes(win, use_defaults=use_default_sizes)
 
 
 def _default_collapsed(key: str) -> bool:
     """Compact Connect by default — only Run + Serial/network start expanded."""
     return key in {"hint", "quick_log", "quick_terminal", "ntrip"}
+
+
+def sanitize_connect_panel_hidden(hidden: list[str] | set[str]) -> list[str]:
+    """Required panels cannot be hidden (non-checkable list rows read as unchecked)."""
+    return [k for k in hidden if k not in REQUIRED_CONNECT_PANELS]
+
+
+def default_connect_collapsed(order: list[str]) -> dict[str, bool]:
+    return {k: _default_collapsed(k) for k in order}
+
+
+def restore_connect_panel_layout(win: QtWidgets.QWidget) -> None:
+    """Survey-default Connect sections: show all except NTRIP, reset collapse and sizes."""
+    widgets: dict = getattr(win, "_connect_panel_widgets", {})
+    if not widgets:
+        return
+    ui_mode = getattr(win, "_ui_mode", "standard")
+    order = [k for k in CONNECT_PANEL_KEYS if k in widgets]
+    hidden = [k for k in DEFAULT_CONNECT_HIDDEN if k in widgets]
+    collapsed = default_connect_collapsed(order)
+    save_connect_panel_prefs(
+        ui_mode,
+        order,
+        collapsed,
+        sizes={},
+        hidden=hidden,
+    )
+    _rebuild_connect_panels(win)
 
 
 def _panel_collapsed_in_prefs(collapsed: dict[str, bool], key: str) -> bool:
@@ -186,8 +355,12 @@ def _normalize_connect_launch_prefs(
 
 
 def _splitter_content_height(splitter: QtWidgets.QSplitter, sizes: list[int]) -> int:
-    handles = max(0, len(sizes) - 1) * splitter.handleWidth()
-    return sum(sizes) + handles
+    try:
+        hw = int(splitter.handleWidth())
+    except (TypeError, ValueError, AttributeError):
+        hw = 8
+    handles = max(0, len(sizes) - 1) * hw
+    return sum(int(s) for s in sizes) + handles
 
 
 def _any_panel_expanded(disclosures: dict[str, DisclosureRow], order: list[str]) -> bool:
@@ -203,36 +376,156 @@ def _release_height_lock(widget: QtWidgets.QWidget) -> None:
     )
 
 
-def _connect_splitter_target_height(win: QtWidgets.QWidget) -> int:
+def _panel_expanded_size(key: str, saved: dict[str, int]) -> int:
+    raw = int(saved.get(key, _DEFAULT_PANEL_HEIGHTS.get(key, 80)))
+    cap = _PANEL_EXPANDED_CAP.get(key, raw)
+    return max(min(raw, cap), 48)
+
+
+def _connect_splitter_target_height(
+    win: QtWidgets.QWidget,
+    order: list[str],
+    disclosures: dict[str, DisclosureRow],
+    sizes: list[int],
+) -> int:
+    splitter: QtWidgets.QSplitter | None = getattr(win, "_connect_panel_splitter", None)
+    if splitter is None:
+        return 220
+    natural = _splitter_content_height(splitter, sizes)
     host: QtWidgets.QWidget | None = getattr(win, "_connect_panel_host", None)
     if host is None:
-        return 360
+        return max(natural, 220)
     tab = host.parentWidget()
-    if tab is not None and tab.height() > 120:
-        return max(tab.height() - 44, 220)
-    return 360
+    try:
+        tab_h = int(tab.height()) if tab is not None else 0
+    except (TypeError, ValueError, AttributeError):
+        tab_h = 0
+    if tab_h > 120:
+        tab_budget = max(tab_h - _connect_tab_chrome_height(win), 160)
+        return min(max(natural, 220), tab_budget)
+    return max(natural, 220)
+
+
+def configure_connect_tab_scroll(win: QtWidgets.QWidget) -> None:
+    """Legacy hook — panel scroll is configured in setup_connect_tab_panels."""
+    _ = win
+
+
+def schedule_fit_window_to_connect(win: QtWidgets.QWidget) -> None:
+    """No-op: main window height is user-controlled; use tab scroll instead."""
+    _ = win
 
 
 def _set_connect_tab_stretch(win: QtWidgets.QWidget, *, compact: bool) -> None:
     lay: QtWidgets.QVBoxLayout | None = getattr(win, "_connect_tab_layout", None)
     host: QtWidgets.QWidget | None = getattr(win, "_connect_panel_host", None)
+    scroll: QtWidgets.QScrollArea | None = getattr(win, "_connect_panel_scroll", None)
     if lay is None or host is None:
         return
-    host_idx = lay.indexOf(host)
-    if host_idx < 0:
+    if scroll is not None:
+        scroll_idx = lay.indexOf(scroll)
+        if scroll_idx >= 0:
+            lay.setStretch(scroll_idx, 0 if compact else 1)
+    host_lay: QtWidgets.QVBoxLayout | None = getattr(win, "_connect_panel_host_lay", None)
+    splitter: QtWidgets.QSplitter | None = getattr(win, "_connect_panel_splitter", None)
+    if host_lay is not None and splitter is not None:
+        try:
+            sp_idx = int(host_lay.indexOf(splitter))
+        except (TypeError, ValueError, AttributeError):
+            sp_idx = -1
+        if sp_idx >= 0:
+            host_lay.setStretch(sp_idx, 1 if not compact else 0)
+
+
+def _schedule_connect_scroll_geometry(
+    win: QtWidgets.QWidget,
+    *,
+    content_h: int,
+    expanded_any: bool,
+) -> None:
+    """Debounce scroll/tab height updates (avoids layout feedback loops)."""
+    win._connect_sync_geom_pending = (int(content_h), bool(expanded_any))
+    timer: QtCore.QTimer | None = getattr(win, "_connect_sync_geom_timer", None)
+    if timer is not None:
+        timer.start(16)
+
+
+def _flush_connect_scroll_geometry(win: QtWidgets.QWidget) -> None:
+    pending = getattr(win, "_connect_sync_geom_pending", None)
+    if pending is None:
         return
-    if compact:
-        lay.setStretch(host_idx, 0)
-        if lay.count() > 0:
-            lay.setStretch(lay.count() - 1, 1)
+    content_h, expanded_any = pending
+    _sync_connect_panel_scroll_geometry(
+        win, content_h=content_h, expanded_any=expanded_any
+    )
+
+
+def _sync_connect_panel_scroll_geometry(
+    win: QtWidgets.QWidget,
+    *,
+    content_h: int,
+    expanded_any: bool,
+) -> None:
+    """Keep the panel scroll area exactly as tall as its content when collapsed."""
+    sig = (int(content_h), bool(expanded_any))
+    win._connect_scroll_geom_sig = sig
+    scroll: QtWidgets.QScrollArea | None = getattr(win, "_connect_panel_scroll", None)
+    page: QtWidgets.QWidget | None = getattr(win, "_connect_panel_page", None)
+    if scroll is None:
+        return
+    h = max(int(content_h), 48)
+    if not expanded_any:
+        scroll.setSizePolicy(
+            QtWidgets.QSizePolicy.Policy.Preferred,
+            QtWidgets.QSizePolicy.Policy.Fixed,
+        )
+        scroll.setMinimumHeight(h)
+        scroll.setMaximumHeight(h)
+        if page is not None:
+            page.setMinimumHeight(h)
+            page.setMaximumHeight(h)
     else:
-        lay.setStretch(host_idx, 1)
-        if lay.count() > 0:
-            lay.setStretch(lay.count() - 1, 0)
+        scroll.setSizePolicy(
+            QtWidgets.QSizePolicy.Policy.Preferred,
+            QtWidgets.QSizePolicy.Policy.Expanding,
+        )
+        scroll.setMinimumHeight(max(min(h, 280), 160))
+        scroll.setMaximumHeight(_WIDGET_SIZE_MAX)
+        if page is not None:
+            _release_height_lock(page)
+            lay = page.layout()
+            if isinstance(lay, QtWidgets.QVBoxLayout):
+                lay.setAlignment(QtCore.Qt.AlignmentFlag.AlignTop)
+    scroll.updateGeometry()
+    tab: QtWidgets.QWidget | None = getattr(win, "_connect_tab_widget", None)
+    if tab is None:
+        return
+    chrome = _connect_tab_chrome_height(win)
+    if not expanded_any:
+        total = chrome + h + 4
+        tab.setSizePolicy(
+            QtWidgets.QSizePolicy.Policy.Preferred,
+            QtWidgets.QSizePolicy.Policy.Fixed,
+        )
+        tab.setMinimumHeight(total)
+        tab.setMaximumHeight(total)
+    else:
+        _release_height_lock(tab)
+        tab.setSizePolicy(
+            QtWidgets.QSizePolicy.Policy.Preferred,
+            QtWidgets.QSizePolicy.Policy.Preferred,
+        )
+    tab.updateGeometry()
 
 
-def _reflow_connect_panel_host(win: QtWidgets.QWidget, sizes: list[int]) -> None:
-    """Collapse = short stack at top; expand = host grows into the Connect tab."""
+def _reflow_connect_panel_host(
+    win: QtWidgets.QWidget,
+    sizes: list[int],
+    *,
+    user_resize: bool = False,
+    sole_expanded: bool = False,
+) -> None:
+    """Collapse = short stack at top; expand = splitter fills host and accepts drag."""
     splitter: QtWidgets.QSplitter | None = getattr(win, "_connect_panel_splitter", None)
     host: QtWidgets.QWidget | None = getattr(win, "_connect_panel_host", None)
     order: list[str] = getattr(win, "_connect_panel_order", [])
@@ -243,57 +536,213 @@ def _reflow_connect_panel_host(win: QtWidgets.QWidget, sizes: list[int]) -> None
     expanded_any = _any_panel_expanded(disclosures, order)
     _set_connect_tab_stretch(win, compact=not expanded_any)
     if expanded_any:
-        _release_height_lock(host)
-        _release_height_lock(splitter)
-        splitter.setSizePolicy(
-            QtWidgets.QSizePolicy.Policy.Expanding,
-            QtWidgets.QSizePolicy.Policy.Expanding,
-        )
-        host.setSizePolicy(
-            QtWidgets.QSizePolicy.Policy.Preferred,
-            QtWidgets.QSizePolicy.Policy.Expanding,
-        )
+        if user_resize and not sole_expanded:
+            host.updateGeometry()
+            return
+        if sole_expanded:
+            _release_height_lock(host)
+            _release_height_lock(splitter)
+            host.setSizePolicy(
+                QtWidgets.QSizePolicy.Policy.Preferred,
+                QtWidgets.QSizePolicy.Policy.Fixed,
+            )
+            splitter.setSizePolicy(
+                QtWidgets.QSizePolicy.Policy.Preferred,
+                QtWidgets.QSizePolicy.Policy.Fixed,
+            )
+            host.setMinimumHeight(content_h)
+            host.setMaximumHeight(content_h)
+            splitter.setMinimumHeight(content_h)
+            splitter.setMaximumHeight(content_h)
+            splitter.setSizes(sizes)
+            host_lay: QtWidgets.QVBoxLayout | None = getattr(win, "_connect_panel_host_lay", None)
+            if host_lay is not None and splitter is not None:
+                try:
+                    sp_idx = int(host_lay.indexOf(splitter))
+                except (TypeError, ValueError, AttributeError):
+                    sp_idx = -1
+                if sp_idx >= 0:
+                    host_lay.setStretch(sp_idx, 0)
+        else:
+            _release_height_lock(host)
+            _release_height_lock(splitter)
+            _maybe_restore_connect_window_height(win)
+            splitter.setSizePolicy(
+                QtWidgets.QSizePolicy.Policy.Expanding,
+                QtWidgets.QSizePolicy.Policy.Expanding,
+            )
+            host.setSizePolicy(
+                QtWidgets.QSizePolicy.Policy.Preferred,
+                QtWidgets.QSizePolicy.Policy.Expanding,
+            )
+            host.setMinimumHeight(max(content_h, 80))
+            host.setMaximumHeight(_WIDGET_SIZE_MAX)
+            splitter.setMinimumHeight(max(content_h, 100))
+            splitter.setMaximumHeight(_WIDGET_SIZE_MAX)
+            host_lay = getattr(win, "_connect_panel_host_lay", None)
+            if host_lay is not None and splitter is not None:
+                try:
+                    sp_idx = int(host_lay.indexOf(splitter))
+                except (TypeError, ValueError, AttributeError):
+                    sp_idx = -1
+                if sp_idx >= 0:
+                    host_lay.setStretch(sp_idx, 1)
     else:
-        host.setSizePolicy(
-            QtWidgets.QSizePolicy.Policy.Preferred,
-            QtWidgets.QSizePolicy.Policy.Fixed,
-        )
-        splitter.setSizePolicy(
-            QtWidgets.QSizePolicy.Policy.Preferred,
-            QtWidgets.QSizePolicy.Policy.Fixed,
-        )
-        splitter.setFixedHeight(content_h)
-        host.setFixedHeight(content_h)
+        in_scroll = bool(getattr(win, "_connect_page_in_main_scroll", False))
+        if in_scroll:
+            host.setSizePolicy(
+                QtWidgets.QSizePolicy.Policy.Preferred,
+                QtWidgets.QSizePolicy.Policy.Minimum,
+            )
+            splitter.setSizePolicy(
+                QtWidgets.QSizePolicy.Policy.Preferred,
+                QtWidgets.QSizePolicy.Policy.Minimum,
+            )
+            host.setMinimumHeight(content_h)
+            host.setMaximumHeight(content_h)
+            splitter.setMinimumHeight(content_h)
+            splitter.setMaximumHeight(content_h)
+        else:
+            host.setSizePolicy(
+                QtWidgets.QSizePolicy.Policy.Preferred,
+                QtWidgets.QSizePolicy.Policy.Fixed,
+            )
+            splitter.setSizePolicy(
+                QtWidgets.QSizePolicy.Policy.Preferred,
+                QtWidgets.QSizePolicy.Policy.Fixed,
+            )
+            splitter.setFixedHeight(content_h)
+            host.setFixedHeight(content_h)
+    _schedule_connect_scroll_geometry(
+        win, content_h=content_h, expanded_any=expanded_any
+    )
     host.updateGeometry()
+
+
+def _connect_tab_chrome_height(win: QtWidgets.QWidget) -> int:
+    """Tool row + margins above the panel scroll area."""
+    lay: QtWidgets.QVBoxLayout | None = getattr(win, "_connect_tab_layout", None)
+    host: QtWidgets.QWidget | None = getattr(win, "_connect_panel_host", None)
+    scroll: QtWidgets.QScrollArea | None = getattr(win, "_connect_panel_scroll", None)
+    if lay is None or host is None:
+        return 48
+    skip = {host, scroll}
+    try:
+        margins = lay.contentsMargins()
+        total = int(margins.top()) + int(margins.bottom())
+        spacing = int(lay.spacing())
+        count = int(lay.count())
+    except (TypeError, ValueError, AttributeError):
+        return 48
+    for i in range(count):
+        item = lay.itemAt(i)
+        if item is None:
+            continue
+        w = item.widget()
+        if w is None or w in skip:
+            continue
+        try:
+            total += int(w.sizeHint().height()) + spacing
+        except (TypeError, ValueError, AttributeError):
+            continue
+    return total + 8
+
+
+def _maybe_restore_connect_window_height(win: QtWidgets.QWidget) -> None:
+    """Undo a prior shrink so expanded panels are not trapped in a short window."""
+    try:
+        min_h = int(win.minimumHeight())
+    except (TypeError, ValueError, AttributeError):
+        min_h = 380
+    comfort = max(_STANDARD_CONNECT_WINDOW_HEIGHT, min_h)
+    try:
+        current = int(win.height())
+    except (TypeError, ValueError, AttributeError):
+        return
+    if current >= comfort - 32:
+        return
+    win.resize(win.width(), comfort)
+
+
+def _fit_window_to_connect_content(win: QtWidgets.QWidget) -> None:
+    """Deprecated: window auto-shrink removed (breaks resize after panel toggles)."""
+    _ = win
 
 
 def _schedule_connect_splitter_sizes(win: QtWidgets.QWidget, *, use_defaults: bool = False) -> None:
     """Apply splitter sizes after layout knows the Connect host height."""
-    def _apply() -> None:
-        _apply_connect_splitter_sizes(win, use_defaults=use_defaults)
+    win._connect_splitter_use_defaults = bool(use_defaults)
+    timer: QtCore.QTimer | None = getattr(win, "_connect_splitter_apply_timer", None)
+    if timer is None:
+        t = QtCore.QTimer(win)
+        t.setSingleShot(True)
 
-    QtCore.QTimer.singleShot(0, _apply)
-    QtCore.QTimer.singleShot(80, _apply)
+        def _apply() -> None:
+            use_def = bool(getattr(win, "_connect_splitter_use_defaults", False))
+            _apply_connect_splitter_sizes(win, use_defaults=use_def)
+
+        t.timeout.connect(_apply)
+        win._connect_splitter_apply_timer = t
+        timer = t
+    timer.start(32)
 
 
 def _panel_expanded(row: DisclosureRow | None) -> bool:
     return row is not None and row.tool_button().isChecked()
 
 
-def _apply_row_expand_style(row: DisclosureRow, expanded: bool) -> None:
+def _expanded_panel_count(disclosures: dict[str, DisclosureRow], order: list[str]) -> int:
+    return sum(1 for key in order if _panel_expanded(disclosures.get(key)))
+
+
+def _target_row_height(row: DisclosureRow, key: str, saved: dict[str, int]) -> int:
+    """Expanded row height that never clips visible controls."""
+    row.adjustSize()
+    natural = max(row.sizeHint().height(), row.minimumSizeHint().height())
+    floor = max(_DEFAULT_PANEL_HEIGHTS.get(key, 56), 48)
+    # Keep saved drag-heights bounded, but never shrink below current content size.
+    from_prefs = _panel_expanded_size(key, saved)
+    return max(natural, from_prefs, floor)
+
+
+def _apply_row_expand_style(
+    row: DisclosureRow,
+    expanded: bool,
+    *,
+    sole_expanded: bool = False,
+) -> None:
+    body = row.body_widget()
     if expanded:
-        row.setMinimumHeight(_COLLAPSED_STRIP_HEIGHT)
-        row.setMaximumHeight(16777215)
-        row.setSizePolicy(
-            QtWidgets.QSizePolicy.Policy.Preferred,
-            QtWidgets.QSizePolicy.Policy.Expanding,
-        )
+        row.setMaximumHeight(_WIDGET_SIZE_MAX)
+        if sole_expanded:
+            row.setSizePolicy(
+                QtWidgets.QSizePolicy.Policy.Preferred,
+                QtWidgets.QSizePolicy.Policy.Maximum,
+            )
+            body.setSizePolicy(
+                QtWidgets.QSizePolicy.Policy.Preferred,
+                QtWidgets.QSizePolicy.Policy.Maximum,
+            )
+        else:
+            row.setMinimumHeight(_COLLAPSED_STRIP_HEIGHT)
+            row.setSizePolicy(
+                QtWidgets.QSizePolicy.Policy.Preferred,
+                QtWidgets.QSizePolicy.Policy.Expanding,
+            )
+            body.setSizePolicy(
+                QtWidgets.QSizePolicy.Policy.Preferred,
+                QtWidgets.QSizePolicy.Policy.Expanding,
+            )
     else:
         row.setMinimumHeight(_COLLAPSED_STRIP_HEIGHT)
         row.setMaximumHeight(_COLLAPSED_STRIP_HEIGHT)
         row.setSizePolicy(
             QtWidgets.QSizePolicy.Policy.Preferred,
             QtWidgets.QSizePolicy.Policy.Fixed,
+        )
+        body.setSizePolicy(
+            QtWidgets.QSizePolicy.Policy.Preferred,
+            QtWidgets.QSizePolicy.Policy.Maximum,
         )
 
 
@@ -339,7 +788,11 @@ def _on_connect_panel_toggled(win: QtWidgets.QWidget, key: str, expanded: bool) 
     )
     row = getattr(win, "_connect_panel_disclosures", {}).get(key)
     if row is not None:
-        _apply_row_expand_style(row, expanded)
+        disclosures = getattr(win, "_connect_panel_disclosures", {})
+        order = getattr(win, "_connect_panel_order", [])
+        sole = _expanded_panel_count(disclosures, order) == 1 and expanded
+        row.set_expanded(expanded)
+        _apply_row_expand_style(row, expanded, sole_expanded=sole)
     QtCore.QTimer.singleShot(0, lambda w=win: _apply_connect_splitter_sizes(w))
 
 
@@ -352,14 +805,14 @@ def _set_all_connect_panels(win: QtWidgets.QWidget, expanded: bool) -> None:
             if _panel_expanded(row):
                 _capture_expanded_size_from_splitter(win, key)
     collapsed = {k: not expanded for k in disclosures}
+    order = getattr(win, "_connect_panel_order", [])
+    expanded_count = len(disclosures) if expanded else 0
     win._connect_panel_syncing = True
     try:
         for key, row in disclosures.items():
-            btn = row.tool_button()
-            btn.blockSignals(True)
-            btn.setChecked(expanded)
-            btn.blockSignals(False)
-            _apply_row_expand_style(row, expanded)
+            row.set_expanded(expanded)
+            sole = expanded_count == 1 and expanded
+            _apply_row_expand_style(row, expanded, sole_expanded=sole)
     finally:
         win._connect_panel_syncing = False
     save_connect_panel_prefs(
@@ -368,7 +821,7 @@ def _set_all_connect_panels(win: QtWidgets.QWidget, expanded: bool) -> None:
         collapsed,
         sizes=dict(prefs.get("sizes", {})),
     )
-    QtCore.QTimer.singleShot(0, lambda w=win: _apply_connect_splitter_sizes(w))
+    _apply_connect_splitter_sizes(win)
 
 
 def _reset_connect_splitter_sizes(win: QtWidgets.QWidget) -> None:
@@ -395,44 +848,46 @@ def _apply_connect_splitter_sizes(win: QtWidgets.QWidget, *, use_defaults: bool 
     prefs = load_connect_panel_prefs(ui_mode)
     saved: dict[str, int] = {} if use_defaults else dict(prefs.get("sizes", {}))
 
+    expanded_count = _expanded_panel_count(disclosures, order)
+    sole_expanded = expanded_count == 1
+
+    for key in order:
+        row = disclosures.get(key)
+        if row is None:
+            continue
+        exp = _panel_expanded(row)
+        _apply_row_expand_style(
+            row,
+            exp,
+            sole_expanded=sole_expanded and exp,
+        )
+        if exp and sole_expanded:
+            row.setMinimumHeight(_target_row_height(row, key, saved))
+
     sizes: list[int] = []
     for key in order:
         row = disclosures.get(key)
         if not _panel_expanded(row):
             sizes.append(_COLLAPSED_STRIP_HEIGHT)
             continue
-        sizes.append(max(int(saved.get(key, _DEFAULT_PANEL_HEIGHTS.get(key, 80))), 48))
-
-    expanded_any = _any_panel_expanded(disclosures, order)
-    if expanded_any:
-        collapsed_sum = sum(
-            _COLLAPSED_STRIP_HEIGHT
-            for key in order
-            if not _panel_expanded(disclosures.get(key))
-        )
-        expanded_sum = sum(sizes) - collapsed_sum
-        total_target = _connect_splitter_target_height(win)
-        avail = max(total_target - collapsed_sum, 80)
-        if expanded_sum > 0 and avail > 0:
-            scale = avail / expanded_sum
-            scaled: list[int] = []
-            for i, key in enumerate(order):
-                row = disclosures.get(key)
-                if not _panel_expanded(row):
-                    scaled.append(_COLLAPSED_STRIP_HEIGHT)
-                else:
-                    scaled.append(max(int(sizes[i] * scale), 48))
-            sizes = scaled
+        sizes.append(_target_row_height(row, key, saved))
 
     splitter.blockSignals(True)
     try:
         for i, key in enumerate(order):
-            stretch = 1 if _panel_expanded(disclosures.get(key)) else 0
+            # Only share extra slack when 2+ sections are open (drag handles). One open section
+            # must not absorb the whole tab height after Collapse all.
+            stretch = (
+                1
+                if _panel_expanded(disclosures.get(key)) and not sole_expanded
+                else 0
+            )
             splitter.setStretchFactor(i, stretch)
         splitter.setSizes(sizes)
     finally:
         splitter.blockSignals(False)
-    _reflow_connect_panel_host(win, sizes)
+
+    _reflow_connect_panel_host(win, sizes, sole_expanded=sole_expanded)
 
 
 def _persist_connect_splitter_sizes(win: QtWidgets.QWidget) -> None:
@@ -463,75 +918,12 @@ def _persist_connect_splitter_sizes(win: QtWidgets.QWidget) -> None:
     )
 
 
+def _open_connect_ui_editor(win: QtWidgets.QWidget) -> None:
+    from ui.ui_editor import open_connect_panel_editor
+
+    open_connect_panel_editor(win)
+
+
 def _open_connect_panel_manager(win: QtWidgets.QWidget) -> None:
-    widgets: dict[str, QtWidgets.QWidget] = getattr(win, "_connect_panel_widgets", {})
-    if not widgets:
-        return
-    ui_mode = getattr(win, "_ui_mode", "standard")
-    prefs = load_connect_panel_prefs(ui_mode)
-    order = [k for k in prefs.get("order", []) if k in widgets]
-    for k in CONNECT_PANEL_KEYS:
-        if k in widgets and k not in order:
-            order.append(k)
-    collapsed: dict[str, bool] = dict(prefs.get("collapsed", {}))
-
-    dlg = QtWidgets.QDialog(win)
-    dlg.setWindowTitle("Arrange Connect panels")
-    dlg.resize(400, 360)
-    v = QtWidgets.QVBoxLayout(dlg)
-    v.addWidget(
-        QtWidgets.QLabel(
-            "Drag to reorder. Uncheck to start collapsed. Resize panels on Connect with the drag handles between sections."
-        )
-    )
-    lst = QtWidgets.QListWidget()
-    lst.setDragEnabled(True)
-    lst.setAcceptDrops(True)
-    lst.setDropIndicatorShown(True)
-    lst.setDefaultDropAction(QtCore.Qt.DropAction.MoveAction)
-    lst.setDragDropMode(QtWidgets.QAbstractItemView.DragDropMode.InternalMove)
-    for key in order:
-        item = QtWidgets.QListWidgetItem(CONNECT_PANEL_LABELS.get(key, key))
-        item.setData(QtCore.Qt.ItemDataRole.UserRole, key)
-        item.setFlags(item.flags() | QtCore.Qt.ItemFlag.ItemIsUserCheckable)
-        item.setCheckState(
-            QtCore.Qt.CheckState.Checked
-            if not collapsed.get(key, _default_collapsed(key))
-            else QtCore.Qt.CheckState.Unchecked
-        )
-        lst.addItem(item)
-    v.addWidget(lst, 1)
-    row = QtWidgets.QHBoxLayout()
-    ok = QtWidgets.QPushButton("Apply")
-    cancel = QtWidgets.QPushButton("Cancel")
-    row.addStretch(1)
-    row.addWidget(ok)
-    row.addWidget(cancel)
-    v.addLayout(row)
-
-    def _apply() -> None:
-        new_order: list[str] = []
-        new_collapsed: dict[str, bool] = {}
-        for i in range(lst.count()):
-            item = lst.item(i)
-            if item is None:
-                continue
-            key = str(item.data(QtCore.Qt.ItemDataRole.UserRole) or "").strip()
-            if not key:
-                continue
-            new_order.append(key)
-            new_collapsed[key] = item.checkState() != QtCore.Qt.CheckState.Checked
-        save_connect_panel_prefs(
-            ui_mode,
-            new_order,
-            new_collapsed,
-            sizes=dict(prefs.get("sizes", {})),
-        )
-        _rebuild_connect_panels(win)
-        if hasattr(win, "_log_ui"):
-            win._log_ui("[UI] Updated Connect panel layout.")  # type: ignore[attr-defined]
-        dlg.accept()
-
-    ok.clicked.connect(_apply)
-    cancel.clicked.connect(dlg.reject)
-    dlg.exec()
+    """Legacy entry — UI editor Connect tab."""
+    _open_connect_ui_editor(win)

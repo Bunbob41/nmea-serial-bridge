@@ -1,14 +1,15 @@
 """Standard UI — tabs + path cards."""
 from __future__ import annotations
 
-from PySide6 import QtCore, QtWidgets
+from PySide6 import QtCore, QtGui, QtWidgets
 
-from ui.connect_panels import setup_connect_tab_panels
+from ui.connect_panels import setup_connect_tab_panels, sync_connect_panel_layout
 from ui.controls import (
     create_connect_mini_log,
     create_connect_quick_terminal,
     create_connection_controls,
     create_diagnostics_controls,
+    create_guide_tab,
     create_log_panel,
     create_nmea_controls,
     create_presets_tab,
@@ -28,8 +29,8 @@ class BridgeWindowStandard(BridgeLogicMixin, QtWidgets.QWidget):
         self._ui_mode = "standard"
         self.setStyleSheet(bridge_stylesheet(self._ui_mode, load_theme_choice()))
         self.setWindowTitle(f"Network ↔ COM Bridge v{__version__}")
-        self.resize(1100, 680)
-        self.setMinimumSize(900, 560)
+        self.resize(1100, 520)
+        self.setMinimumSize(900, 380)
         self._init_bridge_state()
         create_connection_controls(self)
 
@@ -98,6 +99,10 @@ class BridgeWindowStandard(BridgeLogicMixin, QtWidgets.QWidget):
 
         act_box = QtWidgets.QWidget()
         act_box.setObjectName("runGroup")
+        act_box.setSizePolicy(
+            QtWidgets.QSizePolicy.Policy.Preferred,
+            QtWidgets.QSizePolicy.Policy.Maximum,
+        )
         al = QtWidgets.QHBoxLayout(act_box)
         al.setContentsMargins(0, 0, 0, 0)
         self.start_btn.setText("Start bridge")
@@ -105,6 +110,7 @@ class BridgeWindowStandard(BridgeLogicMixin, QtWidgets.QWidget):
         al.addWidget(self.start_btn, 2)
         al.addWidget(self.stop_btn, 1)
         self.btn_bench_pair_setup = QtWidgets.QPushButton("Bench pair setup…")
+        self.btn_bench_pair_setup.setObjectName("btnBenchPairSetupRun")
         self.btn_bench_pair_setup.setToolTip(
             "Open the bench/com0com operator guide and run com_free + check_setup preflight "
             "(install com0com separately — see guide §5)."
@@ -141,6 +147,7 @@ class BridgeWindowStandard(BridgeLogicMixin, QtWidgets.QWidget):
         ntrip_l.addLayout(ntrip_form)
 
         connect_tab = QtWidgets.QWidget()
+        self._connect_tab = connect_tab
         setup_connect_tab_panels(
             self,
             connect_tab,
@@ -153,7 +160,6 @@ class BridgeWindowStandard(BridgeLogicMixin, QtWidgets.QWidget):
                 "ntrip": ntrip_box,
             },
         )
-
         tabs = QtWidgets.QTabWidget()
         self._main_tabs = tabs
         tabs.setDocumentMode(True)
@@ -164,18 +170,24 @@ class BridgeWindowStandard(BridgeLogicMixin, QtWidgets.QWidget):
         tabs.addTab(create_presets_tab(self, include_advanced_net=False), "Presets")
         tabs.addTab(create_nmea_controls(self), "NMEA")
         tabs.addTab(create_theme_controls(self), "Theme")
+        tabs.addTab(create_guide_tab(self), "Guide")
         send_tab = create_send_controls(self)
         diag_tab = create_diagnostics_controls(self)
-        tabs.addTab(send_tab, "Send")
+        tabs.addTab(send_tab, "Terminal")
         tabs.addTab(diag_tab, "Diagnostics")
         self._setup_reorderable_tabs(tabs, "main_tabs")
+        tabs.currentChanged.connect(lambda *_args: self._schedule_connect_reflow(0))
+        tabs.currentChanged.connect(lambda *_args: self._schedule_connect_reflow(48))
+        tabs.installEventFilter(self)
+        connect_tab.installEventFilter(self)
         tabs.setTabToolTip(0, "COM, UDP listen, advanced TCP/UDP, Start and Stop")
         tabs.setTabToolTip(1, "Live bridge log, filters, pause, clear, and save")
         tabs.setTabToolTip(2, "Named presets and optional boat LAN reference fields")
         tabs.setTabToolTip(3, "Passthrough, strict filter, or raw binary forwarding")
         tabs.setTabToolTip(4, "Theme studio: randomize, favorite, and seed-lock options")
-        tabs.setTabToolTip(5, "Inject test NMEA while the bridge is Running")
-        tabs.setTabToolTip(6, "File log, automated bench checks, UI layout switch")
+        tabs.setTabToolTip(5, "Transparent project guide: strengths, limits, and current focus")
+        tabs.setTabToolTip(6, "Inject test NMEA to serial or network while the bridge is Running")
+        tabs.setTabToolTip(7, "File log, automated bench checks, UI layout switch")
 
         self.statusBar = QtWidgets.QStatusBar()
         self.status_serial = QtWidgets.QLabel("Serial: stopped")
@@ -201,9 +213,48 @@ class BridgeWindowStandard(BridgeLogicMixin, QtWidgets.QWidget):
         outer.addWidget(self.statusBar)
 
         self._finalize_ui()
+        self._schedule_connect_reflow(0)
+        self._schedule_connect_reflow(80)
+        self._schedule_connect_reflow(180)
 
     def _on_ui_ready(self) -> None:
         self._set_status_banner("stopped", "Stopped", "Load a preset or set COM/UDP, then Start.")
         self._refresh_intent_hint()
         self._restore_ntrip_prefs()
         self._focus_connect_tab()
+
+    def showEvent(self, event: QtGui.QShowEvent) -> None:
+        super().showEvent(event)
+        self._schedule_connect_reflow(0)
+        self._schedule_connect_reflow(60)
+
+    def resizeEvent(self, event: QtGui.QResizeEvent) -> None:
+        super().resizeEvent(event)
+        self._schedule_connect_reflow(24)
+
+    def eventFilter(self, watched: QtCore.QObject, event: QtCore.QEvent) -> bool:
+        et = event.type()
+        if watched in (getattr(self, "_main_tabs", None), getattr(self, "_connect_tab", None)):
+            if et in (
+                QtCore.QEvent.Type.Show,
+                QtCore.QEvent.Type.Resize,
+                QtCore.QEvent.Type.LayoutRequest,
+            ):
+                self._schedule_connect_reflow(0)
+                self._schedule_connect_reflow(48)
+        return super().eventFilter(watched, event)
+
+    def _is_connect_tab_active(self) -> bool:
+        tabs = getattr(self, "_main_tabs", None)
+        ctab = getattr(self, "_connect_tab", None)
+        if tabs is None or ctab is None:
+            return False
+        idx = tabs.currentIndex()
+        return idx >= 0 and tabs.widget(idx) is ctab
+
+    def _schedule_connect_reflow(self, delay_ms: int) -> None:
+        QtCore.QTimer.singleShot(max(int(delay_ms), 0), self._sync_connect_layout_if_active)
+
+    def _sync_connect_layout_if_active(self) -> None:
+        if self._is_connect_tab_active():
+            sync_connect_panel_layout(self)
