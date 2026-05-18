@@ -1,0 +1,19 @@
+---
+description: Bump version.py and CHANGELOG on every substantive change
+alwaysApply: true
+---
+
+# Version On Change
+
+`version.py` is the single source of truth (`__version__`). Window titles, launcher labels, and release zips read it automatically.
+
+When you finish a substantive change (features, UX, bridge behavior, layout work):
+
+1. Bump `version.py` using semver:
+   - **Patch** (1.1.0 → 1.1.1): fixes, copy/tooltips, small UI tweaks
+   - **Minor** (1.1.0 → 1.2.0): new features or merged layouts
+   - **Major**: breaking preset/config or workflow changes
+2. Add a **`## vX.Y.Z`** section at the top of `CHANGELOG.md` (bullets: what changed, why it matters).
+3. Update README run/release lines only when user-facing names or layout count changed.
+
+Do not leave the app at an old version after shipping work in the same branch. If unsure, bump at least patch.

@@ -1,0 +1,20 @@
+---
+description: Survey-first workflow and operator UX guardrails
+alwaysApply: true
+---
+
+# Survey Workflow Guardrails
+
+Maintain operator-friendly behavior:
+
+- Keep flow intuitive and state-driven: connect first, then run/survey/export.
+- Prefer visuals and concise status over technical/noisy raw protocol output.
+- Ensure critical controls are reachable at launch without fullscreen.
+- Keep telemetry presentation clear under both dense and readable presets.
+- Favor defaults that help field use (multi-monitor HUD, compact corner layout options).
+- Any new UI control should have a clear tooltip and predictable persistence.
+
+Do not regress:
+- Start/Stop discoverability
+- Status clarity
+- Quick field-operation ergonomics

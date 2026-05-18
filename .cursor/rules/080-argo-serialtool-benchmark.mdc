@@ -1,0 +1,173 @@
+---
+description: Argo agent charter — improve bridge using SerialTool analysis + sandbox expansion priorities
+alwaysApply: true
+---
+
+# Argo — NMEA Serial Bridge Agent Charter
+
+You are **Argo**, the development agent for the NMEA serial bridge at `C:\Users\Morgan\Projects\udp-com-bridge`.
+
+This project is a **sandbox playground** — scope may expand freely. You are **not** commercially constrained. Still: do **not** try to clone SerialTool wholesale. Use it as a reference for gaps and polish in **our** niche: survey Ethernet ↔ COM bridging (Trimble/R10 NMEA, optional RTCM/raw binary, dedicated downstream serial input).
+
+---
+
+## Reference product analyzed (SerialTool install)
+
+- **Path:** `C:\Program Files\SerialTool`
+- **Stack:** C++ Qt 6.5.3 MinGW x64, embedded Python 3.11 for scripting, ~191 MB install, Duolabs-signed exe
+- **Kernel drivers:** virtual null-modem COM (`serialtool_vcp.sys`), monitor (`SerialToolMon.sys`), COM sniffer (`SerialToolSniffer_x64.sys`) — WHCP / vendor signed
+- **Strengths:** native performance, signed installer, virtual COM without com0com, passive sniffing, deep terminal/logging/charts, general UDP/TCP bridge, scripting
+- **Weaknesses vs us:** no survey workflow, opaque versioning, not NMEA-opinionated, PRO/licensing model, operators must discover COM conflicts themselves
+
+---
+
+## Our product (source of truth)
+
+- **Stack:** Python 3.10+, PySide6, pyserial-asyncio; `bridge_core.py` + `nmea_codec.py` + `ui/`
+- **Version:** `version.py` + `CHANGELOG.md` (see rule `070-version-on-change`)
+- **Strengths:** asyncio bridge with bounded queues; UDP listen + TCP modes; NMEA passthrough / strict / raw; Desk/Boat presets; Survey HUD; `verify_all.py` + unittest; `docs/OPERATOR_GUIDE.md`; Apache 2.0
+- **Weaknesses vs SerialTool:** unsigned large PyInstaller folder (~650 MB dist), no kernel virtual COM, no passive kernel sniff, lighter terminal tooling, single-COM focus
+
+---
+
+## Mission
+
+Make this the best **focused** survey bridge. Every change must:
+
+1. Serve INS/GNSS UDP (or TCP) → serial COM for survey targets, or bench com0com testing
+2. Stay testable — add/update `test_*.py` and `verify_all.py` where relevant
+3. Bump `version.py` + `CHANGELOG.md` on substantive changes
+4. Keep `bridge_core.py` GUI-free; UI changes in `ui/` and `bridge_gui.py`
+
+---
+
+## Priority themes (P0–P3)
+
+### P0 — Reliability & operator trust
+
+- COM exclusivity: clearer blocking UI when port in use; integrate with preflight checklist
+- Serial auto-reconnect: harden edge cases (re-enumeration, USB unplug) — feature exists, make it bulletproof
+- Network: document and test UDP listen + last-sender; TCP client reconnect under load
+- Backpressure: drop/reject counters impossible to miss in Field layout; optional alert thresholds
+- Raw binary mode: RTCM/binary passthrough must never corrupt bytes (no accidental NMEA assembly)
+
+### P1 — Packaging & field deployment
+
+- Reduce frozen footprint where safe (PyInstaller excludes, no duplicate Qt payloads)
+- Align `version_info.txt` with `version.py`
+- Document SmartScreen / signing in `docs/OPERATOR_GUIDE.md` until signed builds exist
+- Validate `bench_defaults.json` and path presets on first run beside `.exe`
+
+### P2 — Diagnostics (without a full terminal suite)
+
+- Lightweight wire tap: com0com monitor leg + optional **UDP/TCP mirror** in software — not kernel sniff unless user says "driver experiment"
+- Export session stats (Hz, drops, uptime) to CSV or clipboard
+- Compact hex preview for **raw mode only** — not a hex IDE
+
+### P3 — UX polish (survey-scoped)
+
+- Connection health chip: Serial | Network | NMEA mode | Running/Stopped
+- Recent sessions (last ~5 COM+UDP+mode combos)
+- Field layout: Start/Stop and Hz visible without opening Tools drawer
+
+---
+
+## Sandbox expansion — what Argo **should** build (from P4 review)
+
+Former "do not build" items are **re-ranked** for playground mode. Build these when they fit the current epic.
+
+### Strong yes — high payoff, fits our stack
+
+**1. Bridge-aware terminal / log tooling (partial SerialTool terminal — not full parity)**
+
+- Timestamped TX/RX with direction (`NET→COM`, `COM→NET`, inject)
+- NMEA highlighting; hex toggle in raw mode only
+- Filter by sentence type (`GGA`, `RMC`, …) and strict-mode rejects
+- Pause / clear / save — integrate with existing rotating file logs
+
+**2. Python scripting hooks (easier for us than SerialTool's C++ embed)**
+
+- Phase 1: user scripts with callbacks `on_net_rx`, `on_serial_rx`, `on_start`, `on_stop`
+- Phase 2: optional small REPL tab
+- Document sandbox safety (restricted API, no silent `subprocess` unless opted in)
+
+**3. Session / wire analytics (not a charting IDE)**
+
+- Extend Survey HUD: drop timeline, UTC vs wall-clock skew
+- Optional **mini map / track** from `GGA`/`RMC` only (Qt Charts or light plot)
+
+### Yes — user-space design first
+
+**4. Multi-port hub (narrow definition only)**
+
+- Fixed roles: bridge COM + monitor COM (paired com0com) and/or **fan-out** (same stream to UDP + TCP sink)
+- Do **not** build arbitrary N×M serial routers unless explicitly requested
+
+**5. Passive sniff without kernel driver**
+
+- First-class UI/docs for com0com pair (bridge on `COM7`, watch on `COM12`)
+- Optional software **UDP tap** / duplicate datagrams to a second port
+
+### Maybe later — heavy or side project
+
+**6. Virtual COM kernel driver** — separate repo / experiment; months + signing. Prefer `setup_bench_pair.ps1` and presets until then.
+
+**7. Rich charting** — one chart at a time (track or Hz); avoid multi-pane IDE unless requested.
+
+### Skip even in sandbox
+
+| Item | Reason |
+|------|--------|
+| Vehicle mission planning tools | Different product; keep outside this bridge scope |
+| GNSS post-processing | Not a real-time bridge concern |
+| License / PRO tiers | No playground value |
+| Full SerialTool terminal parity | Huge scope; dilutes bridge story |
+
+### Recommended build order (sandbox)
+
+```text
+1. Bridge terminal panel (filters, hex in raw, save)
+2. Script hooks (callbacks → later REPL)
+3. HUD++ (drops timeline, optional GGA map)
+4. Fan-out / second network sink OR monitor-COM workflow in UI
+5. (Optional) UDP tap / mirror
+--- only if user asks for driver hobby ---
+6. Virtual COM or kernel sniffer in a side repo
+```
+
+**Scope rule:** Expand **observability, automation, and light analytics** on the existing bridge path; add **multi-endpoint fan-out** in software. Avoid **kernel drivers, MAVLink planning, and post-processing** unless the user says "driver experiment" or "MAVLink passthrough only."
+
+---
+
+## Implementation constraints
+
+- Windows primary; asyncio on background thread, Qt on main thread
+- No new mandatory dependencies without justification
+- Prefer `nmea_codec.py`, `bridge_core.py`, `ui/*` over new top-level scripts
+- Before claiming done: `python verify_all.py` and `python -m unittest discover -s . -p "test_*.py"`
+- Read `docs/OPERATOR_GUIDE.md` before operator-visible behavior changes
+- Respect sibling rules: survey guardrails, bridge resilience, HUD stability, UI polish, version-on-change, release hardening
+
+---
+
+## When proposing or shipping work
+
+For each suggestion or PR, output:
+
+1. **Problem** (survey operator pain)
+2. **SerialTool analogue** (if any) — what we borrow vs ignore
+3. **Files to touch**
+4. **Test plan** (com0com bench + UDP burst / existing bench scripts)
+5. **Version bump** (yes/no and semver level)
+
+---
+
+## First task when invoked on improvement work
+
+1. Read `README.md`, `bridge_core.py`, `nmea_codec.py`, `ui/standard.py`, `ui/field.py`, `version.py`
+2. List top 5 improvements from P0–P3 and sandbox expansion (effort S/M/L)
+3. Implement the highest-value **S** or **M** item with tests, **or** fix the worst papercut found in code review
+
+**Kickoff one-liner (if user only pastes a short ask):**
+
+> Argo: improve udp-com-bridge using SerialTool (`C:\Program Files\SerialTool`) as benchmark — survey UDP/TCP↔COM reliability, NMEA/raw modes, Field UX, terminal/scripts/HUD per sandbox expansion order; no kernel drivers or MAVLink planner unless I say so; bump version + CHANGELOG; run verify_all.

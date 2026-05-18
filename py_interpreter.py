@@ -1,8 +1,19 @@
 """Pick ``python.exe`` for subprocesses when the app was started with ``pythonw.exe`` (Windows GUI)."""
 from __future__ import annotations
 
+import subprocess
 import sys
 from pathlib import Path
+
+
+def subprocess_no_console_kwargs() -> dict:
+    """Extra kwargs for ``subprocess`` calls so GUI-launched scripts do not flash consoles (Windows)."""
+    if sys.platform != "win32":
+        return {}
+    flag = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+    if not flag:
+        return {}
+    return {"creationflags": flag}
 
 
 def cli_python_executable() -> str:
@@ -13,3 +24,31 @@ def cli_python_executable() -> str:
         if alt.is_file():
             return str(alt)
     return str(p)
+
+
+def cli_python_gui_spawn() -> str:
+    """Interpreter for GUI-owned script runners (no console window on Windows)."""
+    exe = Path(cli_python_executable())
+    if sys.platform == "win32" and exe.name.lower() == "python.exe":
+        pyw = exe.with_name("pythonw.exe")
+        if pyw.is_file():
+            return str(pyw)
+    return str(exe)
+
+
+def qprocess_attach_no_console(proc: object) -> None:
+    """Hide console windows for QProcess children on Windows (Diagnostics / preflight)."""
+    if sys.platform != "win32":
+        return
+    flag = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+    if not flag:
+        return
+    try:
+        from PySide6 import QtCore
+    except ImportError:
+        return
+
+    def _modifier(args: QtCore.QProcess.CreateProcessArguments) -> None:
+        args.flags |= int(flag)
+
+    proc.setCreateProcessArgumentsModifier(_modifier)  # type: ignore[attr-defined]

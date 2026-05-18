@@ -27,7 +27,7 @@ def main() -> int:
 
     print(f"[bench_all] defaults: {com} @ {d['baud']}, UDP :{port}")
 
-    code = _run([py, script("check_setup.py"), "--port", str(port)])
+    code = _run([py, script("check_setup.py")])
     if code != 0:
         return code
 

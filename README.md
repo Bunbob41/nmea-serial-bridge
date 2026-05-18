@@ -1,40 +1,46 @@
 # nmea-serial-bridge
 
-Windows desktop app that **bidirectionally bridges** NMEA-style (text) traffic between **UDP/TCP** and a **serial COM port**. Built for survey / USV-style workflows: Ethernet NMEA (Trimble/INS or simulator) → bridge → physical COM → autopilot GPS UART (e.g. Cube Orange), with Mission Planner on a separate path.
+**Current release: v1.3.1** — Windows desktop app that **bidirectionally bridges** traffic between **UDP/TCP** and a **serial COM port**. Primary use: **NMEA 0183 text** for survey / USV workflows — Ethernet GNSS or INS (e.g. Trimble R10) → bridge → physical COM destination.
 
-**Stack:** Python 3.10+, [PySide6](https://doc.qt.io/qtforpython/), [pyserial-asyncio](https://pyserial-asyncio.readthedocs.io/). Bridge I/O runs on a **background asyncio thread** so the GUI stays responsive.
+**Stack:** Python 3.10+, [PySide6](https://doc.qt.io/qtforpython/), [pyserial-asyncio](https://pyserial-asyncio.readthedocs.io/). Bridge I/O runs on a **background asyncio thread**; the GUI stays on the Qt main thread.
+
+**Operator manual:** [`docs/OPERATOR_GUIDE.md`](docs/OPERATOR_GUIDE.md)
+
+**Frozen build:** `.\release.ps1` (or `.\build.ps1` then zip under `dist\`)
 
 ## Features
 
 - **Network modes (one per session)**  
-  - **UDP listen** — bind on this PC; replies to serial go to the **last UDP sender** (standard for bench + boat INS).  
-  - **UDP remote** — fixed peer (advanced; blocked at start for Desk/Boat presets).  
-  - **TCP server** / **TCP client** — optional under *Advanced* network modes.
+  - **UDP listen** — bind on this PC; replies toward serial go to the **last UDP sender** (typical for bench + boat INS).  
+  - **UDP remote** — fixed peer (advanced).  
+  - **TCP server** / **TCP client** — under *Advanced* network; TCP client auto-reconnects with configurable delay.
 
-- **Desk / Boat presets** — **Connect** tab: pick **Desk test** (com0com + `127.0.0.1`) or **Boat / INS** (`production` block in `bench_defaults.json`). Start validation requires a path and UDP listen.
+- **Serial** — COM list, baud, refresh; **auto-reconnect COM** (optional, on by default) if the port drops while the bridge stays Running.  
+- **Named presets** — **Presets** tab (or survey bar **Presets** menu): load, save, save as, delete; stored in `%USERPROFILE%\.cursor-udp-com-bridge\path_presets.json`. Shipped defaults in `bench_defaults.json` (or beside the `.exe`).
 
-- **Serial** — COM list, baud, refresh; friendly errors for port-in-use and timeouts.
+- **Queues & backpressure** — bounded queues; drop / reject counters in the status bar and Survey HUD.
 
-- **Queues & backpressure** — bounded queues; **drop / reject / queue depth** in the status bar.
+- **Live log** — throttled; optional **verbose** per-sentence view (NMEA text modes).
 
-- **Live log** — throttled updates; optional **verbose** per-sentence view.
+- **NMEA tab** — **Passthrough** (recommended for Trimble NMEA), **Strict** (+ checksum + sentence filter), or **Raw binary** (RTCM / other binary passthrough).
 
-- **Send tab** — inject NMEA (`\r\n` normalized); **Send → serial**, **network**, or **both** while running.
+- **Send tab** — inject NMEA text (`\r\n` normalized); **not** for binary streams.
 
-- **NMEA tab** — **Passthrough** or **Strict** (+ sentence-type filter).
+- **Diagnostics** — file log, checklists, UDP burst, TCP stress/demo, verify suite.
 
-- **Diagnostics tab** — optional rotating file log (PC time | GPS UTC | direction | payload); clear on-screen log; quick bench commands.
+- **UI layouts** — **Standard** (Connect + Presets + tool tabs + log) and **Field** (log-first, survey bar, tools drawer). Launcher remembers choice.
 
-- **Three UI layouts** — choose at launch (see [Run](#run)).
-- **Survey / Hypack workflow** — **View → Full screen** (F11) for large displays; **View → Pop out survey stats** (Ctrl+Shift+S) for a second monitor with large Hz / transport / session totals (Hypack on one screen, bridge on another). MAVLink / Mission Planner stays on its own COM; this app is the NMEA ↔ bridge path.
+- **Survey workflow** — Survey HUD popout, **GNSS** status (GGA fix / sats / HDOP), product demo teleprompter, preflight menus, themes.
+- **Connect tab (Standard)** — collapsible panels, NTRIP corrections (phase 1), quick log/terminal.
+- **Log tab** — full live log (replaces side-only log in Standard).
 
 ## Requirements
 
 - **Windows** (primary target).  
-- **Python 3.10+**  
-- COM drivers as usual for your hardware.
+- **Python 3.10+** for dev; frozen **`.exe`** for field PCs.  
+- COM drivers for your hardware (USB serial, com0com on bench).
 
-## Install
+## Install (development)
 
 ```powershell
 cd nmea-serial-bridge
@@ -46,64 +52,60 @@ python -m pip install -r requirements.txt
 
 ## Run
 
-### Launcher (pick a UI)
+### Launcher
 
 ```powershell
 .\launch_bridge_gui.bat
-```
-
-Or:
-
-```powershell
+# or
 python launcher.py
+python launcher.py --ui field
+python bridge_gui.py --ui field --demo
 ```
 
-| UI | Description |
-|----|-------------|
-| **Standard** | Tabs: Connect, NMEA, Send, Diagnostics + live log panel |
-| **Minimal** | Light theme, compact controls, log on top |
-| **Log-first** | Dark theme, log dominates; tools in a drawer |
+| UI | Use |
+|----|-----|
+| **Standard** | Connect, NMEA, Send, Diagnostics + log |
+| **Field** | Large log, COM/UDP strip, Tools drawer, survey bar (**Presets**, **Recent**, **Checklists**, **HUD**, **Demo**) |
 
-The launcher can **remember** your last choice (`%USERPROFILE%\.cursor-udp-com-bridge\ui_choice.json`).
+Saved layout: `%USERPROFILE%\.cursor-udp-com-bridge\ui_choice.json`
 
-**Desktop shortcut:** run `.\create_desktop_shortcut.bat` from the repo folder. It writes **NMEA Serial Bridge.lnk** (points at `launch_bridge_gui.bat`, silent `pythonw` + layout picker / saved UI) and **NMEA Serial Bridge (console menu).lnk** (numbered menu in a console). After **moving or renaming the project folder**, run it again so **Start in** and targets stay correct.
-
-### Direct launch (skip menu)
-
-```powershell
-python bridge_gui.py
-python bridge_gui.py --ui minimal
-python bridge_gui.py --ui logfirst
-python bridge_gui.py --ui standard
-```
+**Desktop shortcut:** `.\create_desktop_shortcut.bat` (re-run after moving the project folder).
 
 ### Typical workflow
 
-1. **Connect** — **Desk test** or **Boat / INS**, confirm COM + UDP port, **Start**. Wait for **Running** in the log.  
-2. **NMEA** — Passthrough for first tests; Strict if you need filtering.  
-3. **Send** — manual inject (bench: **Send → serial**, watch the **paired** com0com port, not the bridge COM).  
-4. **Diagnostics** — optional file log path.  
-5. **Stop** when finished.
+1. **Presets** — load bench or boat preset → confirm COM + UDP on **Connect** (Standard) or the strip (Field) → **Start** → **Running**.  
+2. **NMEA** — **Passthrough** for Trimble/R10 NMEA; **Raw** only for binary RTCM or other non-NMEA streams.  
+3. **Send** — manual inject on bench (watch **paired** com0com port, not bridge COM).  
+4. **Stop** when finished.
 
-### Bench (com0com on one PC)
+### Bench (com0com)
 
-Edit `bench_defaults.json` if needed. Bridge owns e.g. **COM7**; watch the **paired** port (e.g. **COM12**) in Tera Term.
+Bridge owns e.g. **COM7**; Tera Term on **paired** port (e.g. **COM12**). Simulator **sends to** `127.0.0.1:10110` — bridge **listens**.
 
 ```powershell
 python com_free.py
 python check_setup.py
 python bridge_gui.py
-# Start bridge (Desk preset) then:
-python nmea_static_edh.py
+python nmea_static_sample.py
 ```
 
 ### Boat (INS on Ethernet)
 
-Set `production` in `bench_defaults.json` (COM, `pc_ip`, `ins_ip`, UDP port). Static IP on survey Ethernet recommended.
+INS **sends** UDP to survey PC `pc_ip:port`. Bridge **listens**; does not dial the INS. Static IP on survey Ethernet recommended; **Tailscale** is fine for R&D if INS/simulator targets the Tailscale IP and firewall allows UDP.
 
 ```powershell
 python check_setup.py --production
 ```
+
+### Network notes (MikroTik / Tailscale)
+
+| Link | Guidance |
+|------|----------|
+| **MikroTik point-to-point** | Low jitter; treat like LAN. INS unicast to survey PC IP:port. |
+| **Tailscale** | Works for lab/R&D when the sender uses the PC’s **Tailscale IP** and UDP/TCP is allowed. Extra latency — validate Hz on Survey HUD. |
+| **TCP client mode** | Bridge reconnects to server automatically; tune delay under Advanced. |
+
+This app does **not** configure routers or VPN — only binds/ connects on the Windows PC.
 
 ## Verify
 
@@ -111,9 +113,7 @@ python check_setup.py --production
 python verify_all.py
 ```
 
-Or `.\verify_all.bat` from the project folder (not from `System32`).
-
-Includes: unit tests, `check_setup`, GUI smoke (all three UIs), and bench steps (`com_free`, headless bridge, stress). If the bench UDP port is already bound (bridge **Running**), exclusive COM/UDP steps are skipped unless you set `VERIFY_ALL_NO_SKIP=1`.
+From project folder (not `System32`). Skips exclusive COM/UDP steps if bridge already Running unless `VERIFY_ALL_NO_SKIP=1`.
 
 ## Tests
 
@@ -121,57 +121,35 @@ Includes: unit tests, `check_setup`, GUI smoke (all three UIs), and bench steps 
 python -m unittest discover -s . -p "test_*.py" -v
 ```
 
-## Install on many PCs (frozen build)
+## Frozen build (field PCs)
 
-Same build on every machine: use **GitHub Releases** (or copy the zip on a USB stick).
-
-1. On each PC: open the repo **Releases** page, download **`nmea-serial-bridge-v<version>-win64.zip`** (the asset, not “Source code”).
-2. Unzip anywhere you like; keep the whole **`nmea-serial-bridge`** folder.
-3. Run **`nmea-serial-bridge.exe`**. First launch: **layout picker** (Standard / Minimal / Log-first). Optional: put `bench_defaults.json` next to the exe for Desk/Boat presets.
-4. Windows **SmartScreen** may warn (unsigned app) — “More info” → run anyway if you trust the build.
-
-Repeat whenever you publish a newer **v…** zip; no Python install required on those PCs.
-
-## Build & release (authoring the zip)
-
-**One command** — build, zip, optional GitHub publish (version comes from `version.py`; zip name matches):
+1. Download `nmea-serial-bridge-v<version>-win64.zip` from GitHub Releases.  
+2. Unzip; run `nmea-serial-bridge.exe`.  
+3. Optional `bench_defaults.json` beside exe for fleet defaults.
 
 ```powershell
-.\release.ps1                 # dist\nmea-serial-bridge-v<version>-win64.zip
-.\release.ps1 -Publish        # + git tag v<version> + gh release (needs GitHub CLI + `gh auth login`)
-.\release.ps1 -PublishOnly   # upload existing zip only (no PyInstaller rebuild — e.g. after login failed mid-publish)
-.\release.ps1 -SkipTests      # faster rebuild while iterating (skips unittest in build.ps1)
+.\release.ps1
+.\release.ps1 -Publish
 ```
 
-**Manual steps:**
-
-```powershell
-.\build.ps1
-cd dist
-Compress-Archive -Path nmea-serial-bridge -DestinationPath nmea-serial-bridge-v<version>-win64.zip
-```
-
-Then [create a release](https://github.com/Bunbob41/nmea-serial-bridge/releases/new): tag **`v<version>`** (same string as `version.py`), attach the zip.
-
-**Cadence (personal / small fleet):** bump `version.py` when you want a new drop → commit → `.\release.ps1` → `gh auth login` once per machine → `.\release.ps1 -Publish` (or `-PublishOnly` if the zip is already built). Human-readable notes live in **`CHANGELOG.md`**.
+Version: `version.py` + `CHANGELOG.md`.
 
 ## Project layout
 
 | Path | Role |
 |------|------|
-| `bridge_core.py` | Async bridge engine + worker thread |
-| `bridge_gui.py` | GUI entry (`--ui`) |
-| `launcher.py` | Interactive UI picker |
-| `ui/` | Standard, minimal, log-first layouts + shared logic |
-| `bridge_headless.py` | UDP→COM test without GUI |
-| `bench_defaults.json` | Desk + `production` presets |
-| `check_setup.py` | Pre-flight (`--production` for boat) |
+| `bridge_core.py` | Async engine (serial, UDP/TCP, queues, reconnect) |
+| `nmea_codec.py` | Line assembly, strict checksum, filters |
+| `bridge_gui.py` | GUI entry |
+| `ui/` | Standard, Field, demo, HUD, diagnostics |
+| `docs/OPERATOR_GUIDE.md` | Step-by-step operator manual |
+| `bench_defaults.json` | Shipped Desk + production defaults |
 
-## Notes
+## What this app is not
 
-- **Virtual COM** (com0com): confirm which two ports are **paired**; do not open Tera Term on the same COM the bridge uses.  
-- For UDP bench tests, the **bridge listens**; simulators must **send to** `127.0.0.1:10110`, not listen on that port.  
-- Forwards **bytes** only — not a substitute for autopilot failsafes, level shifting, or mission QA.
+- Not a GNSS post-processor or vehicle configuration tool.  
+- Not a binary protocol encoder — **Raw** mode only forwards bytes unchanged.  
+- Forwards **bytes** — validate on bench before operational use.
 
 ## License
 

@@ -30,7 +30,7 @@ def main() -> int:
         print("  - Bridge GUI still running (Stop bridge, or close app)")
         print("  - Stuck python bridge_headless.py (end task in Task Manager)")
         print("  - Tera Term / PuTTY / NMEA Simulator on the same COM")
-        print("  - Mission Planner or other app using the port")
+        print("  - Another serial app using the same COM port")
         print()
         print("[com_free] Python processes:")
         try:

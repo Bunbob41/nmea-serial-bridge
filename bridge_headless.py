@@ -10,7 +10,7 @@ from bench_config import load_bench_defaults
 from bench_udp_test import port_has_listener
 from bridge_core import NetMode, SerialNetBridge, configure_windows_event_loop_policy
 from nmea_codec import NmeaMode
-from nmea_static_edh import build_gga, build_rmc
+from nmea_static_sample import SAMPLE_ALT_M, SAMPLE_LAT_DEG, SAMPLE_LON_DEG, build_gga, build_rmc
 
 
 async def _run(com: str, baud: int, host: str, port: int, seconds: float) -> int:
@@ -51,7 +51,10 @@ async def _run(com: str, baud: int, host: str, port: int, seconds: float) -> int
         n = 0
         while loop.time() < end:
             t = datetime.now(timezone.utc)
-            for line in (build_gga(t, 38.685746, -121.082524, 255.0), build_rmc(t, 38.685746, -121.082524)):
+            for line in (
+                build_gga(t, SAMPLE_LAT_DEG, SAMPLE_LON_DEG, SAMPLE_ALT_M),
+                build_rmc(t, SAMPLE_LAT_DEG, SAMPLE_LON_DEG),
+            ):
                 sock.sendto((line + "\r\n").encode("ascii"), dest)
             n += 1
             await asyncio.sleep(0.2)

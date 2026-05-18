@@ -10,7 +10,15 @@ python -m pip install --upgrade pip
 python -m pip install -r requirements.txt
 python -m pip install pyinstaller>=6.0
 
+python tools\sync_version_info.py
+python verify_all.py
+if ($LASTEXITCODE -ne 0) {
+    throw "verify_all failed"
+}
 python -m unittest discover -s . -p "test_*.py" -v
+if (Test-Path "assets\app-icon.png") {
+    python tools\make_app_icon.py
+}
 python -m PyInstaller nmea_serial_bridge.spec --noconfirm
 
 Write-Host ""

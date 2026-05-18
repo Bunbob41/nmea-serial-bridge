@@ -16,11 +16,12 @@ APP_HIDDEN = [
     "version",
     "bridge_core",
     "bench_config",
-    "nmea_static_edh",
+    "nmea_static_sample",
     "bench_udp_test",
     "ui",
     "ui.registry",
     "ui.standard",
+    "ui.field",
     "ui.minimal",
     "ui.logfirst",
     "ui.mixin",
@@ -30,13 +31,18 @@ APP_HIDDEN = [
     "ui.stats_popout",
     "ui.styles",
     "ui.picker",
+    "ui.app_icon",
+    "ui.theme_choice",
+    "ui.theme_palette",
 ]
 
 a = Analysis(
     ["bridge_gui.py"],
     pathex=[str(root)],
     binaries=pyside_binaries,
-    datas=pyside_datas + [(str(root / "bench_defaults.json"), ".")],
+    datas=pyside_datas
+    + [(str(root / "bench_defaults.json"), ".")]
+    + ([(str(root / "assets"), "assets")] if (root / "assets").is_dir() else []),
     hiddenimports=[*APP_HIDDEN, *pyside_hidden],
     hookspath=[],
     hooksconfig={},
@@ -67,6 +73,9 @@ exe = EXE(
     codesign_identity=None,
     entitlements_file=None,
     version="version_info.txt" if (root / "version_info.txt").is_file() else None,
+    icon=str(root / "assets" / "app-icon.ico")
+    if (root / "assets" / "app-icon.ico").is_file()
+    else None,
 )
 
 coll = COLLECT(

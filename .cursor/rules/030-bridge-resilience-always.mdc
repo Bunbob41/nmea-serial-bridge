@@ -1,0 +1,20 @@
+---
+description: Bridge runtime resilience and UI responsiveness under load
+alwaysApply: true
+---
+
+# Bridge Resilience
+
+For `bridge_core.py` and mixin/UI integration:
+
+- Prioritize UI responsiveness under backpressure and disconnect storms.
+- Rate-limit/coalesce high-frequency log or stats updates that cross thread/UI boundaries.
+- Avoid unbounded queues or event spam paths.
+- Keep drop/reject/backpressure reporting accurate, but not event-flooding.
+- During intensive UI interactions (e.g., resize), avoid unnecessary repaint churn.
+- Prefer graceful degradation over lockups when peers disconnect unexpectedly.
+
+Before finishing bridge-performance changes:
+- Simulate consumer disconnect and queue pressure
+- Confirm app remains interactive
+- Confirm stats still update correctly

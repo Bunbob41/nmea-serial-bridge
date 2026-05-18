@@ -11,17 +11,30 @@ if (-not (Test-Path $bat)) {
 $desk = [Environment]::GetFolderPath("Desktop")
 $w = New-Object -ComObject WScript.Shell
 
-function New-BridgeShortcut($name, $targetBat, $desc) {
+$iconIco = Join-Path $proj "assets\app-icon.ico"
+$distExe = Join-Path $proj "dist\nmea-serial-bridge\nmea-serial-bridge.exe"
+
+function New-BridgeShortcut($name, $targetPath, $desc, $iconPath) {
     $lnk = Join-Path $desk $name
     $s = $w.CreateShortcut($lnk)
-    $s.TargetPath = $targetBat
+    $s.TargetPath = $targetPath
     $s.WorkingDirectory = $proj
     $s.Description = $desc
+    if ($iconPath -and (Test-Path $iconPath)) {
+        $s.IconLocation = $iconPath
+    }
     $s.Save()
-    Write-Host "OK: $lnk -> $targetBat"
+    Write-Host "OK: $lnk -> $targetPath"
 }
 
-New-BridgeShortcut "NMEA Serial Bridge.lnk" $bat "NMEA bridge: silent start, saved UI or layout picker (pythonw + launcher.py)"
+$launchTarget = $bat
+$launchIcon = $iconIco
+if (Test-Path $distExe) {
+    $launchTarget = $distExe
+    $launchIcon = $distExe
+}
+
+New-BridgeShortcut "NMEA Serial Bridge.lnk" $launchTarget "NMEA bridge: saved UI or layout picker" $launchIcon
 if (Test-Path $batMenu) {
-    New-BridgeShortcut "NMEA Serial Bridge (console menu).lnk" $batMenu "NMEA bridge: numbered UI menu in a console window"
+    New-BridgeShortcut "NMEA Serial Bridge (console menu).lnk" $batMenu "NMEA bridge: numbered UI menu in a console window" $launchIcon
 }

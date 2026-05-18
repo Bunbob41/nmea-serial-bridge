@@ -18,7 +18,7 @@ import serial_asyncio
 from serial_asyncio import connection_for_serial
 from PySide6 import QtCore
 
-from log_serial_coalesce import serial_timeout_line_suppress
+from log_serial_coalesce import serial_timeout_line_suppress, ui_safe_text
 
 from nmea_codec import (
     NMEA_SENTENCE_TYPES,
@@ -26,8 +26,10 @@ from nmea_codec import (
     NmeaLineAssembler,
     NmeaMode,
     feed_nmea_times_from_lines,
+    format_binary_log_preview,
     parse_nmea_utc,
 )
+from survey_quality import feed_nmea_navigation_quality, nav_quality_stale
 
 NET_TO_SERIAL_QUEUE_MAX = 512
 SERIAL_TO_NET_QUEUE_MAX = 512
@@ -47,6 +49,11 @@ SERIAL_OPEN_TIMEOUT_S = 5.0
 SERIAL_WRITE_TIMEOUT_S = 2.0
 START_WATCHDOG_MS = 15_000
 START_ASYNC_TIMEOUT_S = 10.0
+STATS_EMIT_MIN_INTERVAL_S = 0.20
+UI_EVENT_LOG_MIN_INTERVAL_S = 0.40
+# com0com / driver often splits one COM write into several read() calls; coalesce for HUD wire Hz.
+SERIAL_WIRE_HZ_COALESCE_S = 0.12
+SERIAL_RECONNECT_INTERVAL_S = 2.0
 
 
 def rolling_hz_last_second(times: deque[float], window_s: float = 1.0) -> float:
@@ -59,7 +66,7 @@ def rolling_hz_last_second(times: deque[float], window_s: float = 1.0) -> float:
 
 
 def configure_windows_event_loop_policy() -> None:
-    """Selector policy is deprecated on Python 3.14+; qasync QEventLoop does not need it."""
+    """Selector policy is deprecated on Python 3.14+; bridge uses a dedicated asyncio thread."""
     if sys.platform != "win32":
         return
     if sys.version_info >= (3, 14):
@@ -101,7 +108,7 @@ def _friendly_serial_error(exc: BaseException, port: str) -> str:
     ):
         return (
             f"Cannot open {port}: access denied or port in use. "
-            "Close Mission Planner, PuTTY, another bridge, or the device manager test dialog, then try again."
+            "Close PuTTY, another bridge, or any other app using that COM port, then try again."
         )
     if isinstance(exc, FileNotFoundError) or (
         isinstance(exc, OSError) and getattr(exc, "winerror", None) == 2
@@ -167,17 +174,39 @@ class _SurveyFileFormatter(logging.Formatter):
         return f"{t}.{int(record.msecs):03d}"
 
 
+def file_log_retention_hint(max_mb: int, backup_count: int) -> str:
+    """Rough on-disk span for operator planning (POSPAC / post-processing)."""
+    total_mb = max_mb * (1 + max(0, backup_count))
+    # Typical survey NMEA ~50–120 B/line; 1–20 Hz → wide range.
+    low_min = int((max_mb * 1024 * 1024) / max(20 * 120, 1) / 60)
+    high_min = int((max_mb * 1024 * 1024) / max(1 * 50, 1) / 60)
+    return (
+        f"~{max_mb} MB per file × {1 + backup_count} files ≈ {total_mb} MB on disk. "
+        f"One file often lasts ~{low_min}–{high_min} min at 1–20 Hz NMEA "
+        f"(RTCM/corrections or high-rate traffic fill much faster)."
+    )
+
+
 class _FileSurveyLog:
     """Rotating file: PC time | last GPS UTC | direction | payload."""
 
-    def __init__(self, path: Path):
+    def __init__(
+        self,
+        path: Path,
+        *,
+        max_bytes: int = FILE_LOG_MAX_BYTES,
+        backup_count: int = FILE_LOG_BACKUP_COUNT,
+    ):
         self.path = path
         self._logger = logging.getLogger(f"survey_bridge.{id(self)}")
         self._logger.setLevel(logging.INFO)
         self._logger.handlers.clear()
         path.parent.mkdir(parents=True, exist_ok=True)
         fh = RotatingFileHandler(
-            path, maxBytes=FILE_LOG_MAX_BYTES, backupCount=FILE_LOG_BACKUP_COUNT, encoding="utf-8"
+            path,
+            maxBytes=max(1024 * 1024, int(max_bytes)),
+            backupCount=max(0, int(backup_count)),
+            encoding="utf-8",
         )
         fmt = _SurveyFileFormatter("%(asctime)s | %(gps)s | %(direction)s | %(message)s")
         fh.setFormatter(fmt)
@@ -222,7 +251,9 @@ class SerialNetBridge:
         tcp_reconnect_delay: float = DEFAULT_TCP_RECONNECT_S,
         nmea_mode: NmeaMode = NmeaMode.PASSTHROUGH,
         nmea_filter: Optional[NmeaFilter] = None,
+        serial_auto_reconnect: bool = True,
         ui_log_verbose: Optional[Callable[[], bool]] = None,
+        ui_log_hex: Optional[Callable[[], bool]] = None,
         loop: Optional[asyncio.AbstractEventLoop] = None,
         ui_log: Optional[Callable[[str], None]] = None,
         status_cb: Optional[Callable[[str, str], None]] = None,
@@ -241,7 +272,10 @@ class SerialNetBridge:
         self.tcp_reconnect_delay = max(TCP_RECONNECT_MIN_S, min(TCP_RECONNECT_MAX_S, tcp_reconnect_delay))
         self.nmea_mode = nmea_mode
         self.nmea_filter = nmea_filter or NmeaFilter()
+        self.serial_auto_reconnect = bool(serial_auto_reconnect)
         self._ui_log_verbose = ui_log_verbose or (lambda: False)
+        self._ui_log_hex = ui_log_hex or (lambda: False)
+        self._last_network_status = "Network: starting…"
 
         self.loop = loop or asyncio.get_event_loop()
         self._ui_log = ui_log or (lambda *_a, **_k: None)
@@ -260,6 +294,7 @@ class SerialNetBridge:
 
         self.last_udp_addr = None
         self._gps_state: list[Optional[str]] = [None]
+        self._nav_quality_state: list[Optional[dict]] = [None]
 
         self.net_to_serial: asyncio.Queue[bytes] = asyncio.Queue(maxsize=NET_TO_SERIAL_QUEUE_MAX)
         self.serial_to_net: asyncio.Queue[bytes] = asyncio.Queue(maxsize=SERIAL_TO_NET_QUEUE_MAX)
@@ -287,12 +322,30 @@ class SerialNetBridge:
         self._network_ready = False
         self._serial_io_err_last_msg: Optional[str] = None
         self._serial_io_err_last_mono: float = 0.0
+        self._last_stats_emit_mono: float = 0.0
+        self._pending_stats_emit: Optional[asyncio.Handle] = None
+        self._ui_event_log_state: dict[str, tuple[float, int]] = {}
+        self._serial_write_lock: Optional[asyncio.Lock] = None
 
     def _set_status(self, serial_line: str, network_line: str) -> None:
+        self._last_network_status = network_line
         self._status_cb(serial_line, network_line)
 
     def _gps_utc(self) -> str:
         return self._gps_state[0] or ""
+
+    def navigation_quality(self) -> Optional[dict]:
+        """Latest GGA-based survey quality snapshot, or None if no GGA seen."""
+        return self._nav_quality_state[0]
+
+    def navigation_quality_stats(self) -> dict:
+        """Stats-bar / HUD fields from latest GGA (excludes internal monotonic timestamp)."""
+        nav = self._nav_quality_state[0]
+        if not nav:
+            return {}
+        out = {k: v for k, v in nav.items() if k != "mono"}
+        out["nav_stale"] = nav_quality_stale(nav)
+        return out
 
     def _ui_log_serial_coalesced(self, msg: str, window_s: float = 2.5) -> None:
         """Throttle identical serial-path errors (burst traffic or shutdown overlap)."""
@@ -316,10 +369,22 @@ class SerialNetBridge:
         ser = getattr(writer.transport, "serial", None)
         return ser if isinstance(ser, serial.Serial) else None
 
+    async def inject_correction_bytes(self, chunk: bytes) -> None:
+        """Inject RTCM/correction bytes onto COM (e.g. NTRIP) without counting as NMEA ingress."""
+        if not chunk:
+            return
+        await self._write_serial_bytes(chunk)
+
     async def _write_serial_bytes(self, chunk: bytes) -> None:
-        """Write to COM. On Windows, bypass pyserial-asyncio poll writer (can stall under qasync)."""
+        """Write to COM. On Windows, bypass pyserial-asyncio poll writer (can stall under Qt)."""
         if not self.running or not chunk or not self.serial_writer:
             return
+        if self._serial_write_lock is None:
+            self._serial_write_lock = asyncio.Lock()
+        async with self._serial_write_lock:
+            await self._write_serial_bytes_locked(chunk)
+
+    async def _write_serial_bytes_locked(self, chunk: bytes) -> None:
         if sys.platform == "win32":
             ser = self._underlying_serial()
             if ser is not None:
@@ -336,18 +401,28 @@ class SerialNetBridge:
         await asyncio.wait_for(self.serial_writer.drain(), timeout=SERIAL_WRITE_TIMEOUT_S)
 
     def hz_remote_to_serial(self) -> float:
-        """Rolling ~1 s rate of full NMEA lines from UDP/TCP toward COM."""
+        """Rolling ~1 s rate of network receive chunks (UDP datagram / TCP read), not NMEA lines."""
         return rolling_hz_last_second(self._hz_remote_times)
 
     def hz_serial_to_net(self) -> float:
-        """Rolling ~1 s rate of full NMEA lines from COM toward network."""
+        """Rolling ~1 s rate of serial read chunks toward network, not NMEA lines."""
         return rolling_hz_last_second(self._hz_serial_times)
 
     def hz_gui_to_serial(self) -> float:
-        """Rolling ~1 s rate of lines injected from GUI toward COM (Send tab)."""
+        """Rolling ~1 s rate of GUI inject batches toward COM, not lines per batch."""
         return rolling_hz_last_second(self._hz_gui_times)
 
+    def _note_serial_wire_hz(self, now: float) -> None:
+        """One wire-Hz tick per serial read burst (avoids com0com echo inflating From COM)."""
+        if (
+            self._hz_serial_times
+            and (now - self._hz_serial_times[-1]) < SERIAL_WIRE_HZ_COALESCE_S
+        ):
+            return
+        self._hz_serial_times.append(now)
+
     def _emit_stats(self) -> None:
+        self._last_stats_emit_mono = time.monotonic()
         self._stats_cb(
             {
                 "drops_n2s": self.drops_net_to_serial,
@@ -361,11 +436,45 @@ class SerialNetBridge:
                 "hz_up": self.hz_serial_to_net(),
                 "lines_down": self.lines_remote_to_serial,
                 "lines_up": self.lines_serial_to_net,
+                **self.navigation_quality_stats(),
             }
         )
 
+    def _schedule_stats_emit(self) -> None:
+        """Coalesce hot-path stats updates to avoid flooding Qt queued signals."""
+        now = time.monotonic()
+        due_in = STATS_EMIT_MIN_INTERVAL_S - (now - self._last_stats_emit_mono)
+        if due_in <= 0:
+            self._emit_stats()
+            return
+        if self._pending_stats_emit is not None and not self._pending_stats_emit.cancelled():
+            return
+
+        def _fire() -> None:
+            self._pending_stats_emit = None
+            self._emit_stats()
+
+        self._pending_stats_emit = self.loop.call_later(due_in, _fire)
+
+    def _ui_log_event_limited(self, key: str, msg: str, *, window_s: float = UI_EVENT_LOG_MIN_INTERVAL_S) -> None:
+        """Rate-limit repeated high-volume events and include suppression count."""
+        now = time.monotonic()
+        last_mono, suppressed = self._ui_event_log_state.get(key, (0.0, 0))
+        if now - last_mono < window_s:
+            self._ui_event_log_state[key] = (last_mono, suppressed + 1)
+            return
+        if suppressed:
+            msg = f"{msg} (+{suppressed} similar suppressed)"
+        self._ui_event_log_state[key] = (now, 0)
+        self._ui_log(msg)
+
     def _log(self, direction: str, data: bytes, *, to_ui: bool = True, always: bool = False) -> None:
-        preview = data.decode(errors="replace").rstrip().replace("\r", "\\r")
+        if self.nmea_mode == NmeaMode.RAW:
+            preview = format_binary_log_preview(data)
+        else:
+            preview = ui_safe_text(
+                data.decode(errors="replace").rstrip().replace("\r", "\\r")
+            )
         gps = self._gps_utc()
         if self._file_log:
             try:
@@ -380,8 +489,14 @@ class SerialNetBridge:
             self.net_to_serial.put_nowait(data)
         except asyncio.QueueFull:
             self.drops_net_to_serial += 1
-            self._emit_stats()
-            self._log(f"{direction} [DROP n→s]", data, to_ui=True, always=True)
+            self._schedule_stats_emit()
+            self._ui_log_event_limited(
+                "drop_n2s",
+                (
+                    f"{direction} [DROP n→s] queue full "
+                    f"(drops={self.drops_net_to_serial}, q={self.net_to_serial.qsize()})"
+                ),
+            )
         else:
             self._log(direction, data)
 
@@ -390,44 +505,74 @@ class SerialNetBridge:
             self.serial_to_net.put_nowait(data)
         except asyncio.QueueFull:
             self.drops_serial_to_net += 1
-            self._emit_stats()
-            self._log(f"{direction} [DROP s→n]", data, to_ui=True, always=True)
+            self._schedule_stats_emit()
+            self._ui_log_event_limited(
+                "drop_s2n",
+                (
+                    f"{direction} [DROP s→n] queue full "
+                    f"(drops={self.drops_serial_to_net}, q={self.serial_to_net.qsize()})"
+                ),
+            )
         else:
             self._log(direction, data)
 
     def _ingest_net(self, data: bytes, direction: str) -> None:
         if not self.running:
             return
+        now = time.monotonic()
+        if direction.startswith(("UDP", "TCP")):
+            self._hz_remote_times.append(now)
+        elif direction.startswith(("GUI", "INJECT")):
+            self._hz_gui_times.append(now)
+        if self.nmea_mode == NmeaMode.RAW:
+            if direction.startswith(("UDP", "TCP")):
+                self.lines_remote_to_serial += 1
+            elif direction.startswith(("GUI", "INJECT")):
+                self.lines_gui_to_serial += 1
+            self._enqueue_net_to_serial(data, direction)
+            return
         filt = self.nmea_filter if self.nmea_mode == NmeaMode.STRICT else None
         result = self._asm_n2s.feed(data, self.nmea_mode, filt)
         feed_nmea_times_from_lines(result.forward, self._gps_state)
+        feed_nmea_navigation_quality(result.forward, self._nav_quality_state)
         for reason in result.rejected:
             self.rejected_net_to_serial += 1
-            self._emit_stats()
-            self._log_text(f"{direction} [REJECT] {reason}")
+            self._schedule_stats_emit()
+            self._ui_log_event_limited(
+                "reject_n2s",
+                f"{direction} [REJECT] {reason}",
+            )
         for line in result.forward:
             if direction.startswith(("UDP", "TCP")):
                 self.lines_remote_to_serial += 1
-                self._hz_remote_times.append(time.monotonic())
             elif direction.startswith(("GUI", "INJECT")):
                 self.lines_gui_to_serial += 1
-                self._hz_gui_times.append(time.monotonic())
             self._enqueue_net_to_serial(line, direction)
 
     def _ingest_serial(self, data: bytes, direction: str) -> None:
         if not self.running:
             return
+        if direction.startswith("SER"):
+            self._note_serial_wire_hz(time.monotonic())
+        if self.nmea_mode == NmeaMode.RAW:
+            if direction.startswith("SER"):
+                self.lines_serial_to_net += 1
+            self._enqueue_serial_to_net(data, direction)
+            return
         filt = self.nmea_filter if self.nmea_mode == NmeaMode.STRICT else None
         result = self._asm_s2n.feed(data, self.nmea_mode, filt)
         feed_nmea_times_from_lines(result.forward, self._gps_state)
+        feed_nmea_navigation_quality(result.forward, self._nav_quality_state)
         for reason in result.rejected:
             self.rejected_serial_to_net += 1
-            self._emit_stats()
-            self._log_text(f"{direction} [REJECT] {reason}")
+            self._schedule_stats_emit()
+            self._ui_log_event_limited(
+                "reject_s2n",
+                f"{direction} [REJECT] {reason}",
+            )
         for line in result.forward:
             if direction.startswith("SER"):
                 self.lines_serial_to_net += 1
-                self._hz_serial_times.append(time.monotonic())
             self._enqueue_serial_to_net(line, direction)
 
     def _log_text(self, msg: str) -> None:
@@ -511,7 +656,7 @@ class SerialNetBridge:
 
         self._tasks.append(asyncio.create_task(self._pump_net_to_serial(), name="pump_n2s"))
         self._tasks.append(asyncio.create_task(self._pump_serial_to_net_queue(), name="pump_s2n_out"))
-        self._tasks.append(asyncio.create_task(self._serial_read_loop(), name="serial_read"))
+        self._tasks.append(asyncio.create_task(self._serial_lifecycle_loop(), name="serial_lifecycle"))
 
         try:
             if self.mode == NetMode.UDP_LISTEN and self.udp_listen:
@@ -663,23 +808,89 @@ class SerialNetBridge:
                 )
                 await asyncio.sleep(delay)
 
-    async def _serial_read_loop(self) -> None:
+    async def _close_serial_streams(self) -> None:
+        writer = self.serial_writer
+        self.serial_writer = None
+        self.serial_reader = None
+        self._serial_open = False
+        if writer is not None:
+            await self._await_closed(writer, "Serial")
+
+    async def _try_reopen_serial(self) -> bool:
+        try:
+            self.serial_reader, self.serial_writer = await self._open_serial_stream()
+        except asyncio.TimeoutError:
+            self._ui_log_serial_coalesced(
+                f"Serial reconnect timed out opening {self.com} ({SERIAL_OPEN_TIMEOUT_S:.0f}s)"
+            )
+            return False
+        except Exception as e:
+            self._ui_log_serial_coalesced(_friendly_serial_error(e, self.com))
+            return False
+        self._serial_open = True
+        self._set_status(
+            f"Serial: {self.com} @ {self.baud} — open (reconnected)",
+            self._last_network_status,
+        )
+        self._ui_log(f"Serial reconnected on {self.com} @ {self.baud}")
+        return True
+
+    async def _serial_read_until_disconnect(self) -> bool:
+        """Read until error/EOF. Returns True if the session ended unexpectedly (retry)."""
         assert self.serial_reader is not None
+        disconnected = False
+        while self.running:
+            try:
+                data = await asyncio.wait_for(self.serial_reader.read(4096), timeout=0.25)
+            except asyncio.TimeoutError:
+                continue
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                if self.running and not self._teardown:
+                    self._ui_log_serial_coalesced(_friendly_serial_error(e, self.com))
+                disconnected = True
+                break
+            if not data:
+                if self.running and not self._teardown:
+                    disconnected = True
+                break
+            self._ingest_serial(data, "SER→NET")
+        return disconnected
+
+    async def _serial_lifecycle_loop(self) -> None:
+        """Keep COM open while running; reopen after USB/COM glitches if enabled."""
         try:
             while self.running:
+                if not self._serial_open or self.serial_reader is None:
+                    if not await self._try_reopen_serial():
+                        if not self.serial_auto_reconnect:
+                            break
+                        self._set_status(
+                            f"Serial: {self.com} — reconnecting every "
+                            f"{SERIAL_RECONNECT_INTERVAL_S:.0f}s…",
+                            self._last_network_status,
+                        )
+                        await asyncio.sleep(SERIAL_RECONNECT_INTERVAL_S)
+                        continue
                 try:
-                    data = await asyncio.wait_for(self.serial_reader.read(4096), timeout=0.25)
-                except asyncio.TimeoutError:
-                    continue
+                    need_retry = await self._serial_read_until_disconnect()
                 except asyncio.CancelledError:
+                    raise
+                if not self.running:
                     break
-                except Exception as e:
-                    if self.running and not self._teardown:
-                        self._ui_log_serial_coalesced(_friendly_serial_error(e, self.com))
+                await self._close_serial_streams()
+                if not need_retry or not self.serial_auto_reconnect:
                     break
-                if not data:
-                    continue
-                self._ingest_serial(data, "SER→NET")
+                self._ui_log(
+                    f"Serial session ended on {self.com} — retry in "
+                    f"{SERIAL_RECONNECT_INTERVAL_S:.0f}s"
+                )
+                self._set_status(
+                    f"Serial: disconnected — retry in {SERIAL_RECONNECT_INTERVAL_S:.0f}s…",
+                    self._last_network_status,
+                )
+                await asyncio.sleep(SERIAL_RECONNECT_INTERVAL_S)
         except asyncio.CancelledError:
             pass
 
@@ -895,7 +1106,7 @@ BridgeBuildFn = Callable[[asyncio.AbstractEventLoop], SerialNetBridge]
 
 
 class BridgeAsyncThread(QtCore.QThread):
-    """Run SerialNetBridge on a plain asyncio loop (same as bridge_headless — avoids qasync timer bugs)."""
+    """Run SerialNetBridge on a plain asyncio loop (same as bridge_headless)."""
 
     log_msg = QtCore.Signal(str)
     status_msg = QtCore.Signal(str, str)

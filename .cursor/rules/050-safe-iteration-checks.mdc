@@ -1,0 +1,18 @@
+---
+description: Required verification checklist for iterative UI/runtime edits
+alwaysApply: true
+---
+
+# Safe Iteration Checks
+
+When making substantive changes, complete these checks:
+
+- Run compile validation for edited Python files.
+- Check lints for edited files.
+- Confirm no regressions in startup layout for all UI modes.
+- Confirm primary actions remain visible and usable.
+- Confirm no new freeze/crash path during resize and normal operation.
+
+Communication standard:
+- Report what changed, what was verified, and any remaining risk.
+- If uncertainty remains, propose the smallest next safeguard patch.

@@ -1,0 +1,24 @@
+---
+description: Always-on UI polish baseline for all app modes
+alwaysApply: true
+---
+
+# UI Polish Always
+
+Apply this standard to every UI change in this repo (standard, minimal, log-first, HUD).
+
+- Keep launch usable without fullscreen; primary actions must be visible.
+- Favor compact, scannable layouts: reduce dead space and preserve hierarchy.
+- Maintain strong contrast for helper/status text in all themes.
+- Keep spacing and control sizes consistent across modes.
+- Add hover/focus/pressed states for interactive controls.
+- Preserve responsiveness during resize; avoid expensive reflow loops.
+- When adding controls, persist user-facing preferences where reasonable.
+- Prefer deterministic layout behavior over auto-magic that jumps unexpectedly.
+- Validate by compile + lints after UI edits.
+
+Quick checklist before finishing:
+- Primary workflow visible at launch
+- No clipping/overlap at common sizes
+- No stuck cursor or resize lockups
+- Theme parity (standard/minimal/log-first/HUD)

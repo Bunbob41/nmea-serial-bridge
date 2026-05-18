@@ -11,6 +11,7 @@ from bridge_core import (  # noqa: F401 — re-export for older scripts
     SerialNetBridge,
     configure_windows_event_loop_policy,
 )
+from ui.app_icon import apply_app_icon
 from ui.registry import create_window
 from ui.standard import BridgeWindowStandard
 
@@ -21,7 +22,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="NMEA UDP/TCP ↔ serial bridge")
     parser.add_argument(
         "--ui",
-        choices=["standard", "minimal", "logfirst"],
+        choices=["standard", "field", "minimal", "logfirst"],
         default=None,
         help="UI layout (default: saved choice, picker on first .exe run, else standard)",
     )
@@ -30,8 +31,14 @@ def main() -> None:
         action="store_true",
         help="Show layout picker dialog before opening the window",
     )
+    parser.add_argument(
+        "--demo",
+        action="store_true",
+        help="Open the product demo guide (Field layout recommended)",
+    )
     args = parser.parse_args()
     app = QtWidgets.QApplication(sys.argv)
+    apply_app_icon(app)
     from ui.picker import load_saved_ui, resolve_ui_id
 
     show_picker = args.pick_ui or (
@@ -40,6 +47,11 @@ def main() -> None:
     ui_id = resolve_ui_id(args.ui, show_picker=show_picker)
     w = create_window(ui_id)
     w.show()
+    if args.demo:
+        from PySide6 import QtCore
+        from ui.demo import open_product_demo
+
+        QtCore.QTimer.singleShot(500, lambda: open_product_demo(w))
     sys.exit(app.exec())
 
 
