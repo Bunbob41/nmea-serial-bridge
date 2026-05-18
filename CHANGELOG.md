@@ -3,6 +3,221 @@
 High-level notes for **this fork / branch** (`feature/multi-ui-layouts-v0.5`).  
 Version = `version.py` / Git tag when you run `.\release.ps1` or tag manually.
 
+## v1.3.0
+
+- **Backend runtime invariants hardened** — UI timer/chip code now uses object-safe bridge-running checks, eliminating `bridge.running` attribute tracebacks during mixed test/mocked UI states.
+- **Startup self-check line added** — app logs a single startup line with version, active UI mode, and effective prefs/config paths for faster field diagnostics.
+- **Prefs schema/versioning introduced** — `ui_prefs.json` now tracks `schema_version` with migration hooks (including Connect toolbar order backfill) and recovers cleanly from malformed JSON.
+- **Release gates tightened** — `verify_all.py` now fails the run when traceback markers appear in subprocess output even if return codes are zero; `build.ps1` enforces `verify_all` before packaging.
+- **Packaging reproducibility artifacts** — `release.ps1` now emits a build environment lock snapshot (`pip freeze` + tool versions), plus a release manifest with SHA-256 checksums/sizes for exe+zip and includes both files in GitHub releases.
+- **New consistency tests** — added deterministic bridge mode start/stop cycle tests, queue-pressure counter invariants, traceback-gate tests, and prefs schema recovery migration tests.
+
+## v1.2.50
+
+- **Collapsed Connect labels visible again** — increased collapsed strip height to match rounded header padding so section text/arrows remain readable when rows are collapsed.
+
+## v1.2.49
+
+- **Collapsed Connect reassurance text** — each collapsed Connect section title now includes a short purpose hint so operators can identify sections without expanding all.
+- **Bench setup hide now hides buttons** — checking “Hide this setup window next time” now hides Bench pair setup buttons in Standard and Diagnostics after close/startup instead of leaving a no-op button.
+- **Hidden tabs menu: Show all** — added a one-click “Show all hidden tabs” action.
+- **Guide tab + Demo sync** — added a transparent Guide tab (main tab in Standard; drawer tab in Field/log-first/minimal), shortened Traffic/quality legend toward quick health read, and updated Product Demo to point at Guide for truthful strengths/limits/current focus.
+- **Connect toolbar button order** — `UI editor… / Expand all / Collapse all / Reset sizes` can be reordered in `UI editor → Connect toolbar` and persisted.
+
+## v1.2.48
+
+- **Bench setup dialog hide toggle** — added a bottom checkbox to hide the Bench pair setup window on future runs while still running preflight scripts.
+- **Reorder Connect toolbar buttons** — `UI editor… / Expand all / Collapse all / Reset sizes` order is now configurable via **UI editor → Connect toolbar** and persisted per workspace.
+
+## v1.2.47
+
+- **Connect iOS-card polish** — increased per-row card separation, rounded corners, and soft gradient fills for Connect disclosure headers so each section reads as a distinct card block without visual merging.
+
+## v1.2.46
+
+- **Connect section cards + rounded UI pass** — collapsed Connect rows now render as individual bordered cards (not a continuous strip), and core controls/chips/tabs use stronger rounded corners for a cleaner Apple-style look.
+
+## v1.2.45
+
+- **Top-bar chip readability** — compact chips now try readable words with smaller font before abbreviations (e.g. `Random` / `Standard` before `Rand` / `Strd`), reducing unnecessary shorthand while still preventing clipping.
+
+## v1.2.44
+
+- **Standard first-paint Connect fix** — added activation/show/resize/layout-request reflow hooks for the Connect tab so launch-time geometry settles automatically without requiring a manual click.
+
+## v1.2.43
+
+- **Connect tab auto-reflow on activation** — Standard now forces a Connect splitter/scroll geometry sync when Connect becomes active (plus startup deferred passes), removing the “clips until I click” behavior after tab navigation.
+
+## v1.2.42
+
+- **Standard Connect stability after tab navigation** — hardened Connect scroll/page reflow to always re-apply geometry locks and keep panel content top-aligned, preventing intermittent “floating”/clipped Connect blocks after moving around tabs.
+
+## v1.2.41
+
+- **Connect expand/collapse no-clip pass** — expanded rows now always honor their natural content height (saved size caps no longer force clipping), and Run/Status defaults are taller so first-open state stays readable.
+
+## v1.2.40
+
+- **Layout chip** — survey bar shows one **Layout** tile (not separate Standard / Field buttons). **Double-click** toggles to the other workspace; label stays «Layout» on both layouts. Stop the bridge before switching.
+
+## v1.2.39
+
+- **Removed inline Edit layout** — dropped the buggy live Connect canvas editor. Connect sections are back in the **UI editor…** checkbox dialog (with Top bar and Main tabs). Use **Expand all / Collapse all** and drag splitter handles on Connect for sizes.
+
+## v1.2.38
+
+- **Field control strip** — COM / Stopped / preset banner sit tight on launch (layout stretch at bottom, smaller default splitter pane, strip min 92px when Tools closed). Drag the bar between the log and the strip to resize; saved layouts that gave the strip >34% height reset once to the compact default.
+
+## v1.2.37
+
+- **Diagnostics cards** — vertical splitter between cards (drag handles like Connect): expanded sections size to content (On-screen log no longer fills the drawer), heights persist per layout, sole-open card does not absorb all slack.
+
+## v1.2.36
+
+- **Field layout launch fix** — restored missing `load_field_prefs` / `save_field_prefs` imports in `ui/mixin.py` so **Field** (and saved layout via `launch_bridge_gui.bat`) opens instead of exiting silently under `pythonw`.
+
+## v1.2.35
+
+- **Connect Edit layout** — iOS-style inline editor on the live Connect tab: per-tile Up/Down/Hide, green edit bar with Done/Cancel/Restore defaults, highlighted splitter handles. **Workspace…** opens top bar + main tabs dialog (Connect checklist tab removed). Cursor rule `100-layout-canvas-editor` tracks phased layout work; NTRIP stays on backburner.
+
+## v1.2.34
+
+- **UI editor Restore defaults** — no longer hides **Serial & network** and other required Connect sections (non-checkable rows were saved as hidden). Restore resets collapse/sizes and shows all sections except NTRIP by default.
+
+## v1.2.33
+
+- **UI editor polish** — **Main tabs** list shows tab names and short descriptions (fixed blank checkbox rows caused by empty tooltips at catalog build). All three tabs have clearer legends, styled lists, and main-tab reorder persists on OK.
+
+## v1.2.32
+
+- **Top bar Presets** — choosing a preset loads COM/UDP/survey fields and **starts** (or restarts) the bridge only — no automatic bench checklist. Checklists remain on **Diagnostics** (Bench / Boat checklist buttons).
+
+## v1.2.31
+
+- **Diagnostics cards after Presets quick-load** — collapsed cards no longer render as clipped ~0px strips (minimum header height + layout refresh on tab show). **Automated checks** expands automatically when a diagnostic script starts so output is visible.
+
+## v1.2.30
+
+- **Connect Run bridge layout** — after **Collapse all**, expanding **Run bridge** (or any single section) again shows full Start/Stop/Bench controls instead of crushed 26px strips; splitter heights now follow each row’s real size hint, and sole-expanded mode no longer locks the splitter with `setFixedHeight`.
+
+## v1.2.29
+
+- **Connect panels after Collapse all** — reopening one section (e.g. Run bridge) no longer stretches it through the whole tab with a huge empty gap; extra height is only shared when two or more sections are expanded.
+
+## v1.2.28
+
+- **Top bar overlap fix** — **Std** and **Layout** no longer stack on each other: the layout chip clips to its tile and switches to the single **Layout** menu when too narrow for Standard | Field buttons.
+
+## v1.2.27
+
+- **UI editor** — removed **Demo** from the top bar; new **UI** tile and **View → UI editor** open a workspace editor to show/hide and reorder top bar chips, Connect sections (hide NTRIP, Quick log, etc.), and main tabs. Connect tab **UI editor…** button opens the same dialog. **Restore defaults** applies a recommended survey layout.
+
+## v1.2.26
+
+- **Live log view** — replaced the narrow “Sentences: all / GGA only” dropdown with **log presets** (Ops, Survey GGA+RMC, Wire tap, Problems only, Debug) plus a **View…** dialog to toggle RX/TX/warnings/UI messages, every-NMEA verbosity, sentence types, and hex preview. Display-only — bridge NMEA mode stays on the NMEA tab.
+
+## v1.2.25
+
+- **Diagnostics cards** — expand/collapse no longer caps the whole card to a thin strip; only the body hides, with `set_expanded()` for reliable open state (same class of fix as Connect panels).
+
+## v1.2.24
+
+- **Send tab → Terminal** — main and drawer tabs renamed; saved tab order migrates `Send` → `Terminal`.
+- **Top bar stability** — Layout chip uses a stacked Standard|Field vs Layout menu (never both); bar-wide compact hysteresis stops jitter; Shortcuts tile keeps full **Shortcuts** label in compact mode (not **Keys**).
+
+## v1.2.23
+
+- **Memory / freeze fix** — stopped top-bar resize layout storms and debounced Connect panel geometry updates; launch window widening runs once. Fixes runaway RAM use introduced around v1.2.17–1.2.22.
+
+## v1.2.22
+
+- **Top bar first impression** — on launch the window widens when needed for full tile titles; otherwise every tile uses short readable labels (**Presets**, **Hidden**, **Stats**) with no `Pr…` ellipsis clipping.
+
+## v1.2.21
+
+- **Field layout launch** — wider default window, balanced log/control splitter (not a huge empty log band), readable top-bar shorts instead of `Pr…` ellipses, preset hint wraps, duplicate log toolbar hidden (controls live in the bottom strip).
+
+## v1.2.20
+
+- **Bench pair setup** — opens a stay-open setup window with guide section 5 (no flash/auto-close from external viewers). Expands **Quick terminal**, runs preflight there, and suppresses console popups on Windows.
+
+## v1.2.19
+
+- **Expand all / Collapse all** — section bodies now open and close with the headers (bulk actions no longer leave panels at zero height while chevrons show expanded).
+
+## v1.2.18
+
+- **Connect tab dead space** — tool buttons stay fixed at the top; only the panel stack scrolls. When all sections are collapsed, the scroll region matches panel height (no huge empty band you cannot shrink).
+
+## v1.2.17
+
+- **Connect panel toggles** — expanding/collapsing sections no longer shrinks the main window or traps you in a short, hard-to-resize frame. Connect tab scrolls when content is taller than the viewport.
+- **Window height** — if a prior build left the window very short, opening any Connect panel restores a comfortable default height.
+
+## v1.2.16
+
+- **Top bar labels** — no more mystery **N** / **O** tiles; narrow tiles use readable shorts (**Rand**, **Std**, **Hidden**, **Stats**, …). Full titles when space allows. Bar fills edge-to-edge.
+- **Connect panel drag** — pink splitter bars between sections are easier to grab; dragging no longer gets reset by layout. Sections keep sensible heights instead of stretching Run into a giant band.
+- **Main tabs** — drag tabs on the tab strip to reorder (tooltip reminder); movable flag re-applied after layout rebuilds.
+
+## v1.2.15
+
+- **Top bar resize** — drag the right edge of any tile (↔ cursor) to change widths; sizes persist. ⋮⋮ grip still reorders. Letter tiles (N, O, …) show full name on hover.
+- **Main tabs** — more gap between Connect / Diagnostics / Log tabs.
+- **Diagnostics tab** — removed bottom stretch that left a huge empty void when cards are collapsed.
+
+## v1.2.14
+
+- **Top bar equal-width tiles** — each chip gets an explicit computed width so the row always spans the full bar (fixes trailing empty gutter and uneven tile sizes). Full label only when it fits inside the tile; otherwise a single letter (no `Sho…` ellipsis).
+
+## v1.2.13
+
+- **Top bar spring fill (always)** — visible chips share the full bar width at every window size; no empty track between tiles. Full labels when each chip's share fits; centered single letter when narrow. `TOPBAR_ALWAYS_FILL_TRACK` invariant in `ui/survey_top_bar.py`.
+
+## v1.2.12
+
+- **Connect tab fits content** — collapsed panels stack at the top without a huge empty gap; window height shrinks on launch when everything is collapsed. Bottom filler no longer steals vertical space.
+- **Connect splitter drag** — splitter grows inside the host when expanded; drag handles work (no fixed-height lock while resizing). Run/Status panels cap height so Start is not a giant band.
+- **Top bar labels on wide launch** — letter tiles only when the window is actually too narrow; launch keeps full chip titles on a normal/wide desktop width.
+
+## v1.2.11
+
+- **Standard launch readability** — top bar no longer defaults to unreadable one-letter tiles on first paint; window opens wide enough for full labels and waits for real layout width before choosing letter mode.
+
+## v1.2.10
+
+- **Top bar: no clipped labels** — full-text tiles only when they fully fit; otherwise letter tiles (no overlapping/bunched chips). Hysteresis applies when growing out of letter mode only. Launch width includes a small margin.
+
+## v1.2.9
+
+- **Top bar resize hysteresis** — slight window shrink no longer snaps every chip to one-letter mode; full labels stay until clearly too narrow, and letter mode needs extra width before expanding back. Field/Standard open wide enough for full labels when possible (comfort width like your mid-size screenshot).
+
+## v1.2.8
+
+- **Fix hide top-bar chip** — hiding a chip (e.g. Copy stats) no longer leaves a ghost tile overlapping neighbors; hidden chips are removed from layout and not painted.
+
+## v1.2.7
+
+- **Top bar content-sized tiles** — each chip is only as wide as its label (character width + minimal border); spare space stays on the right. Fixes oversized “View” and truncated “Standard” on wide windows. Layout/Field buttons size to their text.
+
+## v1.2.6
+
+- **Top bar spring layout** — chips share bar width equally (expand to the right); adding/hiding chips redistributes space. Letter tiles stay centered inside each expanded chip; full titles when wide enough.
+
+## v1.2.5
+
+- **Top bar letter tiles** — narrow window collapses chips to v1.2.3-sized boxes with a **single letter** (View→V, Presets→P, …) instead of abbreviations or forced wide window. Wide window shows full titles. Drag grip on the right with hand cursor unchanged. Layout chip compact letter **L** opens Standard/Field menu.
+
+## v1.2.4
+
+- **Top bar readability** — chip text comes first; **⋮⋮** drag grip on the **right** with open/closed **hand** cursor (not resize arrows). Buttons keep full titles at normal width; abbreviate only when squeezed (tooltip keeps full name). Window minimum width grows to fit all chips; Field opens at the same readable width as Standard.
+
+## v1.2.3
+
+- **Draggable top bar chips** — each survey bar action is a bordered box with consistent padding; drag the **⋮⋮** grip to reorder and snap on the bar (no separate rearrange dialog). Right-click a chip to hide it; **View → Show all top bar chips** to restore.
+- **Layout switch on top bar** — **Standard** / **Field** moved from Diagnostics to the far-right top bar chip (replaces Quick UI switch card).
+
 ## v1.2.2
 
 - **Connect expand/collapse polish** — releasing fixed height when any panel expands; splitter target height uses the Connect tab (not a shrunken post-collapse splitter). Tab stretch keeps collapsed stacks at the top; expanding a section grows the host again. Disclosure toggles reflow the splitter immediately.

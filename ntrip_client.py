@@ -62,6 +62,7 @@ async def run_ntrip_forwarder(
         return
     req = build_ntrip_request(cfg)
     while running():
+        writer: asyncio.StreamWriter | None = None
         try:
             on_log(
                 f"NTRIP: connecting {cfg.host}:{cfg.port} mount {cfg.mountpoint.strip().lstrip('/')}"
@@ -69,14 +70,17 @@ async def run_ntrip_forwarder(
             reader, writer = await asyncio.open_connection(cfg.host, cfg.port, ssl=cfg.use_tls)
             writer.write(req)
             await writer.drain()
-            header = await _read_http_header(reader)
+            header, initial = await _read_http_header(reader)
             if not _header_ok(header):
-                on_log(f"NTRIP: caster rejected — {header.splitlines()[0] if header else 'no response'}")
-                writer.close()
-                await writer.wait_closed()
+                on_log(
+                    f"NTRIP: caster rejected - "
+                    f"{header.splitlines()[0] if header else 'no response'}"
+                )
                 await asyncio.sleep(reconnect_s)
                 continue
-            on_log("NTRIP: streaming corrections (RTCM → COM)")
+            on_log("NTRIP: streaming corrections (RTCM -> COM)")
+            if initial:
+                await on_chunk(initial)
             while running():
                 chunk = await reader.read(4096)
                 if not chunk:
@@ -87,18 +91,30 @@ async def run_ntrip_forwarder(
             raise
         except Exception as exc:
             on_log(f"NTRIP: {exc}")
+        finally:
+            if writer is not None:
+                writer.close()
+                try:
+                    await writer.wait_closed()
+                except Exception:
+                    pass
         if running():
             await asyncio.sleep(reconnect_s)
 
 
-async def _read_http_header(reader: asyncio.StreamReader) -> str:
+async def _read_http_header(reader: asyncio.StreamReader) -> tuple[str, bytes]:
+    """Return (header text, any bytes already read past the header blank line)."""
     buf = bytearray()
     while b"\r\n\r\n" not in buf and len(buf) < 8192:
         part = await reader.read(512)
         if not part:
             break
         buf.extend(part)
-    return buf.decode("latin-1", errors="replace")
+    sep = buf.find(b"\r\n\r\n")
+    if sep < 0:
+        return buf.decode("latin-1", errors="replace"), b""
+    header = buf[: sep + 4].decode("latin-1", errors="replace")
+    return header, bytes(buf[sep + 4 :])
 
 
 def _header_ok(header: str) -> bool:

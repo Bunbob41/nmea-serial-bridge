@@ -158,6 +158,35 @@ class TestUiTabs(unittest.TestCase):
         self.assertFalse(win.btn_preset_load.isEnabled())
         self.assertTrue(win.btn_preset_new.isEnabled())
 
+    def test_quick_preset_starts_bridge_without_checklist(self) -> None:
+        import tempfile
+        from pathlib import Path
+        from unittest.mock import MagicMock, patch
+
+        import bench_config as bc
+        from ui.standard import BridgeWindowStandard
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "path_presets.json"
+            with patch.object(bc, "USER_PRESETS_PATH", path):
+                bc.save_preset(
+                    "Bench",
+                    {
+                        "com": "COM7",
+                        "baud": 115200,
+                        "udp_host": "0.0.0.0",
+                        "udp_port": 10110,
+                    },
+                )
+                win = BridgeWindowStandard()
+                win.start_bridge = MagicMock()  # type: ignore[method-assign]
+                win.stop_bridge = MagicMock()  # type: ignore[method-assign]
+                with patch.object(win, "_diag_run_check_setup") as mock_check:
+                    win._quick_connect_preset("Bench")
+                    mock_check.assert_not_called()
+                win.start_bridge.assert_called_once()
+                self.assertEqual(win._active_preset_name, "Bench")
+
     def test_checklist_uses_active_saved_preset(self) -> None:
         import tempfile
         from pathlib import Path
@@ -245,6 +274,26 @@ class TestUiTabs(unittest.TestCase):
         win.rb_nmea_strict.setChecked(True)
         win._sync_nmea_mode_ui()
         self.assertTrue(box.isEnabled())
+
+    def test_stats_tick_handles_non_bridge_object(self) -> None:
+        from ui.standard import BridgeWindowStandard
+
+        win = BridgeWindowStandard()
+        win.bridge = object()  # type: ignore[assignment]
+        win._starting = False
+        win._tick_stats()
+        self._app.processEvents()
+        self.assertTrue("Stopped" in win.lbl_stats.text())
+
+    def test_status_chips_handle_non_bridge_object(self) -> None:
+        from ui.standard import BridgeWindowStandard
+
+        win = BridgeWindowStandard()
+        win.bridge = object()  # type: ignore[assignment]
+        win._refresh_nmea_status_chip()
+        self._app.processEvents()
+        self.assertTrue(bool(win.status_nmea.text().strip()))
+        self.assertTrue(bool(win.status_gnss.text().strip()))
 
 
     def test_compact_intent_elides(self) -> None:

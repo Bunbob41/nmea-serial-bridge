@@ -84,6 +84,18 @@ class TestUiPrefs(unittest.TestCase):
                 loaded = ui_prefs.load_tab_order("standard", "main_tabs")
                 self.assertEqual(loaded, ["Connect", "Theme", "Presets"])
 
+    def test_diag_card_sizes_roundtrip(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "ui_prefs.json"
+            with patch.object(ui_prefs, "CONFIG_PATH", path):
+                ui_prefs.save_diag_card_sizes(
+                    "field",
+                    {"screen_log": 72, "automated_checks": 300},
+                )
+                loaded = ui_prefs.load_diag_card_sizes("field")
+                self.assertEqual(loaded["screen_log"], 72)
+                self.assertEqual(loaded["automated_checks"], 300)
+
     def test_diag_card_order_roundtrip(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "ui_prefs.json"
@@ -120,12 +132,22 @@ class TestUiPrefs(unittest.TestCase):
                     ["run", "quick_terminal", "quick_log", "connection"],
                     {"ntrip": True, "quick_log": False},
                     sizes={"quick_log": 140, "connection": 300},
+                    toolbar_order=["reset_sizes", "ui_editor", "expand_all", "collapse_all"],
                 )
                 loaded = ui_prefs.load_connect_panel_prefs("standard")
                 self.assertEqual(loaded["order"][:4], ["run", "quick_terminal", "quick_log", "connection"])
                 self.assertTrue(loaded["collapsed"].get("ntrip"))
                 self.assertFalse(loaded["collapsed"].get("quick_log"))
                 self.assertEqual(loaded["sizes"].get("connection"), 300)
+                self.assertEqual(loaded["toolbar_order"][0], "reset_sizes")
+
+    def test_bench_setup_prefs_roundtrip(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "ui_prefs.json"
+            with patch.object(ui_prefs, "CONFIG_PATH", path):
+                ui_prefs.save_bench_setup_prefs(hide_dialog=True)
+                loaded = ui_prefs.load_bench_setup_prefs()
+                self.assertTrue(loaded["hide_dialog"])
 
     def test_ntrip_prefs_roundtrip(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -162,6 +184,58 @@ class TestUiPrefs(unittest.TestCase):
                 self.assertEqual(loaded["hidden"], ["recent"])
                 self.assertTrue(loaded["shortcuts_visible"])
                 self.assertEqual(loaded["position"], "bottom")
+
+    def test_schema_written_on_save(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "ui_prefs.json"
+            with patch.object(ui_prefs, "CONFIG_PATH", path):
+                ui_prefs.save_minimal_prefs({"tools_open": True})
+                raw = json.loads(path.read_text(encoding="utf-8"))
+                self.assertEqual(raw.get("schema_version"), ui_prefs.PREFS_SCHEMA_VERSION)
+
+    def test_malformed_json_recovers_cleanly(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "ui_prefs.json"
+            path.write_text("{bad json", encoding="utf-8")
+            with patch.object(ui_prefs, "CONFIG_PATH", path):
+                loaded = ui_prefs.load_minimal_prefs()
+                self.assertIn("tools_open", loaded)
+                raw = json.loads(path.read_text(encoding="utf-8"))
+                self.assertEqual(raw.get("schema_version"), ui_prefs.PREFS_SCHEMA_VERSION)
+
+    def test_connect_toolbar_order_migrates_for_old_schema(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "ui_prefs.json"
+            old = {
+                "schema_version": 1,
+                "connect_panels": {
+                    "standard": {
+                        "order": ["run", "connection"],
+                        "collapsed": {},
+                        "sizes": {},
+                        "hidden": [],
+                    }
+                },
+            }
+            path.write_text(json.dumps(old), encoding="utf-8")
+            with patch.object(ui_prefs, "CONFIG_PATH", path):
+                loaded = ui_prefs.load_connect_panel_prefs("standard")
+                self.assertIn("toolbar_order", loaded)
+                self.assertTrue(loaded["toolbar_order"])
+                raw = json.loads(path.read_text(encoding="utf-8"))
+                self.assertEqual(raw.get("schema_version"), ui_prefs.PREFS_SCHEMA_VERSION)
+
+    def test_mixin_imports_field_and_logfirst_prefs(self) -> None:
+        """Regression: Field layout must load log prefs without NameError."""
+        from ui import mixin
+
+        for name in (
+            "load_field_prefs",
+            "save_field_prefs",
+            "load_logfirst_prefs",
+            "save_logfirst_prefs",
+        ):
+            self.assertTrue(hasattr(mixin, name), name)
 
 
 if __name__ == "__main__":

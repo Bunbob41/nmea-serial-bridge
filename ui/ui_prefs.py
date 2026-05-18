@@ -6,20 +6,26 @@ from pathlib import Path
 from typing import Any
 
 CONFIG_PATH = Path.home() / ".cursor-udp-com-bridge" / "ui_prefs.json"
+PREFS_SCHEMA_VERSION = 2
 
-_LOGFIRST_DEFAULTS = {
+_LOG_VIEW_DEFAULTS = {
     "rx": True,
     "tx": True,
     "warn": True,
+    "events": True,
     "pause": False,
     "autoscroll": True,
     "verbose": False,
     "preset": "ops",
     "density": 8,
     "tools_open": False,
+    "hex": False,
+    "sentence_types": [],
     "log_hex": False,
     "log_sentence": "",
 }
+
+_LOGFIRST_DEFAULTS = dict(_LOG_VIEW_DEFAULTS)
 
 RECENT_SESSIONS_MAX = 5
 
@@ -27,14 +33,60 @@ RECENT_SESSIONS_MAX = 5
 def _read_json() -> dict[str, Any]:
     try:
         raw = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
-        return raw if isinstance(raw, dict) else {}
     except (OSError, json.JSONDecodeError, TypeError):
-        return {}
+        # Recover cleanly from malformed/partial files at startup.
+        recovered = {"schema_version": PREFS_SCHEMA_VERSION}
+        try:
+            _write_json(recovered)
+        except OSError:
+            pass
+        return recovered
+    if not isinstance(raw, dict):
+        raw = {}
+    migrated, changed = _migrate_schema(raw)
+    if changed:
+        try:
+            _write_json(migrated)
+        except OSError:
+            pass
+    return migrated
 
 
 def _write_json(data: dict[str, Any]) -> None:
     CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
-    CONFIG_PATH.write_text(json.dumps(data, indent=2), encoding="utf-8")
+    out = dict(data or {})
+    out["schema_version"] = PREFS_SCHEMA_VERSION
+    CONFIG_PATH.write_text(json.dumps(out, indent=2), encoding="utf-8")
+
+
+def _migrate_schema(raw: dict[str, Any]) -> tuple[dict[str, Any], bool]:
+    data = dict(raw or {})
+    changed = False
+    try:
+        ver = int(data.get("schema_version", 0))
+    except (TypeError, ValueError):
+        ver = 0
+    if ver < 1:
+        ver = 1
+        changed = True
+    if ver < 2:
+        ver = 2
+        changed = True
+        connect_raw = data.get("connect_panels")
+        if isinstance(connect_raw, dict):
+            for key, mode_map in connect_raw.items():
+                if not isinstance(mode_map, dict):
+                    continue
+                toolbar = mode_map.get("toolbar_order")
+                if not isinstance(toolbar, list) or not any(str(x).strip() for x in toolbar):
+                    mode_map["toolbar_order"] = list(_CONNECT_TOOLBAR_DEFAULT_ORDER)
+                    changed = True
+                connect_raw[str(key)] = mode_map
+            data["connect_panels"] = connect_raw
+    if "schema_version" not in data or data.get("schema_version") != ver:
+        changed = True
+    data["schema_version"] = ver
+    return data, changed
 
 
 def load_logfirst_prefs() -> dict[str, Any]:
@@ -53,8 +105,13 @@ def load_logfirst_prefs() -> dict[str, Any]:
         density = int(raw.get("density", out["density"]) or out["density"])
         out["density"] = 12 if density >= 10 else 8
         out["tools_open"] = bool(raw.get("tools_open", out["tools_open"]))
-        out["log_hex"] = bool(raw.get("log_hex", out["log_hex"]))
+        out["events"] = bool(raw.get("events", out.get("events", True)))
+        out["hex"] = bool(raw.get("hex", raw.get("log_hex", out.get("hex", False))))
+        out["log_hex"] = out["hex"]
         out["log_sentence"] = str(raw.get("log_sentence", out["log_sentence"]) or "")
+        types = raw.get("sentence_types")
+        if isinstance(types, list):
+            out["sentence_types"] = [str(t) for t in types if str(t).strip()]
     return out
 
 
@@ -68,28 +125,41 @@ def save_logfirst_prefs(prefs: dict[str, Any]) -> None:
 
 
 def _clean_log_ui_prefs(old: dict[str, Any]) -> dict[str, Any]:
+    preset = str(old.get("preset", "ops"))
+    if preset == "all":
+        preset = "wire_tap"
+    allowed = {"ops", "survey", "wire_tap", "warn_only", "debug", "custom", "warn"}
+    if preset not in allowed:
+        preset = "ops"
+    hex_on = bool(old.get("hex", old.get("log_hex", False)))
+    types = old.get("sentence_types")
+    st_list: list[str] = []
+    if isinstance(types, list):
+        st_list = [str(t).strip().upper() for t in types if str(t).strip()]
     return {
         "rx": bool(old["rx"]),
         "tx": bool(old["tx"]),
         "warn": bool(old["warn"]),
+        "events": bool(old.get("events", True)),
         "pause": bool(old["pause"]),
         "autoscroll": bool(old["autoscroll"]),
         "verbose": bool(old["verbose"]),
-        "preset": str(old["preset"]) if str(old["preset"]) in {"ops", "all", "warn"} else "ops",
+        "preset": preset,
         "density": 12 if int(old["density"]) >= 10 else 8,
         "tools_open": bool(old["tools_open"]),
-        "log_hex": bool(old.get("log_hex", False)),
+        "hex": hex_on,
+        "log_hex": hex_on,
         "log_sentence": str(old.get("log_sentence", "") or ""),
+        "sentence_types": st_list,
     }
 
 
 def load_log_terminal_prefs() -> dict[str, Any]:
     data = _read_json()
     raw = data.get("log_terminal")
-    out = {"log_hex": False, "log_sentence": ""}
+    out = dict(_LOG_VIEW_DEFAULTS)
     if isinstance(raw, dict):
-        out["log_hex"] = bool(raw.get("log_hex", False))
-        out["log_sentence"] = str(raw.get("log_sentence", "") or "")
+        out.update(_clean_log_ui_prefs({**out, **raw}))
     return out
 
 
@@ -97,10 +167,7 @@ def save_log_terminal_prefs(prefs: dict[str, Any]) -> None:
     data = _read_json()
     old = load_log_terminal_prefs()
     old.update(prefs or {})
-    data["log_terminal"] = {
-        "log_hex": bool(old.get("log_hex", False)),
-        "log_sentence": str(old.get("log_sentence", "") or ""),
-    }
+    data["log_terminal"] = _clean_log_ui_prefs(old)
     _write_json(data)
 
 
@@ -205,7 +272,11 @@ def _load_log_ui_prefs(key: str) -> dict[str, Any]:
 def load_field_prefs() -> dict[str, Any]:
     data = _read_json()
     if isinstance(data.get("field"), dict):
-        return _load_log_ui_prefs("field")
+        out = _load_log_ui_prefs("field")
+        raw = data["field"]
+        if isinstance(raw, dict) and isinstance(raw.get("splitter_sizes"), list):
+            out["splitter_sizes"] = raw["splitter_sizes"]
+        return out
     if isinstance(data.get("logfirst"), dict):
         return _load_log_ui_prefs("logfirst")
     return dict(_LOGFIRST_DEFAULTS)
@@ -215,7 +286,14 @@ def save_field_prefs(prefs: dict[str, Any]) -> None:
     data = _read_json()
     old = load_field_prefs()
     old.update(prefs or {})
-    data["field"] = _clean_log_ui_prefs(old)
+    clean = _clean_log_ui_prefs(old)
+    raw_sizes = prefs.get("splitter_sizes") if prefs else None
+    if isinstance(raw_sizes, list) and len(raw_sizes) >= 2:
+        try:
+            clean["splitter_sizes"] = [max(int(x), 80) for x in raw_sizes[:2]]
+        except (TypeError, ValueError):
+            pass
+    data["field"] = clean
     _write_json(data)
 
 
@@ -269,8 +347,11 @@ def load_tab_order(ui_mode: str, key: str) -> list[str]:
     out: list[str] = []
     for item in raw:
         text = str(item).strip()
-        if text:
-            out.append(text)
+        if not text:
+            continue
+        if text == "Send":
+            text = "Terminal"
+        out.append(text)
     return out
 
 
@@ -350,6 +431,39 @@ def save_diag_card_order(ui_mode: str, order: list[str]) -> None:
     _write_json(data)
 
 
+def load_diag_card_sizes(ui_mode: str) -> dict[str, int]:
+    data = _read_json()
+    all_sizes = data.get("diag_card_sizes")
+    if not isinstance(all_sizes, dict):
+        return {}
+    raw = all_sizes.get(ui_mode)
+    if not isinstance(raw, dict):
+        return {}
+    out: dict[str, int] = {}
+    for key, val in raw.items():
+        try:
+            out[str(key)] = int(val)
+        except (TypeError, ValueError):
+            continue
+    return out
+
+
+def save_diag_card_sizes(ui_mode: str, sizes: dict[str, int]) -> None:
+    clean: dict[str, int] = {}
+    for key, val in sizes.items():
+        try:
+            clean[str(key)] = int(val)
+        except (TypeError, ValueError):
+            continue
+    data = _read_json()
+    all_sizes = data.get("diag_card_sizes")
+    if not isinstance(all_sizes, dict):
+        all_sizes = {}
+    all_sizes[ui_mode] = clean
+    data["diag_card_sizes"] = all_sizes
+    _write_json(data)
+
+
 def load_top_bar_prefs(ui_mode: str) -> dict[str, Any]:
     data = _read_json()
     raw_all = data.get("top_bar")
@@ -362,11 +476,23 @@ def load_top_bar_prefs(ui_mode: str) -> dict[str, Any]:
     hidden_raw = raw.get("hidden")
     order = [str(x).strip() for x in order_raw] if isinstance(order_raw, list) else []
     hidden = [str(x).strip() for x in hidden_raw] if isinstance(hidden_raw, list) else []
+    weights_raw = raw.get("chip_weights")
+    chip_weights: dict[str, float] = {}
+    if isinstance(weights_raw, dict):
+        for k, v in weights_raw.items():
+            key = str(k).strip()
+            if not key:
+                continue
+            try:
+                chip_weights[key] = max(float(v), 0.25)
+            except (TypeError, ValueError):
+                continue
     return {
         "order": [x for x in order if x],
         "hidden": [x for x in hidden if x],
         "shortcuts_visible": bool(raw.get("shortcuts_visible", False)),
         "position": str(raw.get("position", "top")).strip().lower() or "top",
+        "chip_weights": chip_weights,
     }
 
 
@@ -375,11 +501,23 @@ def save_top_bar_prefs(ui_mode: str, prefs: dict[str, Any]) -> None:
     raw_all = data.get("top_bar")
     if not isinstance(raw_all, dict):
         raw_all = {}
+    weights_in = prefs.get("chip_weights", {})
+    chip_weights: dict[str, float] = {}
+    if isinstance(weights_in, dict):
+        for k, v in weights_in.items():
+            key = str(k).strip()
+            if not key:
+                continue
+            try:
+                chip_weights[key] = max(float(v), 0.25)
+            except (TypeError, ValueError):
+                continue
     clean = {
         "order": [str(x).strip() for x in prefs.get("order", []) if str(x).strip()],
         "hidden": [str(x).strip() for x in prefs.get("hidden", []) if str(x).strip()],
         "shortcuts_visible": bool(prefs.get("shortcuts_visible", False)),
         "position": str(prefs.get("position", "top")).strip().lower() or "top",
+        "chip_weights": chip_weights,
     }
     raw_all[ui_mode] = clean
     data["top_bar"] = raw_all
@@ -440,16 +578,34 @@ _CONNECT_PANEL_DEFAULT_ORDER = [
     "connection",
     "ntrip",
 ]
+_CONNECT_TOOLBAR_DEFAULT_ORDER = [
+    "ui_editor",
+    "expand_all",
+    "collapse_all",
+    "reset_sizes",
+]
 
 
 def load_connect_panel_prefs(ui_mode: str) -> dict[str, Any]:
     data = _read_json()
     raw_all = data.get("connect_panels")
     if not isinstance(raw_all, dict):
-        return {"order": list(_CONNECT_PANEL_DEFAULT_ORDER), "collapsed": {}, "sizes": {}}
+        return {
+            "order": list(_CONNECT_PANEL_DEFAULT_ORDER),
+            "collapsed": {},
+            "sizes": {},
+            "hidden": [],
+            "toolbar_order": list(_CONNECT_TOOLBAR_DEFAULT_ORDER),
+        }
     raw = raw_all.get(ui_mode)
     if not isinstance(raw, dict):
-        return {"order": list(_CONNECT_PANEL_DEFAULT_ORDER), "collapsed": {}, "sizes": {}}
+        return {
+            "order": list(_CONNECT_PANEL_DEFAULT_ORDER),
+            "collapsed": {},
+            "sizes": {},
+            "hidden": [],
+            "toolbar_order": list(_CONNECT_TOOLBAR_DEFAULT_ORDER),
+        }
     order_raw = raw.get("order")
     order = [str(x).strip() for x in order_raw] if isinstance(order_raw, list) else []
     if not order:
@@ -470,7 +626,25 @@ def load_connect_panel_prefs(ui_mode: str) -> dict[str, Any]:
                 sizes[key] = max(28, int(v))
             except (TypeError, ValueError):
                 continue
-    return {"order": order, "collapsed": collapsed, "sizes": sizes}
+    hidden_raw = raw.get("hidden")
+    hidden: list[str] = []
+    if isinstance(hidden_raw, list):
+        hidden = [str(x).strip() for x in hidden_raw if str(x).strip()]
+    toolbar_raw = raw.get("toolbar_order")
+    toolbar_order = (
+        [str(x).strip() for x in toolbar_raw if str(x).strip()]
+        if isinstance(toolbar_raw, list)
+        else list(_CONNECT_TOOLBAR_DEFAULT_ORDER)
+    )
+    if not toolbar_order:
+        toolbar_order = list(_CONNECT_TOOLBAR_DEFAULT_ORDER)
+    return {
+        "order": order,
+        "collapsed": collapsed,
+        "sizes": sizes,
+        "hidden": hidden,
+        "toolbar_order": toolbar_order,
+    }
 
 
 def save_connect_panel_prefs(
@@ -479,6 +653,8 @@ def save_connect_panel_prefs(
     collapsed: dict[str, bool],
     *,
     sizes: dict[str, int] | None = None,
+    hidden: list[str] | None = None,
+    toolbar_order: list[str] | None = None,
 ) -> None:
     data = _read_json()
     raw_all = data.get("connect_panels")
@@ -499,12 +675,40 @@ def save_connect_panel_prefs(
                     size_out[key] = max(28, int(v))
                 except (TypeError, ValueError):
                     pass
+    hidden_out: list[str] = []
+    if hidden is not None:
+        hidden_out = [str(x).strip() for x in hidden if str(x).strip()]
+    elif isinstance(prev, dict) and isinstance(prev.get("hidden"), list):
+        hidden_out = [str(x).strip() for x in prev["hidden"] if str(x).strip()]
+    toolbar_out: list[str] = []
+    if toolbar_order is not None:
+        toolbar_out = [str(x).strip() for x in toolbar_order if str(x).strip()]
+    elif isinstance(prev, dict) and isinstance(prev.get("toolbar_order"), list):
+        toolbar_out = [str(x).strip() for x in prev["toolbar_order"] if str(x).strip()]
+    if not toolbar_out:
+        toolbar_out = list(_CONNECT_TOOLBAR_DEFAULT_ORDER)
     raw_all[ui_mode] = {
         "order": [str(x).strip() for x in order if str(x).strip()],
         "collapsed": {str(k).strip(): bool(v) for k, v in collapsed.items() if str(k).strip()},
         "sizes": size_out,
+        "hidden": hidden_out,
+        "toolbar_order": toolbar_out,
     }
     data["connect_panels"] = raw_all
+    _write_json(data)
+
+
+def load_bench_setup_prefs() -> dict[str, Any]:
+    data = _read_json()
+    raw = data.get("bench_setup")
+    if not isinstance(raw, dict):
+        return {"hide_dialog": False}
+    return {"hide_dialog": bool(raw.get("hide_dialog", False))}
+
+
+def save_bench_setup_prefs(*, hide_dialog: bool) -> None:
+    data = _read_json()
+    data["bench_setup"] = {"hide_dialog": bool(hide_dialog)}
     _write_json(data)
 
 

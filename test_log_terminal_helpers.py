@@ -39,23 +39,25 @@ class TestBridgeRawHexLog(unittest.TestCase):
     def test_verbose_hex_preview(self) -> None:
         loop = __import__("asyncio").new_event_loop()
         lines: list[str] = []
-
-        b = SerialNetBridge(
-            "COM99",
-            115200,
-            NetMode.UDP_LISTEN,
-            udp_listen=("127.0.0.1", 10110),
-            nmea_mode=NmeaMode.RAW,
-            loop=loop,
-            ui_log=lines.append,
-            ui_log_verbose=lambda: True,
-            ui_log_hex=lambda: True,
-        )
-        b.running = True
-        payload = b"\x02\x00\xa0\x14"
-        b._ingest_net(payload, "UDP←('127.0.0.1', 9999)")
-        self.assertEqual(1, len(lines))
-        self.assertIn("02 00 a0 14 (4 B)", lines[0])
+        try:
+            b = SerialNetBridge(
+                "COM99",
+                115200,
+                NetMode.UDP_LISTEN,
+                udp_listen=("127.0.0.1", 10110),
+                nmea_mode=NmeaMode.RAW,
+                loop=loop,
+                ui_log=lines.append,
+                ui_log_verbose=lambda: True,
+                ui_log_hex=lambda: True,
+            )
+            b.running = True
+            payload = b"\x02\x00\xa0\x14"
+            b._ingest_net(payload, "UDP←('127.0.0.1', 9999)")
+            self.assertEqual(1, len(lines))
+            self.assertIn("02 00 a0 14 (4 B)", lines[0])
+        finally:
+            loop.close()
 
 
 if __name__ == "__main__":

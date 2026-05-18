@@ -8,6 +8,7 @@ skipped so this script still passes. Set VERIFY_ALL_NO_SKIP=1 to run them anyway
 from __future__ import annotations
 
 import os
+import re
 import subprocess
 from pathlib import Path
 
@@ -17,6 +18,7 @@ from py_interpreter import cli_python_executable, subprocess_no_console_kwargs
 
 ROOT = Path(__file__).resolve().parent
 PY = cli_python_executable()
+_TRACEBACK_RE = re.compile(r"Traceback \(most recent call last\):")
 
 
 def compile_repo() -> int:
@@ -29,9 +31,25 @@ def compile_repo() -> int:
     return 0 if ok else 1
 
 
-def run(name: str, args: list[str]) -> int:
+def _has_traceback(text: str) -> bool:
+    return bool(_TRACEBACK_RE.search(text or ""))
+
+
+def run(name: str, args: list[str], *, echo_output: bool = True) -> tuple[int, bool]:
     print(f"\n>> {name}: {' '.join(args)}", flush=True)
-    return subprocess.call([PY, *args], cwd=ROOT, **subprocess_no_console_kwargs())
+    proc = subprocess.run(
+        [PY, *args],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        **subprocess_no_console_kwargs(),
+    )
+    if echo_output and proc.stdout:
+        print(proc.stdout, end="" if proc.stdout.endswith("\n") else "\n", flush=True)
+    if echo_output and proc.stderr:
+        print(proc.stderr, end="" if proc.stderr.endswith("\n") else "\n", flush=True)
+    tb_seen = _has_traceback(proc.stdout or "") or _has_traceback(proc.stderr or "")
+    return proc.returncode, tb_seen
 
 
 def _bench_udp_port() -> int:
@@ -79,11 +97,13 @@ def main() -> int:
         if name == "compileall":
             print("\n>> compileall: project sources (excludes dist/, venv/)", flush=True)
             code = compile_repo()
+            tb_seen = False
         else:
-            code = run(name, args or [])
-        if code != 0:
+            code, tb_seen = run(name, args or [])
+        if code != 0 or tb_seen:
             failed += 1
-            print(f"FAIL: {name}", flush=True)
+            why = "traceback detected" if tb_seen and code == 0 else f"exit={code}"
+            print(f"FAIL: {name} ({why})", flush=True)
     if failed:
         print(f"\n[verify_all] {failed} step(s) failed", flush=True)
         return 1

@@ -64,6 +64,57 @@ if ($PublishOnly) {
 
 $sizeMb = [math]::Round((Get-Item $zipPath).Length / 1MB, 1)
 Write-Host "OK: $zipPath ($sizeMb MB)" -ForegroundColor Green
+
+$envLockPath = Join-Path $PSScriptRoot "dist\build-env-v$Version.txt"
+$manifestPath = Join-Path $PSScriptRoot "dist\release-manifest-v$Version.json"
+$zipHash = (Get-FileHash $zipPath -Algorithm SHA256).Hash
+$exePath = Join-Path $distDir "nmea-serial-bridge.exe"
+$exeHash = ""
+if (Test-Path $exePath) {
+    $exeHash = (Get-FileHash $exePath -Algorithm SHA256).Hash
+}
+$requirementsHash = (Get-FileHash (Join-Path $PSScriptRoot "requirements.txt") -Algorithm SHA256).Hash
+$pythonVersion = ((python --version) 2>&1 | Out-String).Trim()
+$pipVersion = ((python -m pip --version) 2>&1 | Out-String).Trim()
+$pyinstallerVersion = ((python -m PyInstaller --version) 2>&1 | Out-String).Trim()
+
+@(
+    "version=$Version",
+    "timestamp_utc=$(Get-Date -Format o)",
+    "python=$pythonVersion",
+    "pip=$pipVersion",
+    "pyinstaller=$pyinstallerVersion",
+    "",
+    "pip-freeze:",
+    ((python -m pip freeze | Sort-Object) -join "`n")
+) -join "`n" | Set-Content -Path $envLockPath -Encoding UTF8
+
+$envLockHash = (Get-FileHash $envLockPath -Algorithm SHA256).Hash
+$manifest = [ordered]@{
+    version = $Version
+    created_utc = (Get-Date -Format o)
+    python = $pythonVersion
+    pip = $pipVersion
+    pyinstaller = $pyinstallerVersion
+    requirements_sha256 = $requirementsHash
+    env_lock_file = (Split-Path $envLockPath -Leaf)
+    env_lock_sha256 = $envLockHash
+    artifacts = @(
+        [ordered]@{
+            file = (Split-Path $zipPath -Leaf)
+            sha256 = $zipHash
+            size_bytes = (Get-Item $zipPath).Length
+        },
+        [ordered]@{
+            file = (Split-Path $exePath -Leaf)
+            sha256 = $exeHash
+            size_bytes = if (Test-Path $exePath) { (Get-Item $exePath).Length } else { 0 }
+        }
+    )
+}
+$manifest | ConvertTo-Json -Depth 6 | Set-Content -Path $manifestPath -Encoding UTF8
+Write-Host "Build env lock: $envLockPath" -ForegroundColor DarkGray
+Write-Host "Manifest: $manifestPath" -ForegroundColor DarkGray
 Write-Host ""
 Write-Host "On another PC: unzip and run nmea-serial-bridge\nmea-serial-bridge.exe"
 Write-Host "First run shows a layout picker; choice is saved under %USERPROFILE%\.cursor-udp-com-bridge\"
@@ -119,8 +170,10 @@ $ErrorActionPreference = "Stop"
 if ($releaseExists) {
     Write-Host "Release $tag exists; uploading asset..." -ForegroundColor Yellow
     gh release upload $tag $zipPath --clobber
+    gh release upload $tag $manifestPath --clobber
+    gh release upload $tag $envLockPath --clobber
 } else {
-    gh release create $tag $zipPath --title $tag --notes $notes
+    gh release create $tag $zipPath $manifestPath $envLockPath --title $tag --notes $notes
 }
 
 Write-Host "Published: https://github.com/Bunbob41/nmea-serial-bridge/releases/tag/$tag" -ForegroundColor Green

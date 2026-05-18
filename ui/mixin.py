@@ -40,10 +40,18 @@ from bridge_core import (
     _parse_port,
 )
 from ntrip_client import NtripConfig, parse_caster_host, run_ntrip_forwarder
-from nmea_codec import NmeaFilter, NmeaMode, log_line_matches_sentence_filter
+from nmea_codec import NmeaFilter, NmeaMode
+from ui.log_view import (
+    PRESET_CUSTOM,
+    LogViewState,
+    log_line_allowed,
+    state_from_preset,
+)
+from ui.log_view_dialog import LogViewDialog
 from nmea_static_sample import SAMPLE_ALT_M, SAMPLE_LAT_DEG, SAMPLE_LON_DEG, build_gga
 from log_serial_coalesce import serial_timeout_line_suppress
-from py_interpreter import cli_python_gui_spawn
+from py_interpreter import cli_python_gui_spawn, qprocess_attach_no_console
+from ui.bench_setup import extract_operator_guide_section, show_bench_setup_dialog
 from ui.stats_line import format_live_stats_line, stats_snapshot_from_merged
 from ui.stats_popout import SurveyStatsPopout
 from ui.app_icon import apply_app_icon
@@ -82,10 +90,19 @@ from ui.theme_palette import (
     generate_standardized_zone_colors,
 )
 from ui.picker import save_ui_choice
-from ui.registry import create_window
+from ui.registry import create_window, normalize_ui_id
+from ui.survey_top_bar import (
+    SurveyTopBar,
+    build_ui_switch_inner,
+    configure_topbar_button,
+    normalize_topbar_order,
+)
 from ui.ui_prefs import (
+    load_bench_setup_prefs,
     load_diag_card_states,
+    load_field_prefs,
     load_log_terminal_prefs,
+    load_logfirst_prefs,
     load_recent_sessions,
     push_recent_session,
     recent_session_key,
@@ -103,13 +120,14 @@ from ui.ui_prefs import (
     save_file_log_prefs,
     save_ntrip_prefs,
     save_diag_card_states,
+    save_field_prefs,
     save_log_terminal_prefs,
+    save_logfirst_prefs,
     save_hidden_tabs,
 )
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 _DEFAULT_DIAG_CARD_ORDER = [
-    "quick_ui_switch",
     "file_log",
     "screen_log",
     "traffic_quality",
@@ -119,6 +137,16 @@ _DEFAULT_DIAG_CARD_ORDER = [
 
 class BridgeLogicMixin:
     """Shared bridge GUI logic; subclasses must create widgets before _finalize_ui()."""
+
+    @staticmethod
+    def _bridge_running_safe(bridge_obj: object | None) -> bool:
+        try:
+            return bool(getattr(bridge_obj, "running", False))
+        except Exception:
+            return False
+
+    def _is_bridge_running(self) -> bool:
+        return self._bridge_running_safe(getattr(self, "bridge", None))
 
     def _init_bridge_state(self) -> None:
         self.bridge: Optional[SerialNetBridge] = None
@@ -167,6 +195,7 @@ class BridgeLogicMixin:
         self._topbar_labels: dict[str, str] = {}
         self._topbar_order: list[str] = []
         self._topbar_hidden: set[str] = set()
+        self._topbar_chip_weights: dict[str, float] = {}
         self._topbar_rebuild_guard = False
         self._shortcuts_visible = False
         self._shortcut_legend_lines: list[str] = []
@@ -176,6 +205,8 @@ class BridgeLogicMixin:
         self._log_filter_rx = True
         self._log_filter_tx = True
         self._log_filter_warn = True
+        self._log_view_state = LogViewState()
+        self._log_view_sync_guard = False
         self._log_paused_dropped = 0
         self._diag_card_states = load_diag_card_states(getattr(self, "_ui_mode", "standard"))
         self._log_tab_auto_timer = QtCore.QTimer(self)
@@ -208,33 +239,46 @@ class BridgeLogicMixin:
         self._mode_toggle()
         self._log_flush_timer.start(UI_LOG_FLUSH_MS)
         self._stats_timer.start(400)
-        self._restore_log_terminal_prefs()
+        self._restore_log_view_prefs()
         self._sync_nmea_mode_ui()
         self._refresh_nmea_status_chip()
+        self._sync_bench_setup_button_visibility()
         self._rebuild_recent_sessions_menu()
         self._refresh_preset_list()
         self._sync_preset_action_buttons()
         self._apply_theme(self._theme_id, persist=False)
         apply_app_icon(self)
         self._restore_file_log_prefs_ui()
+        self._log_startup_self_check()
         self._on_ui_ready()
 
+    def _log_startup_self_check(self) -> None:
+        from version import __version__
+        from ui import picker, ui_prefs
+
+        mode = str(getattr(self, "_ui_mode", "unknown"))
+        self._log_ui(
+            "Startup self-check: "
+            f"v{__version__} | mode={mode} | "
+            f"ui_choice={picker.CONFIG_PATH} | ui_prefs={ui_prefs.CONFIG_PATH}"
+        )
+
     def _create_survey_menu_bar(self) -> QtWidgets.QWidget:
-        """Compact View menu — QMenuBar in a QWidget layout grows huge on Windows."""
-        bar = QtWidgets.QWidget(self)
-        bar.setObjectName("surveyMenuBar")
-        lay = QtWidgets.QHBoxLayout(bar)
-        lay.setContentsMargins(6, 0, 6, 0)
-        lay.setSpacing(0)
+        """Draggable chip top bar — drag ⋮⋮ grip to reorder; right-click to hide."""
+        from ui.ui_editor import migrate_topbar_hidden, migrate_topbar_order
+
         prefs = load_top_bar_prefs(getattr(self, "_ui_mode", "standard"))
-        self._topbar_order = list(prefs.get("order", []))
-        self._topbar_hidden = set(str(x) for x in prefs.get("hidden", []))
+        self._topbar_order = migrate_topbar_order(list(prefs.get("order", [])))
+        self._topbar_hidden = migrate_topbar_hidden(set(str(x) for x in prefs.get("hidden", [])))
+        self._topbar_chip_weights = dict(prefs.get("chip_weights", {}))
         self._shortcuts_visible = bool(prefs.get("shortcuts_visible", False))
         self._topbar_position = str(prefs.get("position", "top")).strip().lower() or "top"
         self._topbar_widgets.clear()
         self._topbar_labels.clear()
+        bar = SurveyTopBar(self)
+        self._survey_top_bar = bar
 
-        view_btn = QtWidgets.QToolButton(bar)
+        view_btn = QtWidgets.QToolButton()
         view_btn.setText("View")
         view_btn.setToolButtonStyle(QtCore.Qt.ToolButtonStyle.ToolButtonTextOnly)
         view_btn.setPopupMode(QtWidgets.QToolButton.ToolButtonPopupMode.InstantPopup)
@@ -255,9 +299,15 @@ class BridgeLogicMixin:
         self.addAction(act_pop)
         view_menu.addAction(act_pop)
 
+        act_ui_editor = QtGui.QAction("UI editor…", self)
+        act_ui_editor.setStatusTip(
+            "Show or hide top bar tiles, Connect sections, and main tabs for this workspace"
+        )
+        act_ui_editor.triggered.connect(self._open_ui_editor)
+        view_menu.addAction(act_ui_editor)
         act_demo = QtGui.QAction("Product demo…", self)
         act_demo.setStatusTip(
-            "Scripted walkthrough: presets, UDP, HUD, TCP map motion, Send, Diagnostics checklists"
+            "Scripted walkthrough: presets, UDP, HUD, TCP map motion, Terminal, Diagnostics"
         )
         act_demo.triggered.connect(self._open_product_demo)
         view_menu.addAction(act_demo)
@@ -267,9 +317,13 @@ class BridgeLogicMixin:
         )
         act_bench.triggered.connect(self._open_bench_pair_setup)
         view_menu.addAction(act_bench)
-        act_bar = QtGui.QAction("Customize top bar…", self)
-        act_bar.triggered.connect(self._open_top_bar_manager)
-        view_menu.addAction(act_bar)
+        act_reset_bar = QtGui.QAction("Reset top bar layout", self)
+        act_reset_bar.setStatusTip("Restore default chip order and show all hidden chips")
+        act_reset_bar.triggered.connect(lambda: self._survey_top_bar.reset_layout())
+        view_menu.addAction(act_reset_bar)
+        act_show_bar = QtGui.QAction("Show all top bar chips", self)
+        act_show_bar.triggered.connect(lambda: self._survey_top_bar.show_all_chips())
+        view_menu.addAction(act_show_bar)
         act_shortcuts = QtGui.QAction("Toggle shortcuts legend", self)
         act_shortcuts.triggered.connect(lambda: self._toggle_shortcuts_legend(not self._shortcuts_visible))
         view_menu.addAction(act_shortcuts)
@@ -280,29 +334,38 @@ class BridgeLogicMixin:
         view_menu.addAction(act_move_bar)
 
         view_btn.setMenu(view_menu)
-        self._register_topbar_widget(
-            "view",
-            "View",
-            view_btn,
-            QtCore.Qt.AlignmentFlag.AlignLeft | QtCore.Qt.AlignmentFlag.AlignVCenter,
+        configure_topbar_button(
+            view_btn, "View", tooltip="Layout, HUD, and bar options"
         )
+        self._topbar_widgets["view"] = view_btn
+        self._topbar_labels["view"] = "View"
+        bar.register("view", "View", view_btn)
 
-        self._survey_bar_sep(lay)
-        presets_btn = QtWidgets.QToolButton(bar)
+        presets_btn = QtWidgets.QToolButton()
         presets_btn.setObjectName("surveyQuickBtn")
         presets_btn.setText("Presets")
         presets_btn.setToolButtonStyle(QtCore.Qt.ToolButtonStyle.ToolButtonTextOnly)
         presets_btn.setPopupMode(QtWidgets.QToolButton.ToolButtonPopupMode.InstantPopup)
         presets_btn.setAutoRaise(True)
-        presets_btn.setToolTip("Load a saved connection preset (Tools → Presets to edit)")
+        presets_btn.setToolTip(
+            "Load a preset and start the bridge (COM, UDP, survey fields). "
+            "Use Presets tab to edit; Diagnostics for bench/boat checklists."
+        )
         self._presets_quick_menu = QtWidgets.QMenu(presets_btn)
         self._presets_menu_group = QtGui.QActionGroup(self)
         self._presets_menu_group.setExclusive(True)
         self._presets_quick_menu.triggered.connect(self._on_presets_quick_menu_triggered)
         presets_btn.setMenu(self._presets_quick_menu)
-        self._register_topbar_widget("presets", "Presets", presets_btn)
+        configure_topbar_button(
+            presets_btn,
+            "Presets",
+            tooltip="Load preset and start bridge (edit on Presets tab; checklists on Diagnostics)",
+        )
+        self._topbar_widgets["presets"] = presets_btn
+        self._topbar_labels["presets"] = "Presets"
+        bar.register("presets", "Presets", presets_btn)
 
-        recent_btn = QtWidgets.QToolButton(bar)
+        recent_btn = QtWidgets.QToolButton()
         recent_btn.setObjectName("surveyQuickBtn")
         recent_btn.setText("Recent")
         recent_btn.setToolButtonStyle(QtCore.Qt.ToolButtonStyle.ToolButtonTextOnly)
@@ -312,22 +375,32 @@ class BridgeLogicMixin:
         self._recent_sessions_btn = recent_btn
         self._recent_sessions_menu = QtWidgets.QMenu(recent_btn)
         recent_btn.setMenu(self._recent_sessions_menu)
-        self._register_topbar_widget("recent", "Recent", recent_btn)
+        configure_topbar_button(
+            recent_btn,
+            "Recent",
+            tooltip="Restore a recent COM + network + NMEA session (last 5)",
+        )
+        self._topbar_widgets["recent"] = recent_btn
+        self._topbar_labels["recent"] = "Recent"
+        bar.register("recent", "Recent", recent_btn)
 
-        self._survey_bar_sep(lay)
-        hud_btn = self._survey_bar_btn(lay, "HUD", act_pop.statusTip(), None)
+        hud_btn = self._make_topbar_tool_button(
+            "HUD", act_pop.statusTip(), None, key="hud"
+        )
         hud_btn.setDefaultAction(act_pop)
+        bar.register("hud", "HUD", hud_btn)
 
-        tools_btn = self._survey_bar_btn(
-            lay,
+        tools_btn = self._make_topbar_tool_button(
             "Tools",
-            "Show or hide NMEA / Send / Diagnostics (Field layout)",
+            "Show or hide NMEA / Terminal / Diagnostics (Field layout)",
             None,
+            key="tools",
             checkable=True,
         )
         self._survey_btn_tools = tools_btn
+        bar.register("tools", "Tools", tools_btn)
 
-        hidden_btn = QtWidgets.QToolButton(bar)
+        hidden_btn = QtWidgets.QToolButton()
         hidden_btn.setObjectName("surveyQuickBtn")
         hidden_btn.setText("Hidden tabs")
         hidden_btn.setToolButtonStyle(QtCore.Qt.ToolButtonStyle.ToolButtonTextOnly)
@@ -336,36 +409,47 @@ class BridgeLogicMixin:
         hidden_btn.setToolTip("Show tabs hidden from the tab strip")
         self._hidden_tabs_menu = QtWidgets.QMenu(hidden_btn)
         hidden_btn.setMenu(self._hidden_tabs_menu)
+        configure_topbar_button(
+            hidden_btn,
+            "Hidden tabs",
+            tooltip="Show tabs hidden from the tab strip",
+        )
         self._hidden_tabs_btn = hidden_btn
-        self._register_topbar_widget("hidden_tabs", "Hidden tabs", hidden_btn)
+        self._topbar_widgets["hidden_tabs"] = hidden_btn
+        self._topbar_labels["hidden_tabs"] = "Hidden tabs"
+        bar.register("hidden_tabs", "Hidden tabs", hidden_btn)
 
-        self._survey_bar_btn(
-            lay,
-            "Randomize theme",
-            "Instantly generate a new fun multi-zone theme palette",
-            self._randomize_theme_now,
-        )
-        self._survey_bar_btn(
-            lay,
-            "Standardize theme",
-            "Switch to the stable Field Slate style",
-            self._standardize_theme_now,
-        )
+        for key, text, tip, slot in (
+            (
+                "randomize_theme",
+                "Randomize theme",
+                "Instantly generate a new fun multi-zone theme palette",
+                self._randomize_theme_now,
+            ),
+            (
+                "standardize_theme",
+                "Standardize theme",
+                "Switch to the stable Field Slate style",
+                self._standardize_theme_now,
+            ),
+            (
+                "ui_editor",
+                "UI editor",
+                "Show or hide top bar tiles, Connect sections (NTRIP, Quick log, …), and main tabs",
+                self._open_ui_editor,
+            ),
+            (
+                "copy_stats",
+                "Copy stats",
+                "Copy status-bar metrics to clipboard (paste into notes / chat)",
+                self._copy_stats_to_clipboard,
+            ),
+        ):
+            btn = self._make_topbar_tool_button(text, tip, slot, key=key)
+            bar.register(key, text, btn)
 
-        self._survey_bar_btn(
-            lay,
-            "Demo",
-            "Guided product walkthrough (~6–8 min) for live audiences",
-            self._open_product_demo,
-        )
-
-        lay.addStretch(1)
-        self._survey_bar_btn(
-            lay,
-            "Copy stats",
-            "Copy status-bar metrics to clipboard (paste into notes / chat)",
-            self._copy_stats_to_clipboard,
-        )
+        ui_inner = build_ui_switch_inner(self, on_toggle=self._toggle_ui_layout)
+        bar.register("ui_switch", "Layout", ui_inner, pin_right=True)
 
         drawer = getattr(self, "_drawer_btn", None)
         if drawer is not None:
@@ -374,15 +458,16 @@ class BridgeLogicMixin:
             tools_btn.toggled.connect(drawer.setChecked)
         else:
             tools_btn.clicked.connect(self._toggle_tools_drawer)
-        shortcuts_btn = self._survey_bar_btn(
-            lay,
+        shortcuts_btn = self._make_topbar_tool_button(
             "Shortcuts",
             "Show or hide the keyboard shortcuts legend",
             self._toggle_shortcuts_button_clicked,
+            key="shortcuts",
             checkable=True,
         )
         shortcuts_btn.setChecked(self._shortcuts_visible)
         self._shortcuts_toggle_btn = shortcuts_btn
+        bar.register("shortcuts", "Shortcuts", shortcuts_btn)
 
         # Handy always-on shortcuts
         self._register_shortcut("Start bridge", "Ctrl+B", self.start_bridge)
@@ -402,59 +487,71 @@ class BridgeLogicMixin:
                 lambda idx=i - 1: self._jump_to_tab_index(idx),
             )
 
-        bar.setSizePolicy(
-            QtWidgets.QSizePolicy.Policy.Expanding,
-            QtWidgets.QSizePolicy.Policy.Fixed,
+        bar.set_persist_callback(self._persist_top_bar_from_bar)
+        bar.set_host_window(self)
+        bar.set_prefs(
+            self._topbar_order,
+            self._topbar_hidden,
+            self._topbar_chip_weights,
         )
-        bar.setFixedHeight(max(view_btn.sizeHint().height(), presets_btn.sizeHint().height()) + 4)
         self.survey_menu_bar = bar
-        self._rebuild_top_bar_widgets()
+        self._refresh_hidden_tabs_menu()
+        self._ensure_readable_top_bar()
         return bar
 
-    def _register_topbar_widget(
+    def _ensure_readable_top_bar(self) -> None:
+        """First impression: full top-bar labels when possible, else short readable tiles."""
+        if getattr(self, "_readable_topbar_done", False):
+            return
+        self._readable_topbar_done = True
+        bar = getattr(self, "_survey_top_bar", None)
+        if bar is None:
+            return
+        bar.ensure_host_fits_full_labels(self)
+        bar.prefer_expanded_on_show(self)
+        bar.sync_host_minimum_width(self)
+
+    def _open_ui_editor(self) -> None:
+        from ui.ui_editor import open_ui_editor
+
+        open_ui_editor(self)
+
+    def _persist_top_bar_from_bar(
         self,
-        key: str,
-        label: str,
-        widget: QtWidgets.QWidget,
-        align: QtCore.Qt.AlignmentFlag = QtCore.Qt.AlignmentFlag.AlignVCenter,
+        order: list[str],
+        hidden: set[str],
+        chip_weights: Optional[dict[str, float]] = None,
     ) -> None:
-        self._topbar_widgets[key] = widget
-        self._topbar_labels[key] = label
-        if key not in self._topbar_order:
-            self._topbar_order.append(key)
-        lay = widget.parentWidget().layout() if widget.parentWidget() is not None else None
-        if isinstance(lay, QtWidgets.QHBoxLayout):
-            lay.addWidget(widget, 0, align)
+        from ui.ui_editor import migrate_topbar_hidden, migrate_topbar_order
+
+        self._topbar_order = migrate_topbar_order(order)
+        self._topbar_hidden = migrate_topbar_hidden(hidden)
+        if chip_weights:
+            self._topbar_chip_weights = dict(chip_weights)
+        self._save_top_bar_prefs()
 
     def _rebuild_top_bar_widgets(self) -> None:
-        parent = getattr(self, "_hidden_tabs_btn", None)
-        if parent is None:
+        bar = getattr(self, "_survey_top_bar", None)
+        if bar is None:
             return
-        lay = parent.parentWidget().layout() if parent.parentWidget() is not None else None
-        if not isinstance(lay, QtWidgets.QHBoxLayout):
+        if self._topbar_rebuild_guard:
             return
         self._topbar_rebuild_guard = True
         try:
-            while lay.count():
-                item = lay.takeAt(0)
-                w = item.widget()
-                if w is not None:
-                    w.setParent(parent.parentWidget())
-            order = [k for k in self._topbar_order if k in self._topbar_widgets]
-            for k in self._topbar_widgets.keys():
-                if k not in order:
-                    order.append(k)
-            self._topbar_order = order
-            visible = [k for k in order if k not in self._topbar_hidden]
-            for key in visible:
-                lay.addWidget(self._topbar_widgets[key], 0, QtCore.Qt.AlignmentFlag.AlignVCenter)
-            lay.addStretch(1)
+            bar.set_prefs(
+                self._topbar_order,
+                self._topbar_hidden,
+                self._topbar_chip_weights,
+            )
         finally:
             self._topbar_rebuild_guard = False
         self._refresh_hidden_tabs_menu()
-        self._save_top_bar_prefs()
 
     def _save_top_bar_prefs(self) -> None:
+        weights = dict(getattr(self, "_topbar_chip_weights", {}))
+        bar = getattr(self, "_survey_top_bar", None)
+        if bar is not None:
+            weights = bar.chip_weights()
         save_top_bar_prefs(
             getattr(self, "_ui_mode", "standard"),
             {
@@ -462,6 +559,7 @@ class BridgeLogicMixin:
                 "hidden": sorted(self._topbar_hidden),
                 "shortcuts_visible": bool(self._shortcuts_visible),
                 "position": self._topbar_position,
+                "chip_weights": weights,
             },
         )
 
@@ -482,64 +580,6 @@ class BridgeLogicMixin:
                 lay.insertWidget(1, legend)
         self._save_top_bar_prefs()
         self._log_ui(f"[UI] Top bar moved to {pos}.")
-
-    def _open_top_bar_manager(self) -> None:
-        dlg = QtWidgets.QDialog(self)
-        dlg.setWindowTitle("Customize top bar")
-        dlg.resize(420, 360)
-        lay = QtWidgets.QVBoxLayout(dlg)
-        hint = QtWidgets.QLabel("Drag to reorder. Uncheck to hide.")
-        hint.setWordWrap(True)
-        lay.addWidget(hint)
-        lst = QtWidgets.QListWidget()
-        lst.setObjectName("presetList")
-        lst.setDragEnabled(True)
-        lst.setAcceptDrops(True)
-        lst.setDropIndicatorShown(True)
-        lst.setDefaultDropAction(QtCore.Qt.DropAction.MoveAction)
-        lst.setDragDropMode(QtWidgets.QAbstractItemView.DragDropMode.InternalMove)
-        for key in self._topbar_order:
-            if key not in self._topbar_labels:
-                continue
-            item = QtWidgets.QListWidgetItem(self._topbar_labels[key])
-            item.setData(QtCore.Qt.ItemDataRole.UserRole, key)
-            item.setFlags(item.flags() | QtCore.Qt.ItemFlag.ItemIsUserCheckable)
-            visible = key not in self._topbar_hidden or key == "view"
-            item.setCheckState(QtCore.Qt.CheckState.Checked if visible else QtCore.Qt.CheckState.Unchecked)
-            if key == "view":
-                item.setFlags(item.flags() & ~QtCore.Qt.ItemFlag.ItemIsUserCheckable)
-            lst.addItem(item)
-        lay.addWidget(lst, 1)
-        row = QtWidgets.QHBoxLayout()
-        btn_apply = QtWidgets.QPushButton("Apply")
-        btn_cancel = QtWidgets.QPushButton("Cancel")
-        row.addStretch(1)
-        row.addWidget(btn_apply)
-        row.addWidget(btn_cancel)
-        lay.addLayout(row)
-
-        def _apply() -> None:
-            order: list[str] = []
-            hidden: set[str] = set()
-            for i in range(lst.count()):
-                item = lst.item(i)
-                if item is None:
-                    continue
-                key = str(item.data(QtCore.Qt.ItemDataRole.UserRole) or "").strip()
-                if not key:
-                    continue
-                order.append(key)
-                if key != "view" and item.checkState() != QtCore.Qt.CheckState.Checked:
-                    hidden.add(key)
-            self._topbar_order = order
-            self._topbar_hidden = hidden
-            self._rebuild_top_bar_widgets()
-            self._log_ui("[UI] Updated top bar layout.")
-            dlg.accept()
-
-        btn_apply.clicked.connect(_apply)
-        btn_cancel.clicked.connect(dlg.reject)
-        dlg.exec()
 
     def _create_shortcuts_legend_panel(self) -> QtWidgets.QFrame:
         panel = QtWidgets.QFrame(self)
@@ -583,34 +623,25 @@ class BridgeLogicMixin:
     def _toggle_shortcuts_button_clicked(self, checked: bool) -> None:
         self._toggle_shortcuts_legend(bool(checked))
 
-    def _survey_bar_sep(self, lay: QtWidgets.QHBoxLayout) -> None:
-        sep = QtWidgets.QFrame()
-        sep.setObjectName("surveyBarSep")
-        sep.setFrameShape(QtWidgets.QFrame.Shape.VLine)
-        sep.setFixedWidth(1)
-        lay.addWidget(sep, 0, QtCore.Qt.AlignmentFlag.AlignVCenter)
-
-    def _survey_bar_btn(
+    def _make_topbar_tool_button(
         self,
-        lay: QtWidgets.QHBoxLayout,
         text: str,
         tooltip: str,
         slot: object | None,
         *,
+        key: str,
         checkable: bool = False,
     ) -> QtWidgets.QToolButton:
-        btn = QtWidgets.QToolButton(self)
+        btn = QtWidgets.QToolButton()
         btn.setObjectName("surveyQuickBtn")
-        btn.setText(text)
-        btn.setToolTip(tooltip)
-        btn.setToolButtonStyle(QtCore.Qt.ToolButtonStyle.ToolButtonTextOnly)
         btn.setAutoRaise(True)
+        configure_topbar_button(btn, text, tooltip=tooltip)
         if checkable:
             btn.setCheckable(True)
         if slot is not None:
             btn.clicked.connect(slot)  # type: ignore[arg-type]
-        key = text.strip().lower().replace(" ", "_")
-        self._register_topbar_widget(key, text, btn)
+        self._topbar_widgets[key] = btn
+        self._topbar_labels[key] = text
         return btn
 
     def _toggle_tools_drawer(self) -> None:
@@ -621,7 +652,7 @@ class BridgeLogicMixin:
         QtWidgets.QMessageBox.information(
             self,
             "Tools",
-            "Open the Connect, NMEA, Send, or Diagnostics tabs in this layout.",
+            "Open the Connect, NMEA, Terminal, or Diagnostics tabs in this layout.",
         )
 
     def _setup_reorderable_tabs(self, tabs: QtWidgets.QTabWidget, key: str) -> None:
@@ -665,6 +696,9 @@ class BridgeLogicMixin:
                     tabs.setTabToolTip(idx, tip)
         finally:
             self._tab_rebuild_guard = False
+        bar = tabs.tabBar()
+        bar.setMovable(True)
+        bar.setToolTip("Drag tabs left/right to reorder")
         self._refresh_hidden_tabs_menu()
 
     def _persist_tab_state(self, tabs: QtWidgets.QTabWidget, key: str) -> None:
@@ -715,6 +749,10 @@ class BridgeLogicMixin:
             btn.setEnabled(False)
             return
         btn.setEnabled(True)
+        show_all = QtGui.QAction("Show all hidden tabs", self)
+        show_all.triggered.connect(lambda checked=False, k=key: self._show_all_hidden_tabs(k))
+        menu.addAction(show_all)
+        menu.addSeparator()
         for label in hidden:
             act = QtGui.QAction(f"Show {label}", self)
             act.triggered.connect(lambda checked=False, n=label, k=key: self._show_hidden_tab(k, n))
@@ -724,6 +762,17 @@ class BridgeLogicMixin:
         hidden = self._tab_hidden.setdefault(key, set())
         if label in hidden:
             hidden.remove(label)
+        tabs = getattr(self, "_main_tabs", None) if key == "main_tabs" else getattr(self, "_drawer_tabs", None)
+        if tabs is None:
+            return
+        self._rebuild_tabs_from_state(tabs, key)
+        self._persist_tab_state(tabs, key)
+
+    def _show_all_hidden_tabs(self, key: str) -> None:
+        hidden = self._tab_hidden.setdefault(key, set())
+        if not hidden:
+            return
+        hidden.clear()
         tabs = getattr(self, "_main_tabs", None) if key == "main_tabs" else getattr(self, "_drawer_tabs", None)
         if tabs is None:
             return
@@ -785,30 +834,127 @@ class BridgeLogicMixin:
             return
         self._log_ui(f"[UI] Saved live log ({len(view.toPlainText())} chars) → {path}")
 
-    def _restore_log_terminal_prefs(self) -> None:
-        prefs = load_log_terminal_prefs()
-        chk = getattr(self, "chk_log_hex", None)
-        if chk is not None:
-            chk.setChecked(bool(prefs.get("log_hex", False)))
-        combo = getattr(self, "cmb_log_sentence", None)
-        if combo is not None:
-            key = str(prefs.get("log_sentence", "") or "")
-            for i in range(combo.count()):
-                if str(combo.itemData(i) or "") == key:
-                    combo.setCurrentIndex(i)
-                    break
+    def _log_view_prefs_dict(self) -> dict:
+        mode = getattr(self, "_ui_mode", "standard")
+        if mode == "field":
+            return load_field_prefs()
+        if mode == "logfirst":
+            return load_logfirst_prefs()
+        return load_log_terminal_prefs()
+
+    def _restore_log_view_prefs(self) -> None:
+        self._apply_log_view_state(
+            LogViewState.from_dict(self._log_view_prefs_dict()),
+            persist=False,
+            sync_widgets=True,
+        )
+
+    def _save_log_view_prefs(self) -> None:
+        if self._log_view_sync_guard:
+            return
+        payload = self._log_view_state.to_dict()
+        mode = getattr(self, "_ui_mode", "standard")
+        if mode == "field":
+            existing = load_field_prefs()
+            existing.update(payload)
+            save_field_prefs(existing)
+        elif mode == "logfirst":
+            save_logfirst_prefs(payload)
+        else:
+            save_log_terminal_prefs(payload)
 
     def _save_log_terminal_prefs(self, *_args) -> None:
-        chk = getattr(self, "chk_log_hex", None)
-        combo = getattr(self, "cmb_log_sentence", None)
-        if chk is None and combo is None:
+        self._save_log_view_prefs()
+
+    def _sync_log_view_widgets(self) -> None:
+        st = self._log_view_state
+        self._log_view_sync_guard = True
+        try:
+            verbose = getattr(self, "chk_verbose_log", None)
+            if verbose is not None and verbose.isChecked() != st.verbose:
+                verbose.setChecked(st.verbose)
+            hex_chk = getattr(self, "chk_log_hex", None)
+            if hex_chk is not None and hex_chk.isChecked() != st.hex:
+                hex_chk.setChecked(st.hex)
+            combo = getattr(self, "cmb_log_preset", None)
+            if combo is not None:
+                key = st.preset
+                for i in range(combo.count()):
+                    if str(combo.itemData(i) or "") == key:
+                        if combo.currentIndex() != i:
+                            combo.setCurrentIndex(i)
+                        break
+            for attr, val in (
+                ("chk_log_rx", st.rx),
+                ("chk_log_tx", st.tx),
+                ("chk_log_warn", st.warn),
+            ):
+                chk = getattr(self, attr, None)
+                if chk is not None and chk.isChecked() != val:
+                    chk.setChecked(val)
+        finally:
+            self._log_view_sync_guard = False
+
+    def _apply_log_view_state(
+        self,
+        state: LogViewState,
+        *,
+        persist: bool = True,
+        sync_widgets: bool = False,
+    ) -> None:
+        self._log_view_state = state
+        self._log_filter_rx = state.rx
+        self._log_filter_tx = state.tx
+        self._log_filter_warn = state.warn
+        if sync_widgets:
+            self._sync_log_view_widgets()
+        if persist:
+            self._save_log_view_prefs()
+
+    def _on_log_preset_combo_changed(self, _idx: int = 0) -> None:
+        if self._log_view_sync_guard:
             return
-        save_log_terminal_prefs(
-            {
-                "log_hex": bool(chk.isChecked()) if chk is not None else False,
-                "log_sentence": str(combo.currentData() or "") if combo is not None else "",
-            }
+        combo = getattr(self, "cmb_log_preset", None)
+        if combo is None:
+            return
+        key = str(combo.currentData() or "")
+        if key == PRESET_CUSTOM:
+            self._open_log_view_dialog()
+            return
+        self._apply_log_view_state(state_from_preset(key), sync_widgets=True)
+
+    def _on_log_verbose_toggled(self, _on: bool = False) -> None:
+        if self._log_view_sync_guard:
+            return
+        verbose = getattr(self, "chk_verbose_log", None)
+        if verbose is None:
+            return
+        st = LogViewState(**{**self._log_view_state.to_dict(), "sentence_types": frozenset(self._log_view_state.sentence_types)})
+        st.verbose = verbose.isChecked()
+        st.preset = st.detect_preset()
+        self._apply_log_view_state(st, sync_widgets=True)
+
+    def _on_log_filter_chip_changed(self) -> None:
+        if self._log_view_sync_guard:
+            return
+        st = LogViewState(**{**self._log_view_state.to_dict(), "sentence_types": frozenset(self._log_view_state.sentence_types)})
+        st.rx = bool(getattr(self, "chk_log_rx", None) and self.chk_log_rx.isChecked())
+        st.tx = bool(getattr(self, "chk_log_tx", None) and self.chk_log_tx.isChecked())
+        st.warn = bool(getattr(self, "chk_log_warn", None) and self.chk_log_warn.isChecked())
+        st.preset = st.detect_preset()
+        self._apply_log_view_state(st, sync_widgets=True)
+
+    def _open_log_view_dialog(self) -> None:
+        updated = LogViewDialog.edit(
+            self._log_view_state,
+            self,
+            nmea_mode_label=self._nmea_mode_label(),
         )
+        if updated is None:
+            self._sync_log_view_widgets()
+            return
+        self._apply_log_view_state(updated, sync_widgets=True)
+        self._log_ui(f"[UI] Live log view: {updated.toolbar_summary()}")
 
     def _sync_nmea_mode_ui(self, *_args) -> None:
         strict_on = bool(
@@ -847,7 +993,7 @@ class BridgeLogicMixin:
         from ui.controls import elide_status_label
 
         mode = self._nmea_mode_label()
-        if self.bridge and self.bridge.running:
+        if self._is_bridge_running():
             elide_status_label(chip, f"NMEA: {mode} · running")
         elif self._starting:
             elide_status_label(chip, f"NMEA: {mode} · starting")
@@ -862,7 +1008,7 @@ class BridgeLogicMixin:
         from survey_quality import format_gnss_status_chip
         from ui.controls import elide_status_label
 
-        running = bool(self.bridge and self.bridge.running)
+        running = self._is_bridge_running()
         raw_mode = self._nmea_mode_label() == "raw"
         nav = self.bridge.navigation_quality() if running and self.bridge and not raw_mode else None
         text = format_gnss_status_chip(nav, running=running, raw_mode=raw_mode)
@@ -1493,12 +1639,18 @@ class BridgeLogicMixin:
         self._log_ui(f"[UI] Random seed lock: {state}")
         self._sync_random_theme_actions()
 
+    def _toggle_ui_layout(self) -> None:
+        """Switch Standard ↔ Field (double-click Layout on the survey bar)."""
+        cur = normalize_ui_id(getattr(self, "_ui_mode", "standard"))
+        other = "field" if cur == "standard" else "standard"
+        self._switch_ui_layout(other)
+
     def _switch_ui_layout(self, ui_id: str) -> None:
         if self.bridge is not None or (self._worker is not None and self._worker.isRunning()):
             QtWidgets.QMessageBox.information(
                 self,
-                "UI Switch",
-                "Stop the bridge before switching UI layout.",
+                "Layout",
+                "Stop the bridge before switching layout.",
             )
             return
         if ui_id == getattr(self, "_ui_mode", ""):
@@ -1895,7 +2047,7 @@ class BridgeLogicMixin:
                 cfg,
                 bridge.inject_correction_bytes,
                 self._log_ui,
-                lambda: bool(self.bridge and self.bridge.running),
+                lambda: self._is_bridge_running(),
             )
 
         self._ntrip_future = asyncio.run_coroutine_threadsafe(_runner(), loop)
@@ -2079,15 +2231,30 @@ class BridgeLogicMixin:
         QtCore.QTimer.singleShot(0, lambda n=name: self._quick_connect_preset(n))
 
     def _quick_connect_preset(self, name: str) -> None:
-        self._activate_preset_by_name(name, log=False)
-        self._diag_run_check_setup()
-        if self.bridge is not None or self._starting:
+        """Survey bar Presets menu: apply full preset and start (no diagnostics checklist)."""
+        clean = (name or "").strip()
+        if not clean:
+            return
+        try:
+            data = load_preset(clean)
+        except KeyError:
+            QtWidgets.QMessageBox.warning(
+                self,
+                "Presets",
+                f"Preset «{clean}» was not found in path_presets.json.",
+            )
+            return
+        running = self.bridge is not None or self._starting
+        if running:
             self.stop_bridge()
+        self._select_preset_row(clean, scroll=True)
+        self._presets_menu_pending = None
+        self._apply_preset_data(data, name=clean, log=True)
+        self._rebuild_presets_quick_menu()
+        if running:
             QtCore.QTimer.singleShot(300, self.start_bridge)
-            self._log_ui(f"[UI] Preset '{name}' applied. Restarting bridge with preset.")
         else:
             self.start_bridge()
-            self._log_ui(f"[UI] Preset '{name}' applied. Starting bridge.")
 
     def _rebuild_presets_quick_menu(self) -> None:
         menu = getattr(self, "_presets_quick_menu", None)
@@ -2464,54 +2631,24 @@ class BridgeLogicMixin:
             return
         self._enqueue_ui(txt)
 
-    def _log_sentence_filter_key(self) -> str:
-        combo = getattr(self, "cmb_log_sentence", None)
-        if combo is None:
-            return ""
-        return str(combo.currentData() or "")
-
     def _log_line_allowed(self, txt: str) -> bool:
-        if self.chk_verbose_log.isChecked() and not log_line_matches_sentence_filter(
-            txt, self._log_sentence_filter_key()
-        ):
-            return False
-        s = txt.upper()
-        is_warn = (
-            "[REJECT]" in s
-            or "[DROP" in s
-            or "TIMED OUT" in s
-            or "ERROR" in s
-            or "FAILED" in s
-            or "DISCONNECT" in s
-            or "FORCING PORT RELEASE" in s
-            or "DID NOT EXIT CLEANLY" in s
+        return log_line_allowed(txt, self._log_view_state)
+
+    def _on_log_hex_toggled(self, _on: bool = False) -> None:
+        if self._log_view_sync_guard:
+            return
+        chk = getattr(self, "chk_log_hex", None)
+        if chk is None:
+            return
+        st = LogViewState(
+            **{
+                **self._log_view_state.to_dict(),
+                "sentence_types": frozenset(self._log_view_state.sentence_types),
+            }
         )
-        is_rx = (
-            "UDP←" in txt
-            or "TCP←" in txt
-            or "INJECT→SER" in txt
-            or "GUI→SER" in txt
-            or "N→S" in txt
-            or "SEND→COM" in s
-        )
-        is_tx = (
-            "SER→" in txt
-            or "SER→NET" in txt
-            or "COM→" in txt
-            or "S→N" in txt
-            or "S→N" in s
-            or "UDP SEND" in s
-            or "TCP SEND" in s
-        )
-        if is_warn and self._log_filter_warn:
-            return True
-        if is_rx and self._log_filter_rx:
-            return True
-        if is_tx and self._log_filter_tx:
-            return True
-        if not (is_warn or is_rx or is_tx):
-            return self._log_filter_warn or self._log_filter_rx or self._log_filter_tx
-        return False
+        st.hex = chk.isChecked()
+        st.preset = st.detect_preset()
+        self._apply_log_view_state(st, sync_widgets=True)
 
     def _set_log_pause(self, paused: bool) -> None:
         prev = self._log_pause
@@ -2543,22 +2680,33 @@ class BridgeLogicMixin:
         save_diag_card_order(getattr(self, "_ui_mode", "standard"), order)
 
     def _apply_diag_card_order(self) -> None:
-        lay = getattr(self, "_diag_cards_layout", None)
         widgets = getattr(self, "_diag_card_widgets", None)
-        if lay is None or not isinstance(widgets, dict):
+        if not isinstance(widgets, dict):
             return
         order = self._load_diag_card_order()
         ordered_widgets = [widgets[k] for k in order if k in widgets]
         for key, w in widgets.items():
             if w not in ordered_widgets:
                 ordered_widgets.append(w)
-        for w in ordered_widgets:
-            lay.removeWidget(w)
-            lay.addWidget(w)
+        splitter: QtWidgets.QSplitter | None = getattr(self, "_diag_cards_splitter", None)
+        if splitter is not None:
+            for w in ordered_widgets:
+                w.setParent(None)
+            for w in ordered_widgets:
+                splitter.addWidget(w)
+        else:
+            lay = getattr(self, "_diag_cards_layout", None)
+            if lay is None:
+                return
+            for w in ordered_widgets:
+                lay.removeWidget(w)
+                lay.addWidget(w)
+        from ui.tool_tabs import refresh_diag_cards
+
+        refresh_diag_cards(self)
 
     def _open_diag_card_order_manager(self) -> None:
         labels = {
-            "quick_ui_switch": "Quick UI switch",
             "file_log": "Rotating file log",
             "screen_log": "On-screen log",
             "traffic_quality": "Traffic & data quality",
@@ -2714,7 +2862,7 @@ class BridgeLogicMixin:
         self._refresh_stats_popout()
 
     def _tick_stats(self) -> None:
-        if self.bridge:
+        if self._is_bridge_running():
             self._stats_from_bridge({})
         else:
             from ui.controls import elide_status_label
@@ -2745,6 +2893,8 @@ class BridgeLogicMixin:
             self.btn_diag_stop.setEnabled(running)
 
     def _focus_diagnostics_tab(self) -> None:
+        from ui.tool_tabs import refresh_diag_cards
+
         tabs = getattr(self, "_main_tabs", None) or getattr(self, "_drawer_tabs", None)
         if tabs is None:
             return
@@ -2756,6 +2906,14 @@ class BridgeLogicMixin:
         drawer = getattr(self, "_drawer_btn", None)
         if drawer is not None and not drawer.isChecked():
             drawer.setChecked(True)
+        QtCore.QTimer.singleShot(0, lambda: refresh_diag_cards(self))
+
+    def _diag_expand_card(self, key: str) -> None:
+        from ui.tool_tabs import _IosCollapsibleCard
+
+        card = getattr(self, "_diag_card_widgets", {}).get(key)
+        if isinstance(card, _IosCollapsibleCard):
+            card.set_expanded(True)
 
     def _append_diag_output(self, text: str) -> None:
         from log_serial_coalesce import ui_safe_text
@@ -2798,11 +2956,18 @@ class BridgeLogicMixin:
             clear_output = not bench_chain
         if focus_diag:
             self._focus_diagnostics_tab()
+            self._diag_expand_card("automated_checks")
         if clear_output:
             self.diag_output.clear()
         self._diag_current_title = title
         exe = cli_python_gui_spawn()
         rel = _REPO_ROOT / script
+        if not rel.is_file():
+            self._append_diag_output(f"Script not found: {rel}\n")
+            if bench_chain:
+                self._bench_preflight_chain = False
+            self._log_ui(f"[UI] Missing script: {rel.name}")
+            return
         cmd = f"{exe} {rel.name} {' '.join(args)}".strip()
         self._append_diag_output(f"$ {cmd}\n(working dir: {_REPO_ROOT})\n\n")
         self.diag_status_label.setText(f"Running: {title}…")
@@ -2818,7 +2983,16 @@ class BridgeLogicMixin:
         proc.finished.connect(self._diag_on_finished)
         proc.errorOccurred.connect(self._diag_on_error)
         self._diag_qprocess = proc
+        qprocess_attach_no_console(proc)
         proc.start()
+        if not proc.waitForStarted(5000):
+            err = proc.errorString() or "unknown error"
+            self._append_diag_output(f"\n[failed to start script: {err}]\n")
+            self._diag_release_process(user_stop=False)
+            if bench_chain:
+                self._bench_preflight_chain = False
+            self._log_ui(f"[UI] Could not start {script}: {err}")
+            return
 
     def _diag_on_stdout(self) -> None:
         p = self._diag_qprocess
@@ -2936,22 +3110,38 @@ class BridgeLogicMixin:
         return True
 
     def _open_bench_pair_setup(self) -> None:
-        """Open bench/com0com guide and run preflight on Connect (quick terminal) + Diagnostics."""
+        """Open bench/com0com guide and run preflight on Connect (quick terminal)."""
         from ui.connect_panels import expand_connect_panel
+
+        self._sync_bench_setup_button_visibility()
+        if bool(load_bench_setup_prefs().get("hide_dialog", False)):
+            self._log_ui("[UI] Bench setup window hidden by preference. Running preflight only.")
 
         self._focus_connect_tab()
         expand_connect_panel(self, "quick_terminal")
 
-        guide_ok = self._open_operator_guide_bench()
+        guide_path = self._operator_guide_path()
+        section = extract_operator_guide_section(guide_path, "5. Desk / bench workflow")
+        dlg = show_bench_setup_dialog(
+            self,
+            section,
+            on_open_full_guide=self._open_operator_guide_bench,
+            on_hide_pref_changed=lambda _on: self._sync_bench_setup_button_visibility(),
+        )
+        if dlg is None:
+            self._log_ui("[UI] Bench setup window is hidden by preference (preflight still runs).")
+
         intro = (
             "=== Bench pair setup ===\n"
-            f"Operator guide: {'opened' if guide_ok else 'see docs/OPERATOR_GUIDE.md §5'}\n"
+            "Guide: see the Bench pair setup window (section 5).\n"
             "1) Install com0com and create a PAIRED port pair.\n"
             "2) Bridge uses one COM; Tera Term uses the paired port (not the same COM).\n"
             "3) Running com_free, then check_setup…\n\n"
         )
         self._append_connect_terminal(intro)
-        self._log_ui("[UI] Bench pair setup: running preflight (com_free → check_setup)…")
+        out = getattr(self, "connect_terminal_out", None)
+        if out is not None:
+            out.setFocus(QtCore.Qt.FocusReason.OtherFocusReason)
 
         if not hasattr(self, "diag_output"):
             QtWidgets.QMessageBox.information(
@@ -2965,11 +3155,19 @@ class BridgeLogicMixin:
             QtWidgets.QMessageBox.information(
                 self,
                 "Bench pair setup",
-                "A diagnostics script is already running. Stop it first, then retry.",
+                "A diagnostics script is already running. Stop it on Diagnostics, then retry.",
             )
             return
+        self._log_ui("[UI] Bench pair setup: running preflight (com_free → check_setup)…")
         self._bench_preflight_chain = True
         self._diag_run_com_free()
+
+    def _sync_bench_setup_button_visibility(self) -> None:
+        """Hide/show Bench pair setup buttons based on bench_setup preference."""
+        hide = bool(load_bench_setup_prefs().get("hide_dialog", False))
+        for name in ("btnBenchPairSetupRun", "btnBenchPairSetupDiag"):
+            for btn in self.findChildren(QtWidgets.QPushButton, name):
+                btn.setVisible(not hide)
 
     def _diag_run_com_free(self) -> None:
         d = load_bench_defaults()
@@ -3205,7 +3403,7 @@ class BridgeLogicMixin:
             self.com_cb.addItem(p.device)
 
     def _send_raw_manual(self, where: str, raw: str) -> None:
-        if not self.bridge or not self.bridge.running:
+        if not self._is_bridge_running():
             self._log_ui(
                 "Send: bridge not running — Connect tab: choose path, Start, wait for Running."
             )
@@ -3219,7 +3417,7 @@ class BridgeLogicMixin:
         w = self._worker
 
         def _do() -> None:
-            if not b.running:
+            if not self._bridge_running_safe(b):
                 return
             if where == "serial":
                 b.schedule_net_to_serial(data, "GUI→SER")
@@ -3235,7 +3433,7 @@ class BridgeLogicMixin:
             _do()
 
     def _send_manual(self, where: str) -> None:
-        if not self.bridge or not self.bridge.running:
+        if not self._is_bridge_running():
             self._log_ui(
                 "Send: bridge not running — Connect tab: choose path, Start, wait for Running."
             )
@@ -3508,7 +3706,7 @@ class BridgeLogicMixin:
         if pop is not None:
             pop.close()
             self._stats_popout_window = None
-        running = self.bridge and self.bridge.running
+        running = self._is_bridge_running()
         worker = self._worker
         if running or (worker and worker.isRunning()):
             event.ignore()
