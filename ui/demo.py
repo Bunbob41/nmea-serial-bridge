@@ -316,7 +316,7 @@ PRODUCT_DEMO_STEPS: tuple[DemoStep, ...] = (
         "Switch to TCP",
         "Say: same bridge, different wire — TCP server next.",
         "Stopping UDP and switching to TCP server mode.\n"
-        "External apps connect to us; same COM path out to the autopilot.",
+        "External apps connect to us; same COM bridge path remains active.",
         DEMO_STEP_HOLD_MS,
         _prep_tcp_switch,
     ),
@@ -398,7 +398,7 @@ PRODUCT_DEMO_STEPS: tuple[DemoStep, ...] = (
         "Boat / INS preset",
         "Point at: Presets — load boat-style preset.",
         "Boat-style preset loads production Ethernet and COM for the survey PC.\n"
-        "Mission Planner stays on its own link; this bridge is NMEA to the Cube GPS port.",
+        "This bridge forwards NMEA from network to the configured serial destination.",
         DEMO_STEP_HOLD_MS,
         _finish_boat_preset,
     ),

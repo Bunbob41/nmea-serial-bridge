@@ -6,7 +6,7 @@ Step-by-step guide for survey / bench use. Screenshots are optional; a **shot li
 
 **What this app does:** forwards data between **UDP (or advanced TCP)** and a **COM port**. Default path is **NMEA 0183 text** (Trimble R10, simulators, Hypack). Optional **Raw binary** mode forwards **RTCM** and other non-NMEA bytes without parsing.
 
-Typical use: INS or GNSS on Ethernet → bridge → Cube GPS UART, while Mission Planner uses a **different** COM for MAVLink.
+Typical use: INS or GNSS on Ethernet → bridge → designated device COM input.
 
 ---
 
@@ -21,7 +21,7 @@ Typical use: INS or GNSS on Ethernet → bridge → Cube GPS UART, while Mission
 | This app installed               | Python dev tree **or** release zip with `nmea-serial-bridge.exe` |
 
 
-**Do not** open Tera Term, Mission Planner, or another app on the **same** COM the bridge uses.
+**Do not** open Tera Term or another app on the **same** COM the bridge uses.
 
 ---
 
@@ -149,15 +149,15 @@ python com_free.py
 
 ---
 
-## 6. Boat / field workflow (INS on Ethernet → Cube COM)
+## 6. Boat / field workflow (INS on Ethernet → device COM)
 
-Use when the INS sends NMEA UDP to the survey PC and the bridge drives the autopilot GPS UART.
+Use when the INS sends NMEA UDP to the survey PC and the bridge drives the target serial input.
 
 ### 6.1 One-time / per-vessel setup
 
 1. Set survey PC Ethernet static IP (your `pc_ip` — placeholder in defaults is `192.168.1.10`).
 2. Configure INS to **send** NMEA UDP to `pc_ip:udp_port` (not “listen” on that port).
-3. Note Cube **GPS UART** COM name in Device Manager (placeholder default: COM3).
+3. Note target device COM name in Device Manager (placeholder default: COM3).
 
 ### 6.2 Each session
 
@@ -169,9 +169,9 @@ Use when the INS sends NMEA UDP to the survey PC and the bridge drives the autop
 | 3    | **Save** after first good config on this PC      | Updates `path_presets.json`                         |
 | 4    | **Auto-reconnect COM** (default on)              | Connect tab (Standard) or Presets → Advanced (Field)  |
 | 5    | **NMEA** → **Passthrough** for Trimble NMEA      | Use **Raw** only for binary RTCM / other (rare)     |
-| 6    | **Start bridge**                                 | Running; no Mission Planner on bridge COM           |
+| 6    | **Start bridge**                                 | Running; bridge COM is dedicated                     |
 | 7    | Confirm INS stream                               | Log shows UDP traffic; Hz in status bar / HUD         |
-| 8    | Verify position in Mission Planner via autopilot | Not laptop COM GPS                                |
+| 8    | Verify data at downstream device/app             | Not laptop COM GPS                                  |
 | 9    | **Stop bridge** when done                        |                                                     |
 
 
@@ -195,7 +195,7 @@ The bridge does not configure routers or VPN — only opens sockets on the Windo
 
 - **Run** — **Start bridge** / **Stop bridge** (always visible at top of tab).
 - **Intent hint** — one-line guidance for preset, UDP listen, or TCP mode (full text on hover).
-- **COM / Baud / Refresh** — serial toward autopilot or com0com.
+- **COM / Baud / Refresh** — serial toward target device or com0com.
 - **Auto-reconnect COM** — while Running, retry opening COM every 2 s after a disconnect.
 - **Listen host / port** — UDP listen bind on this PC (default path).
 - **Advanced network** — TCP server/client or UDP remote (Standard Connect tab only).

@@ -109,9 +109,9 @@ def print_production_hints(pc_ip: str, port: int, ins_ip: str, com: str) -> None
 Production / boat path (boat-style named preset or bench_defaults.json):
   1) Set survey Ethernet on this PC (static recommended): {pc_ip}/24
   2) Configure INS / sonar to SEND NMEA UDP to {pc_ip}:{port} (not "listen" on {port})
-  3) Bridge: load boat preset in app -> Start -> {com} @ 115200 to Cube GPS UART
-  4) Do NOT open Mission Planner on {com} while the bridge is running
-  5) Verify in MP: position via autopilot, not laptop COM GPS
+  3) Bridge: load boat preset in app -> Start -> {com} @ 115200 to target serial device
+  4) Do NOT open any other serial app on {com} while the bridge is running
+  5) Verify downstream position/data on the connected device/app, not laptop COM GPS
   6) INS reference IP (typical): {ins_ip}
 
 Pre-flight on the boat PC:

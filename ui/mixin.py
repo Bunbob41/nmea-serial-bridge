@@ -1904,7 +1904,7 @@ class BridgeLogicMixin:
             if pc:
                 return (
                     f"Preset «{self._active_preset_name}»: INS → UDP {pc}:{self.udp_port.text()} "
-                    f"on this PC → {com}. Close Mission Planner on {com} while bridging."
+                    f"on this PC → {com}. Keep this COM dedicated to the bridge while running."
                 )
             return (
                 f"Preset «{self._active_preset_name}»: bridge owns {com}. "
@@ -2324,7 +2324,7 @@ class BridgeLogicMixin:
             lines.append(f"Survey PC {pc_ip} / {data.get('subnet_mask', '255.255.255.0')} — INS → {pc_ip}:{udp_port}.")
             if ins_ip:
                 lines.append(f"INS reference IP: {ins_ip}.")
-            lines.append("Start bridge before opening Mission Planner on the Cube COM.")
+            lines.append("Start the bridge first and keep the selected COM dedicated while running.")
         else:
             lines.append(f"Bench: send UDP to 127.0.0.1:{udp_port}. Watch paired com0com, not {com}.")
         notes = str(data.get("notes", "")).strip()

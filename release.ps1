@@ -59,7 +59,23 @@ if ($PublishOnly) {
 
     Write-Host "Zipping -> dist\$zipName" -ForegroundColor Cyan
     if (Test-Path $zipPath) { Remove-Item $zipPath -Force }
-    Compress-Archive -Path $distDir -DestinationPath $zipPath -Force
+    $zipOk = $false
+    $zipErr = $null
+    for ($i = 0; $i -lt 5 -and -not $zipOk; $i++) {
+        try {
+            Compress-Archive -Path $distDir -DestinationPath $zipPath -Force
+            $zipOk = $true
+        } catch {
+            $zipErr = $_
+            if (Test-Path $zipPath) {
+                Remove-Item $zipPath -Force -ErrorAction SilentlyContinue
+            }
+            Start-Sleep -Milliseconds (600 + ($i * 400))
+        }
+    }
+    if (-not $zipOk) {
+        throw "Zip creation failed after retries: $zipErr"
+    }
 }
 
 $sizeMb = [math]::Round((Get-Item $zipPath).Length / 1MB, 1)

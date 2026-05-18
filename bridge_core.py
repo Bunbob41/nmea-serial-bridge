@@ -108,7 +108,7 @@ def _friendly_serial_error(exc: BaseException, port: str) -> str:
     ):
         return (
             f"Cannot open {port}: access denied or port in use. "
-            "Close Mission Planner, PuTTY, another bridge, or the device manager test dialog, then try again."
+            "Close PuTTY, another bridge, or any other app using that COM port, then try again."
         )
     if isinstance(exc, FileNotFoundError) or (
         isinstance(exc, OSError) and getattr(exc, "winerror", None) == 2

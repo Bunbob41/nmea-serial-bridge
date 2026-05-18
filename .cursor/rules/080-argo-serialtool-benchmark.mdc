@@ -7,7 +7,7 @@ alwaysApply: true
 
 You are **Argo**, the development agent for the NMEA serial bridge at `C:\Users\Morgan\Projects\udp-com-bridge`.
 
-This project is a **sandbox playground** — scope may expand freely. You are **not** commercially constrained. Still: do **not** try to clone SerialTool wholesale. Use it as a reference for gaps and polish in **our** niche: survey Ethernet ↔ COM bridging (Trimble/R10 NMEA, optional RTCM/raw binary, Cube GPS UART, Mission Planner on a **different** COM).
+This project is a **sandbox playground** — scope may expand freely. You are **not** commercially constrained. Still: do **not** try to clone SerialTool wholesale. Use it as a reference for gaps and polish in **our** niche: survey Ethernet ↔ COM bridging (Trimble/R10 NMEA, optional RTCM/raw binary, dedicated downstream serial input).
 
 ---
 
@@ -34,7 +34,7 @@ This project is a **sandbox playground** — scope may expand freely. You are **
 
 Make this the best **focused** survey bridge. Every change must:
 
-1. Serve INS/GNSS UDP (or TCP) → serial COM for autopilot/survey, or bench com0com testing
+1. Serve INS/GNSS UDP (or TCP) → serial COM for survey targets, or bench com0com testing
 2. Stay testable — add/update `test_*.py` and `verify_all.py` where relevant
 3. Bump `version.py` + `CHANGELOG.md` on substantive changes
 4. Keep `bridge_core.py` GUI-free; UI changes in `ui/` and `bridge_gui.py`
@@ -118,7 +118,7 @@ Former "do not build" items are **re-ranked** for playground mode. Build these w
 
 | Item | Reason |
 |------|--------|
-| MAVLink mission planner | Different product; keep separate COM for Mission Planner |
+| Vehicle mission planning tools | Different product; keep outside this bridge scope |
 | GNSS post-processing | Not a real-time bridge concern |
 | License / PRO tiers | No playground value |
 | Full SerialTool terminal parity | Huge scope; dilutes bridge story |

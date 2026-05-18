@@ -1,6 +1,6 @@
 # nmea-serial-bridge
 
-**Current release: v1.2.0** — Windows desktop app that **bidirectionally bridges** traffic between **UDP/TCP** and a **serial COM port**. Primary use: **NMEA 0183 text** for survey / USV workflows — Ethernet GNSS or INS (e.g. Trimble R10) → bridge → physical COM → autopilot GPS UART (e.g. Cube Orange), with Mission Planner on a **separate** COM for MAVLink.
+**Current release: v1.2.0** — Windows desktop app that **bidirectionally bridges** traffic between **UDP/TCP** and a **serial COM port**. Primary use: **NMEA 0183 text** for survey / USV workflows — Ethernet GNSS or INS (e.g. Trimble R10) → bridge → physical COM destination.
 
 **Stack:** Python 3.10+, [PySide6](https://doc.qt.io/qtforpython/), [pyserial-asyncio](https://pyserial-asyncio.readthedocs.io/). Bridge I/O runs on a **background asyncio thread**; the GUI stays on the Qt main thread.
 
@@ -38,7 +38,7 @@
 
 - **Windows** (primary target).  
 - **Python 3.10+** for dev; frozen **`.exe`** for field PCs.  
-- COM drivers for your hardware (Cube, USB serial, com0com on bench).
+- COM drivers for your hardware (USB serial, com0com on bench).
 
 ## Install (development)
 
@@ -147,7 +147,7 @@ Version: `version.py` + `CHANGELOG.md`.
 
 ## What this app is not
 
-- Not a GNSS post-processor, mission planner, or autopilot config tool.  
+- Not a GNSS post-processor or vehicle configuration tool.  
 - Not a binary protocol encoder — **Raw** mode only forwards bytes unchanged.  
 - Forwards **bytes** — validate on bench before operational use.
 
