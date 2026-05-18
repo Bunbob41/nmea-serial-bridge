@@ -108,9 +108,13 @@ def wire_connection_controls(win: QtWidgets.QWidget) -> None:
     if hasattr(win, "chk_log_hex"):
         for rb in (win.rb_nmea_passthrough, win.rb_nmea_strict, win.rb_nmea_raw):
             rb.toggled.connect(win._sync_log_hex_toggle)
-        win.chk_log_hex.toggled.connect(win._save_log_terminal_prefs)
-    if hasattr(win, "cmb_log_sentence"):
-        win.cmb_log_sentence.currentIndexChanged.connect(win._save_log_terminal_prefs)
+        win.chk_log_hex.toggled.connect(win._on_log_hex_toggled)
+    if hasattr(win, "cmb_log_preset"):
+        win.cmb_log_preset.currentIndexChanged.connect(win._on_log_preset_combo_changed)
+    if hasattr(win, "btn_log_view"):
+        win.btn_log_view.clicked.connect(win._open_log_view_dialog)
+    if hasattr(win, "chk_verbose_log"):
+        win.chk_verbose_log.toggled.connect(win._on_log_verbose_toggled)
     for rb in (
         getattr(win, "rb_nmea_passthrough", None),
         getattr(win, "rb_nmea_strict", None),
@@ -513,7 +517,18 @@ def create_diagnostics_controls(parent: QtWidgets.QWidget) -> QtWidgets.QWidget:
     return build_diagnostics_tab(parent)
 
 
-def create_log_panel(parent: QtWidgets.QWidget, *, show_toggle: bool = False) -> QtWidgets.QWidget:
+def create_guide_tab(parent: QtWidgets.QWidget) -> QtWidgets.QWidget:
+    from ui.tool_tabs import build_guide_tab
+
+    return build_guide_tab(parent)
+
+
+def create_log_panel(
+    parent: QtWidgets.QWidget,
+    *,
+    show_toggle: bool = False,
+    show_header: bool = True,
+) -> QtWidgets.QWidget:
     panel = QtWidgets.QWidget()
     lay = QtWidgets.QVBoxLayout(panel)
     lay.setContentsMargins(0, 0, 0, 0)
@@ -532,17 +547,18 @@ def create_log_panel(parent: QtWidgets.QWidget, *, show_toggle: bool = False) ->
         "Use for RTCM or other binary bench checks."
     )
     parent.chk_log_hex.setEnabled(False)
-    parent.cmb_log_sentence = QtWidgets.QComboBox()
-    parent.cmb_log_sentence.setMinimumWidth(120)
-    for label, key in (
-        ("Sentences: all", ""),
-        ("GGA only", "GGA"),
-        ("RMC only", "RMC"),
-        ("GGA + RMC", "GGA,RMC"),
-    ):
-        parent.cmb_log_sentence.addItem(label, key)
-    parent.cmb_log_sentence.setToolTip(
-        "When 'Every NMEA line' is on, limit which sentence types appear in the live log."
+    from ui.log_view import PRESET_LABELS, TOOLBAR_PRESETS
+
+    parent.cmb_log_preset = QtWidgets.QComboBox()
+    parent.cmb_log_preset.setMinimumWidth(148)
+    for key in TOOLBAR_PRESETS:
+        parent.cmb_log_preset.addItem(PRESET_LABELS[key], key)
+    parent.cmb_log_preset.setToolTip(
+        "Quick live-log presets. Use View… for RX/TX/warnings, NMEA types, and hex display."
+    )
+    parent.btn_log_view = QtWidgets.QPushButton("View…")
+    parent.btn_log_view.setToolTip(
+        "Open live log filters: traffic direction, NMEA verbosity, sentence types, and hex preview."
     )
     parent.chk_show_log.setChecked(True)
     parent.chk_verbose_log.setChecked(True)
@@ -556,11 +572,24 @@ def create_log_panel(parent: QtWidgets.QWidget, *, show_toggle: bool = False) ->
     hdr.addWidget(parent.chk_log_pause)
     hdr.addWidget(parent.chk_verbose_log)
     hdr.addWidget(parent.chk_log_hex)
-    hdr.addWidget(parent.cmb_log_sentence)
+    hdr.addWidget(parent.cmb_log_preset)
+    hdr.addWidget(parent.btn_log_view)
     hdr.addStretch(1)
     hdr.addWidget(parent.btn_save_live_log)
     hdr.addWidget(parent.btn_clear_log)
-    lay.addLayout(hdr)
+    if show_header:
+        lay.addLayout(hdr)
+    else:
+        for w in (
+            parent.chk_log_pause,
+            parent.chk_verbose_log,
+            parent.chk_log_hex,
+            parent.cmb_log_preset,
+            parent.btn_log_view,
+            parent.btn_save_live_log,
+            parent.btn_clear_log,
+        ):
+            w.hide()
     parent.log_view = QtWidgets.QPlainTextEdit()
     parent.log_view.setObjectName("logView")
     parent.log_view.setReadOnly(True)
@@ -615,7 +644,7 @@ def create_connect_quick_terminal(parent: QtWidgets.QWidget) -> QtWidgets.QWidge
     lay.setContentsMargins(0, 0, 0, 0)
     hint = QtWidgets.QLabel(
         "Preflight/diagnostic output and one-line Send→COM (bridge must be Running). "
-        "Full Send tab for multi-line inject."
+        "Full Terminal tab for multi-line inject."
     )
     hint.setWordWrap(True)
     hint.setObjectName("tabHint")
@@ -638,7 +667,7 @@ def create_connect_quick_terminal(parent: QtWidgets.QWidget) -> QtWidgets.QWidge
     parent.connect_terminal_input.setPlaceholderText("$GPGGA,...  Enter sends to COM")
     parent.connect_terminal_input.returnPressed.connect(parent._connect_terminal_send_line)
     parent.btn_connect_terminal_send = QtWidgets.QPushButton("Send→COM")
-    parent.btn_connect_terminal_send.setToolTip("Inject one NMEA line to serial (same as Send tab).")
+    parent.btn_connect_terminal_send.setToolTip("Inject one NMEA line to serial (same as Terminal tab).")
     parent.btn_connect_terminal_send.clicked.connect(parent._connect_terminal_send_line)
     parent.btn_connect_terminal_clear = QtWidgets.QPushButton("Clear")
     parent.btn_connect_terminal_clear.clicked.connect(parent.connect_terminal_out.clear)

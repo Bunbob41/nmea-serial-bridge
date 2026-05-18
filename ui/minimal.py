@@ -6,6 +6,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from ui.controls import (
     create_connection_controls,
     create_diagnostics_controls,
+    create_guide_tab,
     create_log_panel,
     create_nmea_controls,
     create_presets_tab,
@@ -82,7 +83,8 @@ class BridgeWindowMinimal(BridgeLogicMixin, QtWidgets.QWidget):
         drawer_tabs.addTab(create_presets_tab(self), "Presets")
         drawer_tabs.addTab(create_nmea_controls(self), "NMEA")
         drawer_tabs.addTab(create_theme_controls(self), "Theme")
-        drawer_tabs.addTab(create_send_controls(self), "Send")
+        drawer_tabs.addTab(create_guide_tab(self), "Guide")
+        drawer_tabs.addTab(create_send_controls(self), "Terminal")
         drawer_tabs.addTab(create_diagnostics_controls(self), "Diagnostics")
         self._setup_reorderable_tabs(drawer_tabs, "tools_tabs")
         drawer_tabs.setVisible(False)

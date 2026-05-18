@@ -116,6 +116,10 @@ def _open_diag_tab(win: QtWidgets.QWidget) -> None:
     _open_tools(win, "diag")
 
 
+def _open_guide_tab(win: QtWidgets.QWidget) -> None:
+    _open_tools(win, "guide")
+
+
 def _start_if_stopped(win: QtWidgets.QWidget) -> None:
     b = getattr(win, "bridge", None)
     if b is not None and getattr(b, "running", False):
@@ -183,13 +187,24 @@ PRODUCT_DEMO_STEPS: tuple[DemoStep, ...] = (
         "survey_bar",
         "intro",
         "Survey bar",
-        "Point at: Presets · Recent · Checklists · HUD · Tools · Demo.",
+        "Point at: Presets · Recent · Checklists · HUD · Tools · UI.",
         "The survey bar is your quick lane.\n"
         "Presets and Recent restore COM + UDP + NMEA; Checklists runs bench or boat preflight; "
-        "HUD opens live metrics; Tools opens the drawer; Demo is this teleprompter.\n\n"
+        "HUD opens live metrics; Tools opens the drawer; UI edits visibility/order.\n\n"
         "Most operators never need the full menu bar.",
         DEMO_STEP_HOLD_MS,
         None,
+    ),
+    DemoStep(
+        "guide_tab",
+        "intro",
+        "Guide tab (transparent status)",
+        "Point at: Guide tab in Standard, or Tools → Guide in Field.",
+        "Guide is the static truth source:\n"
+        "what this bridge does well, current limits, and what we are actively improving.\n"
+        "Demo shows live actions; Guide explains evaluation and operational expectations.",
+        DEMO_STEP_HOLD_MS,
+        _open_guide_tab,
     ),
     DemoStep(
         "desk",

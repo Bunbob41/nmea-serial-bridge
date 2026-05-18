@@ -6,12 +6,14 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from ui.controls import (
     create_connection_controls,
     create_diagnostics_controls,
+    create_guide_tab,
     create_log_panel,
     create_nmea_controls,
     create_presets_tab,
     create_send_controls,
     create_theme_controls,
 )
+from ui.log_view import PRESET_CUSTOM, PRESET_LABELS, TOOLBAR_PRESETS, LogViewState
 from ui.mixin import BridgeLogicMixin
 from ui.styles import bridge_stylesheet
 from ui.theme_choice import load_theme_choice
@@ -83,7 +85,8 @@ class BridgeWindowLogFirst(BridgeLogicMixin, QtWidgets.QWidget):
         drawer_tabs.addTab(create_presets_tab(self), "Presets")
         drawer_tabs.addTab(create_nmea_controls(self), "NMEA")
         drawer_tabs.addTab(create_theme_controls(self), "Theme")
-        drawer_tabs.addTab(create_send_controls(self), "Send")
+        drawer_tabs.addTab(create_guide_tab(self), "Guide")
+        drawer_tabs.addTab(create_send_controls(self), "Terminal")
         drawer_tabs.addTab(create_diagnostics_controls(self), "Diagnostics")
         self._setup_reorderable_tabs(drawer_tabs, "tools_tabs")
         drawer_tabs.setVisible(False)
@@ -118,13 +121,17 @@ class BridgeWindowLogFirst(BridgeLogicMixin, QtWidgets.QWidget):
         r2.addWidget(self.chk_log_pause)
         r2.addWidget(self.chk_log_autoscroll)
         self.cmb_log_preset = QtWidgets.QComboBox()
-        self.cmb_log_preset.addItem("Preset: Ops", "ops")
-        self.cmb_log_preset.addItem("Preset: All", "all")
-        self.cmb_log_preset.addItem("Preset: Warn", "warn")
-        self.cmb_log_preset.setMinimumWidth(112)
-        self.cmb_log_preset.setToolTip("Quick log filter presets")
+        for key in TOOLBAR_PRESETS:
+            if key == PRESET_CUSTOM:
+                continue
+            self.cmb_log_preset.addItem(PRESET_LABELS[key], key)
+        self.cmb_log_preset.setMinimumWidth(132)
+        self.cmb_log_preset.setToolTip("Quick live-log presets. Use View… for full control.")
         self.cmb_log_preset.currentIndexChanged.connect(self._on_log_preset_changed)
         r2.addWidget(self.cmb_log_preset)
+        self.btn_log_view = QtWidgets.QPushButton("View…")
+        self.btn_log_view.clicked.connect(self._open_log_view_dialog)
+        r2.addWidget(self.btn_log_view)
         self.cmb_log_density = QtWidgets.QComboBox()
         self.cmb_log_density.addItem("Dense", 8)
         self.cmb_log_density.addItem("Readable", 10)
@@ -210,15 +217,15 @@ class BridgeWindowLogFirst(BridgeLogicMixin, QtWidgets.QWidget):
         self._save_logfirst_ui_prefs()
 
     def _on_log_filter_rx(self, on: bool) -> None:
-        self._log_filter_rx = bool(on)
+        self._on_log_filter_chip_changed()
         self._save_logfirst_ui_prefs()
 
     def _on_log_filter_tx(self, on: bool) -> None:
-        self._log_filter_tx = bool(on)
+        self._on_log_filter_chip_changed()
         self._save_logfirst_ui_prefs()
 
     def _on_log_filter_warn(self, on: bool) -> None:
-        self._log_filter_warn = bool(on)
+        self._on_log_filter_chip_changed()
         self._save_logfirst_ui_prefs()
 
     def _on_log_pause_toggled(self, on: bool) -> None:
@@ -229,44 +236,26 @@ class BridgeWindowLogFirst(BridgeLogicMixin, QtWidgets.QWidget):
         self._set_log_autoscroll(on)
         self._save_logfirst_ui_prefs()
 
-    def _preset_log_all(self) -> None:
-        self.chk_log_rx.setChecked(True)
-        self.chk_log_tx.setChecked(True)
-        self.chk_log_warn.setChecked(True)
-        self.chk_verbose_log.setChecked(True)
-
-    def _preset_log_ops(self) -> None:
-        self.chk_log_rx.setChecked(True)
-        self.chk_log_tx.setChecked(True)
-        self.chk_log_warn.setChecked(True)
-        self.chk_verbose_log.setChecked(False)
-
-    def _preset_log_warn(self) -> None:
-        self.chk_log_rx.setChecked(False)
-        self.chk_log_tx.setChecked(False)
-        self.chk_log_warn.setChecked(True)
-        self.chk_verbose_log.setChecked(False)
-
     def _on_log_preset_changed(self, _idx: int) -> None:
-        mode = str(self.cmb_log_preset.currentData() or "ops")
-        if mode == "all":
-            self._preset_log_all()
-        elif mode == "warn":
-            self._preset_log_warn()
-        else:
-            self._preset_log_ops()
+        if self._restoring_log_prefs:
+            return
+        self._on_log_preset_combo_changed(_idx)
         self._save_logfirst_ui_prefs()
 
     def _restore_logfirst_ui_prefs(self, drawer_btn: QtWidgets.QToolButton) -> None:
         prefs = load_logfirst_prefs()
         self._restoring_log_prefs = True
         try:
-            preset_idx = {"ops": 0, "all": 1, "warn": 2}.get(str(prefs.get("preset", "ops")), 0)
-            self.cmb_log_preset.setCurrentIndex(preset_idx)
-            self.chk_log_rx.setChecked(bool(prefs.get("rx", True)))
-            self.chk_log_tx.setChecked(bool(prefs.get("tx", True)))
-            self.chk_log_warn.setChecked(bool(prefs.get("warn", True)))
-            self.chk_verbose_log.setChecked(bool(prefs.get("verbose", False)))
+            self._apply_log_view_state(
+                LogViewState.from_dict(prefs),
+                persist=False,
+                sync_widgets=True,
+            )
+            preset = self._log_view_state.preset
+            for i in range(self.cmb_log_preset.count()):
+                if str(self.cmb_log_preset.itemData(i) or "") == preset:
+                    self.cmb_log_preset.setCurrentIndex(i)
+                    break
             density = int(prefs.get("density", 8) or 8)
             self.cmb_log_density.setCurrentIndex(1 if density >= 10 else 0)
             self.chk_log_pause.setChecked(bool(prefs.get("pause", False)))
@@ -279,16 +268,11 @@ class BridgeWindowLogFirst(BridgeLogicMixin, QtWidgets.QWidget):
     def _save_logfirst_ui_prefs(self) -> None:
         if self._restoring_log_prefs:
             return
-        preset = str(self.cmb_log_preset.currentData() or "ops")
         save_logfirst_prefs(
             {
-                "rx": self.chk_log_rx.isChecked(),
-                "tx": self.chk_log_tx.isChecked(),
-                "warn": self.chk_log_warn.isChecked(),
+                **self._log_view_state.to_dict(),
                 "pause": self.chk_log_pause.isChecked(),
                 "autoscroll": self.chk_log_autoscroll.isChecked(),
-                "verbose": self.chk_verbose_log.isChecked(),
-                "preset": preset,
                 "density": int(self.cmb_log_density.currentData() or 8),
                 "tools_open": self._drawer_btn.isChecked(),
             }

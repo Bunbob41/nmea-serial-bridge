@@ -1,4 +1,4 @@
-# NMEA Serial Bridge — Operator Guide (v1.2.0)
+# NMEA Serial Bridge — Operator Guide
 
 Step-by-step guide for survey / bench use. Screenshots are optional; a **shot list** at the end lists exactly what to capture if you want illustrated docs.
 
@@ -286,13 +286,9 @@ Read left to right:
 
 - **Serial** — COM open, errors, timeouts.
 - **Network** — UDP/TCP mode and endpoint.
-- **NMEA** — passthrough, strict, or raw mode.
-- **GNSS** — live **GGA** quality (fix type, satellites, HDOP). Based on Applanix POSPac MMS Ch.16 survey hints: HDOP ideal **&lt; 2.5**, acceptable **&lt; 4**; **5+** satellites minimum, **7+** with low HDOP preferred; **RTK fixed** best for survey grade. Shows **no recent GGA** if nothing arrived for ~3 s.
-- **Stats** — rolling Hz, inject rate, session line counts, drops/rejects, GNSS summary (hover for detail).
+- **Stats** — rolling Hz, inject rate, session line counts, drops/rejects (hover for detail).
 
-Survey HUD (View → Survey HUD) adds **GNSS / Sats / HDOP** tiles under **Session & transport**.
-
-If **drops** or **rejects** climb under load, serial consumer may be slow or filter too strict. Poor GNSS while transport is OK usually means INS output, antenna, or corrections — not the bridge link.
+If **drops** or **rejects** climb under load, serial consumer may be slow or filter too strict.
 
 ---
 

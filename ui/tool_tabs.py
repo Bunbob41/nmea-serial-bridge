@@ -9,17 +9,335 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from bridge_core import file_log_retention_hint
 from nmea_static_sample import SAMPLE_ALT_M, SAMPLE_LAT_DEG, SAMPLE_LON_DEG, build_gga
 
+_WIDGET_SIZE_MAX = 16777215
+_DIAG_COLLAPSED_STRIP_MIN = 40
+
+_DEFAULT_DIAG_CARD_ORDER = [
+    "file_log",
+    "screen_log",
+    "traffic_quality",
+    "automated_checks",
+]
+
+_DEFAULT_DIAG_CARD_HEIGHTS: dict[str, int] = {
+    "file_log": 200,
+    "screen_log": 64,
+    "traffic_quality": 200,
+    "automated_checks": 280,
+}
+
+_DIAG_CARD_EXPANDED_CAP: dict[str, int] = {
+    "file_log": 360,
+    "screen_log": 120,
+    "traffic_quality": 480,
+    "automated_checks": 520,
+}
+
+
+def _diag_collapsed_strip_height(toggle: QtWidgets.QToolButton, margins: QtCore.QMargins) -> int:
+    """Header strip height when collapsed — safe before first show/layout."""
+    toggle.ensurePolished()
+    btn_h = max(
+        toggle.sizeHint().height(),
+        toggle.minimumSizeHint().height(),
+        toggle.fontMetrics().height() + 16,
+    )
+    return max(btn_h + margins.top() + margins.bottom(), _DIAG_COLLAPSED_STRIP_MIN)
+
+
+def _diag_card_expanded(card: _IosCollapsibleCard) -> bool:
+    return card.toggle_button().isChecked()
+
+
+def _diag_card_natural_height(card: _IosCollapsibleCard, key: str) -> int:
+    if not _diag_card_expanded(card):
+        lay = card.layout()
+        assert lay is not None
+        return _diag_collapsed_strip_height(card.toggle_button(), lay.contentsMargins())
+    card.apply_splitter_expand_style(True, sole_expanded=False)
+    card.adjustSize()
+    natural = max(card.sizeHint().height(), card.minimumSizeHint().height())
+    floor = max(_DEFAULT_DIAG_CARD_HEIGHTS.get(key, 56), _DIAG_COLLAPSED_STRIP_MIN + 8)
+    cap = _DIAG_CARD_EXPANDED_CAP.get(key, natural + 80)
+    return max(min(natural, cap), floor)
+
+
+def _target_diag_card_height(card: _IosCollapsibleCard, key: str, saved: dict[str, int]) -> int:
+    if not _diag_card_expanded(card):
+        lay = card.layout()
+        assert lay is not None
+        return _diag_collapsed_strip_height(card.toggle_button(), lay.contentsMargins())
+    natural = _diag_card_natural_height(card, key)
+    from_prefs = int(saved.get(key, 0))
+    cap = _DIAG_CARD_EXPANDED_CAP.get(key, natural + 80)
+    if from_prefs > _DIAG_COLLAPSED_STRIP_MIN + 4:
+        return max(min(from_prefs, cap), natural)
+    return natural
+
+
+def _diag_expanded_count(widgets: dict[str, _IosCollapsibleCard], order: list[str]) -> int:
+    return sum(1 for key in order if _diag_card_expanded(widgets[key]))
+
+
+def _apply_diag_splitter_sizes(win: QtWidgets.QWidget, *, use_defaults: bool = False) -> None:
+    splitter: QtWidgets.QSplitter | None = getattr(win, "_diag_cards_splitter", None)
+    widgets = getattr(win, "_diag_card_widgets", None)
+    if splitter is None or not isinstance(widgets, dict) or splitter.count() == 0:
+        return
+    order_fn = getattr(win, "_load_diag_card_order", None)
+    order = list(order_fn()) if callable(order_fn) else list(_DEFAULT_DIAG_CARD_ORDER)
+    order = [k for k in order if k in widgets] + [k for k in widgets if k not in order]
+    ui_mode = getattr(win, "_ui_mode", "standard")
+    from ui.ui_prefs import load_diag_card_sizes
+
+    saved: dict[str, int] = {} if use_defaults else dict(load_diag_card_sizes(ui_mode))
+    expanded_count = _diag_expanded_count(widgets, order)
+    sole_expanded = expanded_count == 1
+
+    sizes: list[int] = []
+    for key in order:
+        card = widgets[key]
+        card.apply_splitter_expand_style(
+            _diag_card_expanded(card),
+            sole_expanded=sole_expanded and _diag_card_expanded(card),
+        )
+        sizes.append(_target_diag_card_height(card, key, saved))
+
+    splitter.blockSignals(True)
+    try:
+        for i, key in enumerate(order):
+            stretch = (
+                1
+                if _diag_card_expanded(widgets[key]) and not sole_expanded
+                else 0
+            )
+            splitter.setStretchFactor(i, stretch)
+        splitter.setSizes(sizes)
+    finally:
+        splitter.blockSignals(False)
+
+    host = splitter.parentWidget()
+    if host is not None:
+        host.updateGeometry()
+
+
+def _capture_diag_card_size(win: QtWidgets.QWidget, key: str) -> None:
+    splitter: QtWidgets.QSplitter | None = getattr(win, "_diag_cards_splitter", None)
+    widgets = getattr(win, "_diag_card_widgets", None)
+    if splitter is None or not isinstance(widgets, dict) or key not in widgets:
+        return
+    order_fn = getattr(win, "_load_diag_card_order", None)
+    order = list(order_fn()) if callable(order_fn) else list(_DEFAULT_DIAG_CARD_ORDER)
+    if key not in order:
+        return
+    idx = order.index(key)
+    sizes_list = splitter.sizes()
+    if idx >= len(sizes_list):
+        return
+    h = int(sizes_list[idx])
+    if h <= _DIAG_COLLAPSED_STRIP_MIN + 4:
+        return
+    from ui.ui_prefs import load_diag_card_sizes, save_diag_card_sizes
+
+    ui_mode = getattr(win, "_ui_mode", "standard")
+    saved = dict(load_diag_card_sizes(ui_mode))
+    saved[key] = h
+    save_diag_card_sizes(ui_mode, saved)
+
+
+def _persist_diag_splitter_sizes(win: QtWidgets.QWidget) -> None:
+    splitter: QtWidgets.QSplitter | None = getattr(win, "_diag_cards_splitter", None)
+    widgets = getattr(win, "_diag_card_widgets", None)
+    if splitter is None or not isinstance(widgets, dict):
+        return
+    order_fn = getattr(win, "_load_diag_card_order", None)
+    order = list(order_fn()) if callable(order_fn) else list(_DEFAULT_DIAG_CARD_ORDER)
+    order = [k for k in order if k in widgets]
+    from ui.ui_prefs import load_diag_card_sizes, save_diag_card_sizes
+
+    ui_mode = getattr(win, "_ui_mode", "standard")
+    saved = dict(load_diag_card_sizes(ui_mode))
+    sizes_list = splitter.sizes()
+    for i, key in enumerate(order):
+        if i >= len(sizes_list):
+            break
+        card = widgets.get(key)
+        if card is None or not _diag_card_expanded(card):
+            continue
+        h = int(sizes_list[i])
+        if h > _DIAG_COLLAPSED_STRIP_MIN + 4:
+            saved[key] = h
+    save_diag_card_sizes(ui_mode, saved)
+
+
+def refresh_diag_cards(win: QtWidgets.QWidget) -> None:
+    """Re-apply each diagnostics card size (fixes 0px strips after tab switch)."""
+    widgets = getattr(win, "_diag_card_widgets", None)
+    if not isinstance(widgets, dict):
+        return
+    for card in widgets.values():
+        if isinstance(card, _IosCollapsibleCard):
+            card.set_expanded(card.toggle_button().isChecked(), notify=False)
+    _apply_diag_splitter_sizes(win)
+
+
+class _IosCollapsibleCard(QtWidgets.QFrame):
+    """Diagnostics-style card: header toggle + body; body height only (never cap whole card)."""
+
+    def __init__(
+        self,
+        title: str,
+        *,
+        start_open: bool = False,
+        on_toggled=None,
+        parent: QtWidgets.QWidget | None = None,
+    ) -> None:
+        super().__init__(parent)
+        self.setObjectName("iosCard")
+        self._on_toggled = on_toggled
+        outer = QtWidgets.QVBoxLayout(self)
+        outer.setContentsMargins(8, 8, 8, 8)
+        outer.setSpacing(6)
+
+        self._toggle = QtWidgets.QToolButton()
+        self._toggle.setObjectName("iosCardToggle")
+        self._toggle.setText(title)
+        self._toggle.setToolButtonStyle(QtCore.Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+        self._toggle.setCheckable(True)
+
+        self._body = QtWidgets.QWidget()
+        self._body.setObjectName("iosCardBody")
+        self._body_lay = QtWidgets.QVBoxLayout(self._body)
+        self._body_lay.setContentsMargins(4, 2, 4, 4)
+        self._body_lay.setSpacing(8)
+
+        self._toggle.toggled.connect(self._apply_expanded)
+        outer.addWidget(self._toggle)
+        outer.addWidget(self._body)
+        self.set_expanded(start_open, notify=False)
+
+    def showEvent(self, event: QtGui.QShowEvent) -> None:
+        super().showEvent(event)
+        expanded = self._toggle.isChecked()
+        self._apply_expanded(expanded, notify=False)
+
+    def body_layout(self) -> QtWidgets.QVBoxLayout:
+        return self._body_lay
+
+    def toggle_button(self) -> QtWidgets.QToolButton:
+        return self._toggle
+
+    def set_expanded(self, expanded: bool, *, notify: bool = True) -> None:
+        """Sync header, body, and layout (safe when signals are blocked)."""
+        if self._toggle.isChecked() != expanded:
+            self._toggle.blockSignals(True)
+            self._toggle.setChecked(expanded)
+            self._toggle.blockSignals(False)
+        self._apply_expanded(expanded, notify=notify)
+
+    def apply_splitter_expand_style(
+        self, expanded: bool, *, sole_expanded: bool = False
+    ) -> None:
+        """Size policy for splitter rows — sole open card stays content-tight."""
+        if expanded:
+            self.setMaximumHeight(_WIDGET_SIZE_MAX)
+            self.setMinimumHeight(_DIAG_COLLAPSED_STRIP_MIN)
+            if sole_expanded:
+                self.setSizePolicy(
+                    QtWidgets.QSizePolicy.Policy.Preferred,
+                    QtWidgets.QSizePolicy.Policy.Maximum,
+                )
+                self._body.setSizePolicy(
+                    QtWidgets.QSizePolicy.Policy.Preferred,
+                    QtWidgets.QSizePolicy.Policy.Maximum,
+                )
+            else:
+                self.setSizePolicy(
+                    QtWidgets.QSizePolicy.Policy.Preferred,
+                    QtWidgets.QSizePolicy.Policy.Expanding,
+                )
+                self._body.setSizePolicy(
+                    QtWidgets.QSizePolicy.Policy.Preferred,
+                    QtWidgets.QSizePolicy.Policy.Expanding,
+                )
+        else:
+            self.setSizePolicy(
+                QtWidgets.QSizePolicy.Policy.Preferred,
+                QtWidgets.QSizePolicy.Policy.Fixed,
+            )
+            self._body.setSizePolicy(
+                QtWidgets.QSizePolicy.Policy.Ignored,
+                QtWidgets.QSizePolicy.Policy.Ignored,
+            )
+
+    def _apply_expanded(self, expanded: bool, *, notify: bool = True) -> None:
+        self._toggle.setArrowType(
+            QtCore.Qt.ArrowType.DownArrow if expanded else QtCore.Qt.ArrowType.RightArrow
+        )
+        if expanded:
+            self.apply_splitter_expand_style(expanded, sole_expanded=False)
+            self._body.setMaximumHeight(_WIDGET_SIZE_MAX)
+            self._body.setMinimumHeight(0)
+            self._body.setVisible(True)
+            lay = self.layout()
+            assert lay is not None
+            lay.setContentsMargins(8, 8, 8, 8)
+        else:
+            self.apply_splitter_expand_style(False)
+            self._body.setMaximumHeight(0)
+            self._body.setMinimumHeight(0)
+            self._body.setVisible(False)
+            lay = self.layout()
+            assert lay is not None
+            lay.setContentsMargins(8, 4, 8, 4)
+            m = lay.contentsMargins()
+            strip_h = _diag_collapsed_strip_height(self._toggle, m)
+            self.setMinimumHeight(strip_h)
+            self.setMaximumHeight(strip_h)
+        self.updateGeometry()
+        self.adjustSize()
+        parent = self.parentWidget()
+        while parent is not None:
+            parent.updateGeometry()
+            if isinstance(parent, QtWidgets.QScrollArea):
+                break
+            parent = parent.parentWidget()
+        if notify and callable(self._on_toggled):
+            self._on_toggled(expanded)
+
+
+def _add_collapsible_card(
+    host: QtWidgets.QVBoxLayout | QtWidgets.QSplitter,
+    title: str,
+    *,
+    start_open: bool = False,
+    on_toggled=None,
+) -> QtWidgets.QVBoxLayout:
+    """Create an iOS-style collapsible card and return its body layout."""
+    card = _IosCollapsibleCard(title, start_open=start_open, on_toggled=on_toggled)
+    if isinstance(host, QtWidgets.QSplitter):
+        host.addWidget(card)
+    else:
+        host.setSpacing(max(host.spacing(), 10))
+        host.addWidget(card)
+    return card.body_layout()
+
 
 def _scrollable(inner: QtWidgets.QWidget) -> QtWidgets.QScrollArea:
     """Scroll wrapper that inherits app theme (avoids Windows default white viewport)."""
     inner.setObjectName("toolTabScrollHost")
     inner.setAttribute(QtCore.Qt.WidgetAttribute.WA_StyledBackground, True)
+    inner.setSizePolicy(
+        QtWidgets.QSizePolicy.Policy.Preferred,
+        QtWidgets.QSizePolicy.Policy.Minimum,
+    )
 
     scroll = QtWidgets.QScrollArea()
     scroll.setObjectName("toolTabScroll")
     scroll.setWidgetResizable(True)
     scroll.setFrameShape(QtWidgets.QFrame.Shape.NoFrame)
     scroll.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+    scroll.setVerticalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAsNeeded)
     scroll.setFocusPolicy(QtCore.Qt.FocusPolicy.WheelFocus)
     scroll.setAttribute(QtCore.Qt.WidgetAttribute.WA_StyledBackground, True)
     scroll.viewport().setObjectName("toolTabScrollViewport")
@@ -28,67 +346,50 @@ def _scrollable(inner: QtWidgets.QWidget) -> QtWidgets.QScrollArea:
     return scroll
 
 
-def _add_collapsible_card(
-    host_layout: QtWidgets.QVBoxLayout,
-    title: str,
-    *,
-    start_open: bool = False,
-    on_toggled=None,
-) -> QtWidgets.QVBoxLayout:
-    """Create an iOS-style collapsible card and return its body layout."""
-    card = QtWidgets.QFrame()
-    card.setObjectName("iosCard")
-    outer = QtWidgets.QVBoxLayout(card)
-    outer.setContentsMargins(8, 8, 8, 8)
-    outer.setSpacing(6)
+def wrap_main_tab_scroll(inner: QtWidgets.QWidget) -> QtWidgets.QScrollArea:
+    """Scroll wrapper for Standard main tabs (Connect, etc.) when content exceeds viewport."""
+    return _scrollable(inner)
 
-    toggle = QtWidgets.QToolButton()
-    toggle.setObjectName("iosCardToggle")
-    toggle.setText(title)
-    toggle.setToolButtonStyle(QtCore.Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
-    toggle.setCheckable(True)
-    toggle.setChecked(start_open)
 
-    body = QtWidgets.QWidget()
-    body.setObjectName("iosCardBody")
-    body_lay = QtWidgets.QVBoxLayout(body)
-    body_lay.setContentsMargins(4, 2, 4, 4)
-    body_lay.setSpacing(8)
+def build_guide_tab(_parent: QtWidgets.QWidget) -> QtWidgets.QWidget:
+    """Transparent quick guide: what works well, limits, and current focus."""
+    host = QtWidgets.QWidget()
+    lay = QtWidgets.QVBoxLayout(host)
+    lay.setContentsMargins(14, 14, 14, 14)
+    lay.setSpacing(10)
 
-    def _on_toggle(on: bool) -> None:
-        toggle.setArrowType(
-            QtCore.Qt.ArrowType.DownArrow if on else QtCore.Qt.ArrowType.RightArrow
-        )
-        if on:
-            outer.setContentsMargins(8, 8, 8, 8)
-            card.setSizePolicy(
-                QtWidgets.QSizePolicy.Policy.Preferred,
-                QtWidgets.QSizePolicy.Policy.Preferred,
-            )
-            card.setMaximumHeight(16777215)
-            body.setMinimumHeight(0)
-            body.setMaximumHeight(16777215)
-            body.setVisible(True)
-        else:
-            outer.setContentsMargins(8, 4, 8, 4)
-            card.setSizePolicy(
-                QtWidgets.QSizePolicy.Policy.Preferred,
-                QtWidgets.QSizePolicy.Policy.Fixed,
-            )
-            strip_h = toggle.sizeHint().height() + 8
-            card.setMaximumHeight(strip_h)
-            body.setMaximumHeight(0)
-            body.setVisible(False)
-        card.updateGeometry()
-        if callable(on_toggled):
-            on_toggled(on)
+    title = QtWidgets.QLabel("Project guide — honest status")
+    title.setObjectName("tabHint")
+    lay.addWidget(title)
 
-    toggle.toggled.connect(_on_toggle)
-    _on_toggle(start_open)
-    outer.addWidget(toggle)
-    outer.addWidget(body)
-    host_layout.addWidget(card)
-    return body_lay
+    body = QtWidgets.QLabel(
+        "What this bridge does well:\n"
+        "• Reliable UDP/TCP ↔ COM forwarding for survey INS/GNSS.\n"
+        "• Preset-driven startup with quick field workflows.\n"
+        "• Clear run-state chips, logs, and bench diagnostics.\n\n"
+        "Known limits / trade-offs:\n"
+        "• No kernel virtual COM driver (user-space only).\n"
+        "• Layout polish is active work; first-paint edge cases can still appear.\n"
+        "• Diagnostics are practical but not a full terminal/packet suite.\n\n"
+        "Current focus:\n"
+        "• Connect tab stability (no clipping / no stale layout states).\n"
+        "• Readability and field ergonomics (chips, cards, quick controls).\n"
+        "• Truthful operator guidance and safer defaults."
+    )
+    body.setWordWrap(True)
+    body.setObjectName("tabNote")
+    body.setTextInteractionFlags(QtCore.Qt.TextInteractionFlag.TextSelectableByMouse)
+    lay.addWidget(body)
+
+    note = QtWidgets.QLabel(
+        "Use Product Demo for live walkthrough actions. "
+        "Use this Guide tab for static operation/evaluation notes."
+    )
+    note.setWordWrap(True)
+    note.setObjectName("tabHint")
+    lay.addWidget(note)
+    lay.addStretch(1)
+    return _scrollable(host)
 
 
 def build_send_tab(parent: QtWidgets.QWidget) -> QtWidgets.QWidget:
@@ -164,11 +465,14 @@ def build_diagnostics_tab(parent: QtWidgets.QWidget) -> QtWidgets.QWidget:
         return bool(card_states.get(key, default))
 
     def _persist_card(key: str, on: bool) -> None:
+        if not on:
+            _capture_diag_card_size(parent, key)
         if hasattr(parent, "_save_diag_card_state"):
             try:
                 parent._save_diag_card_state(key, on)
             except Exception:
                 pass
+        QtCore.QTimer.singleShot(0, lambda: _apply_diag_splitter_sizes(parent))
 
     hint = QtWidgets.QLabel(
         "Optional rotating file log for survey records. "
@@ -187,46 +491,24 @@ def build_diagnostics_tab(parent: QtWidgets.QWidget) -> QtWidgets.QWidget:
     hint_row.addWidget(parent.btn_diag_reorder_cards, 0)
     lay.addLayout(hint_row)
 
+    splitter = QtWidgets.QSplitter(QtCore.Qt.Orientation.Vertical)
+    splitter.setObjectName("diagCardsSplitter")
+    splitter.setChildrenCollapsible(False)
+    lay.addWidget(splitter, 1)
+    parent._diag_cards_splitter = splitter
+    splitter.splitterMoved.connect(lambda *_args: _persist_diag_splitter_sizes(parent))
+
     card_widgets: dict[str, QtWidgets.QWidget] = {}
 
     def _register_card(key: str) -> None:
-        item = lay.itemAt(lay.count() - 1)
-        widget = item.widget() if item is not None else None
+        idx = splitter.count() - 1
+        widget = splitter.widget(idx) if idx >= 0 else None
         if widget is not None:
             widget.setProperty("diagCardKey", key)
             card_widgets[key] = widget
 
-    quick = _add_collapsible_card(
-        lay,
-        "Quick UI switch",
-        start_open=_card_open("quick_ui_switch", False),
-        on_toggled=lambda on: _persist_card("quick_ui_switch", on),
-    )
-    _register_card("quick_ui_switch")
-    quick_note = QtWidgets.QLabel(
-        "Jump between layouts quickly. Choice is remembered for next launch."
-    )
-    quick_note.setWordWrap(True)
-    quick_note.setObjectName("tabHint")
-    quick.addWidget(quick_note)
-    ui_grid = QtWidgets.QGridLayout()
-    ui_grid.setHorizontalSpacing(8)
-    ui_grid.setVerticalSpacing(6)
-    parent.btn_ui_standard = QtWidgets.QPushButton("Open Standard UI")
-    parent.btn_ui_standard.setToolTip("Switch to the Standard workspace layout.")
-    parent.btn_ui_field = QtWidgets.QPushButton("Open Field UI")
-    parent.btn_ui_field.setToolTip("Switch to the Field layout (large log, compact connect).")
-    for b in (parent.btn_ui_standard, parent.btn_ui_field):
-        b.setMinimumHeight(30)
-        b.setSizePolicy(QtWidgets.QSizePolicy.Policy.Expanding, QtWidgets.QSizePolicy.Policy.Fixed)
-    ui_grid.addWidget(parent.btn_ui_standard, 0, 0)
-    ui_grid.addWidget(parent.btn_ui_field, 0, 1)
-    ui_grid.setColumnStretch(0, 1)
-    ui_grid.setColumnStretch(1, 1)
-    quick.addLayout(ui_grid)
-
     fv = _add_collapsible_card(
-        lay,
+        splitter,
         "Rotating file log",
         start_open=_card_open("file_log", False),
         on_toggled=lambda on: _persist_card("file_log", on),
@@ -272,7 +554,7 @@ def build_diagnostics_tab(parent: QtWidgets.QWidget) -> QtWidgets.QWidget:
     fv.addWidget(file_note)
 
     sv = _add_collapsible_card(
-        lay,
+        splitter,
         "On-screen log",
         start_open=_card_open("screen_log", False),
         on_toggled=lambda on: _persist_card("screen_log", on),
@@ -283,26 +565,20 @@ def build_diagnostics_tab(parent: QtWidgets.QWidget) -> QtWidgets.QWidget:
     sv.addWidget(parent.btn_clear_ui)
 
     qv = _add_collapsible_card(
-        lay,
+        splitter,
         "Traffic & data quality (honest counters)",
         start_open=_card_open("traffic_quality", False),
         on_toggled=lambda on: _persist_card("traffic_quality", on),
     )
     _register_card("traffic_quality")
     qa = QtWidgets.QLabel(
-        "Bottom status bar while Running:\n\n"
-        "• ↓ / ↑ Hz — Rolling ~1 s rate of complete NMEA sentences: remote (UDP/TCP) toward COM, "
-        "and COM toward the network.\n"
-        "• Send→COM …/s — Appears only while the Send tab is injecting fast enough to register on that window.\n"
-        "• transport OK — No drops or rejects; shallow queue depth (a few chunks) while data moves is normal. "
-        "Backlog is reported around depth 12+ per side (same idea as the capacity probe).\n"
-        "• session: … — Lifetime sentence counts this session (remote →COM and COM→net).\n"
-        "• GNSS — From the latest GGA: fix type (RTK fixed best), satellite count "
-        f"(≥5 mission min, {7}+ preferred with low HDOP), HDOP (ideal <2.5, acceptable <4; POSPac Ch.16).\n"
-        "• GNSS status chip — Same assessment on the status bar; stale if no GGA for ~3 s.\n"
-        "• Live log — Repeating “Serial … timed out (open/write).” lines are collapsed to one per ~2.5 s "
-        "(same as the bridge; mirrored Diagnostics output uses the same path when “Mirror” is on).\n\n"
-        "Hover the status bar any time for the same legend."
+        "Quick health read while Running:\n\n"
+        "• ↓ / ↑ Hz — Current sentence rate net→COM and COM→net.\n"
+        "• transport OK / warn — Queue pressure, drops, or rejects.\n"
+        "• session totals — Lifetime counts this run.\n"
+        "• GNSS chip — fix quality, sats, HDOP, stale detection.\n\n"
+        "This card is a fast operator legend (not a protocol deep dive).\n"
+        "For transparent scope, strengths, and current limitations, open the Guide tab."
     )
     qa.setWordWrap(True)
     qa.setObjectName("tabNote")
@@ -310,7 +586,7 @@ def build_diagnostics_tab(parent: QtWidgets.QWidget) -> QtWidgets.QWidget:
     qv.addWidget(qa)
 
     bv = _add_collapsible_card(
-        lay,
+        splitter,
         "Automated checks (runs on this PC)",
         start_open=_card_open("automated_checks", False),
         on_toggled=lambda on: _persist_card("automated_checks", on),
@@ -326,6 +602,7 @@ def build_diagnostics_tab(parent: QtWidgets.QWidget) -> QtWidgets.QWidget:
 
     btn_row1 = QtWidgets.QHBoxLayout()
     parent.btn_bench_pair_setup = QtWidgets.QPushButton("Bench pair setup…")
+    parent.btn_bench_pair_setup.setObjectName("btnBenchPairSetupDiag")
     parent.btn_bench_pair_setup.setToolTip(
         "Opens docs/OPERATOR_GUIDE.md (bench §5) and runs com_free then check_setup — "
         "same checks as preflight_bench.bat. Install com0com from the guide first."
@@ -459,12 +736,11 @@ def build_diagnostics_tab(parent: QtWidgets.QWidget) -> QtWidgets.QWidget:
     parent.btn_diag_capacity.clicked.connect(parent._diag_run_capacity_probe)
     parent.btn_diag_stop.clicked.connect(parent._diag_stop)
     parent.btn_diag_clear.clicked.connect(parent.diag_output.clear)
-    parent.btn_ui_standard.clicked.connect(lambda: parent._switch_ui_layout("standard"))
-    parent.btn_ui_field.clicked.connect(lambda: parent._switch_ui_layout("field"))
     parent._diag_card_widgets = card_widgets
     parent._diag_cards_layout = lay
-    lay.addStretch(1)
     if hasattr(parent, "_apply_diag_card_order"):
         parent._apply_diag_card_order()
+    else:
+        _apply_diag_splitter_sizes(parent)
 
     return _scrollable(host)
