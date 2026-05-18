@@ -1,6 +1,7 @@
 """Pick ``python.exe`` for subprocesses when the app was started with ``pythonw.exe`` (Windows GUI)."""
 from __future__ import annotations
 
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -19,10 +20,17 @@ def subprocess_no_console_kwargs() -> dict:
 def cli_python_executable() -> str:
     """Interpreter to use for CLI subprocesses (unittest, verify scripts, etc.)."""
     p = Path(sys.executable).resolve()
+    if p.suffix.lower() == ".exe" and p.stem.lower() == "python":
+        return str(p)
     if p.suffix.lower() == ".exe" and p.stem.lower() == "pythonw":
         alt = p.with_name("python.exe")
         if alt.is_file():
             return str(alt)
+    if getattr(sys, "frozen", False):
+        for candidate in ("python.exe", "python3.exe", "python"):
+            resolved = shutil.which(candidate)
+            if resolved:
+                return str(Path(resolved).resolve())
     return str(p)
 
 
@@ -33,6 +41,9 @@ def cli_python_gui_spawn() -> str:
         pyw = exe.with_name("pythonw.exe")
         if pyw.is_file():
             return str(pyw)
+        pyw_path = shutil.which("pythonw.exe")
+        if pyw_path:
+            return str(Path(pyw_path).resolve())
     return str(exe)
 
 

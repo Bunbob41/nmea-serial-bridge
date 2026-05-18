@@ -604,7 +604,7 @@ def build_diagnostics_tab(parent: QtWidgets.QWidget) -> QtWidgets.QWidget:
     parent.btn_bench_pair_setup = QtWidgets.QPushButton("Bench pair setup…")
     parent.btn_bench_pair_setup.setObjectName("btnBenchPairSetupDiag")
     parent.btn_bench_pair_setup.setToolTip(
-        "Opens docs/OPERATOR_GUIDE.md (bench §5) and runs com_free then check_setup — "
+        "Opens docs/OPERATOR_GUIDE.md (bench section 5) and runs com_free then check_setup — "
         "same checks as preflight_bench.bat. Install com0com from the guide first."
     )
     parent.btn_bench_pair_setup.clicked.connect(parent._open_bench_pair_setup)

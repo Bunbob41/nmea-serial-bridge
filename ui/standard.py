@@ -48,6 +48,8 @@ class BridgeWindowStandard(BridgeLogicMixin, QtWidgets.QWidget):
         self.intent_hint.setWordWrap(True)
 
         connect_body = QtWidgets.QWidget()
+        connect_body.setObjectName("connectSectionBody")
+        connect_body.setAttribute(QtCore.Qt.WidgetAttribute.WA_StyledBackground, True)
         cv = QtWidgets.QVBoxLayout(connect_body)
         cv.setContentsMargins(10, 8, 10, 8)
         cv.setSpacing(6)
@@ -58,6 +60,7 @@ class BridgeWindowStandard(BridgeLogicMixin, QtWidgets.QWidget):
         cv.addWidget(self.status_banner)
 
         ser_box = QtWidgets.QGroupBox("Serial")
+        ser_box.setObjectName("connectGroupBox")
         sf = QtWidgets.QFormLayout(ser_box)
         row = QtWidgets.QHBoxLayout()
         row.addWidget(self.com_cb, 1)
@@ -70,6 +73,7 @@ class BridgeWindowStandard(BridgeLogicMixin, QtWidgets.QWidget):
         cv.addWidget(ser_box)
 
         net_box = QtWidgets.QGroupBox("Network (UDP listen)")
+        net_box.setObjectName("connectGroupBox")
         nv = QtWidgets.QVBoxLayout(net_box)
         hint_net = QtWidgets.QLabel(
             "Bind address and port on this PC. Enable Advanced below for TCP or UDP remote."
@@ -87,9 +91,13 @@ class BridgeWindowStandard(BridgeLogicMixin, QtWidgets.QWidget):
         cv.addStretch(1)
 
         connect_scroll = QtWidgets.QScrollArea()
+        connect_scroll.setObjectName("connectSectionScroll")
         connect_scroll.setWidgetResizable(True)
         connect_scroll.setFrameShape(QtWidgets.QFrame.Shape.NoFrame)
         connect_scroll.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        connect_scroll.setAttribute(QtCore.Qt.WidgetAttribute.WA_StyledBackground, True)
+        connect_scroll.viewport().setObjectName("connectSectionScrollViewport")
+        connect_scroll.viewport().setAttribute(QtCore.Qt.WidgetAttribute.WA_StyledBackground, True)
         connect_scroll.setWidget(connect_body)
         connect_scroll.setMinimumHeight(120)
         connect_scroll.setSizePolicy(
@@ -113,7 +121,7 @@ class BridgeWindowStandard(BridgeLogicMixin, QtWidgets.QWidget):
         self.btn_bench_pair_setup.setObjectName("btnBenchPairSetupRun")
         self.btn_bench_pair_setup.setToolTip(
             "Open the bench/com0com operator guide and run com_free + check_setup preflight "
-            "(install com0com separately — see guide §5)."
+            "(install com0com separately — see operator guide section 5)."
         )
         self.btn_bench_pair_setup.clicked.connect(self._open_bench_pair_setup)
         al.addWidget(self.btn_bench_pair_setup, 1)

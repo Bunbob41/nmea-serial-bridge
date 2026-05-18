@@ -16,7 +16,7 @@ from ui.connect_panels import (
     restore_connect_panel_layout,
     sanitize_connect_panel_hidden,
 )
-from ui.survey_top_bar import DEFAULT_TOPBAR_ORDER, TOPBAR_SHORT_LABEL
+from ui.survey_top_bar import DEFAULT_TOPBAR_ORDER, TOPBAR_SHORT_LABEL, normalize_topbar_order
 from ui.ui_prefs import (
     load_connect_panel_prefs,
     load_tab_order,
@@ -31,7 +31,6 @@ TOP_BAR_CHIP_LABELS: dict[str, str] = {
     "recent": "Recent sessions",
     "hud": "Survey HUD",
     "tools": "Tools drawer",
-    "hidden_tabs": "Hidden tabs",
     "randomize_theme": "Randomize theme",
     "standardize_theme": "Standardize theme",
     "ui_editor": "UI editor",
@@ -78,23 +77,13 @@ _ROW_MIN_H = 34
 
 def migrate_topbar_order(order: list[str]) -> list[str]:
     """Drop removed chips; map legacy demo → ui_editor."""
-    out: list[str] = []
-    seen: set[str] = set()
-    for raw in order:
-        key = "ui_editor" if str(raw).strip() == "demo" else str(raw).strip()
-        if key and key not in seen:
-            seen.add(key)
-            out.append(key)
-    for key in DEFAULT_TOPBAR_ORDER:
-        if key not in seen:
-            out.append(key)
-            seen.add(key)
-    return out
+    return normalize_topbar_order(order)
 
 
 def migrate_topbar_hidden(hidden: set[str] | list[str]) -> set[str]:
     h = {str(x).strip() for x in hidden if str(x).strip()}
     h.discard("demo")
+    h.discard("hidden_tabs")
     h.discard("view")
     return h
 
@@ -278,11 +267,22 @@ class UiEditorDialog(QtWidgets.QDialog):
         self._win = win
         self.setWindowTitle("UI editor")
         self.resize(520, 480)
+        ui_mode = getattr(win, "_ui_mode", "standard")
         root = QtWidgets.QVBoxLayout(self)
-        intro = QtWidgets.QLabel(
-            "Drag rows to reorder. Checkbox = show in the UI. "
-            "Click <b>OK</b> to apply; <b>Restore defaults</b> resets the current tab."
-        )
+        if ui_mode == "standard":
+            intro_text = (
+                "Drag rows to reorder. Checkbox = show in the UI. "
+                "Standard layout: top bar, Connect sections, and main window tabs. "
+                "Click <b>OK</b> to apply; <b>Restore defaults</b> resets the current tab."
+            )
+        else:
+            intro_text = (
+                "Drag rows to reorder. Checkbox = show in the UI. "
+                "Field layout: top bar and Tools drawer tabs (Presets, NMEA, Terminal, …). "
+                "Connect sections are Standard-only. "
+                "Click <b>OK</b> to apply; <b>Restore defaults</b> resets the current tab."
+            )
+        intro = QtWidgets.QLabel(intro_text)
         intro.setWordWrap(True)
         intro.setObjectName("tabHint")
         root.addWidget(intro)
@@ -308,8 +308,7 @@ class UiEditorDialog(QtWidgets.QDialog):
                 bar_rows.append((key, title, key not in hidden_bar, True))
 
         self._topbar_page = _EditorListPage(
-            "Top bar quick tiles (Standard, Field, Log-first). "
-            "You can also drag tiles on the bar itself.",
+            "Top bar quick tiles. You can also drag tiles on the live survey bar.",
             legend="Checkbox = show on the survey top bar. View is always visible.",
         )
         self._topbar_page.set_rows(bar_rows, locked_keys=frozenset({"view"}))
@@ -343,9 +342,8 @@ class UiEditorDialog(QtWidgets.QDialog):
         self._main_tabs_page: Optional[_EditorListPage] = None
         catalog = getattr(win, "_tab_catalog", {}).get("main_tabs", {})
         if catalog:
-            tabs_key = getattr(win, "_primary_tabs_key", None) or "main_tabs"
+            tabs_key = "main_tabs"
             hidden_tabs = set(getattr(win, "_tab_hidden", {}).get(tabs_key, set()))
-            ui_mode = getattr(win, "_ui_mode", "standard")
             tab_rows = build_main_tab_editor_rows(
                 catalog, hidden_tabs, ui_mode=ui_mode, tabs_key=tabs_key
             )
@@ -356,6 +354,22 @@ class UiEditorDialog(QtWidgets.QDialog):
             )
             self._main_tabs_page.set_tab_rows(tab_rows)
             self._tabs.addTab(self._main_tabs_page, "Main tabs")
+
+        self._tools_tabs_page: Optional[_EditorListPage] = None
+        tools_catalog = getattr(win, "_tab_catalog", {}).get("tools_tabs", {})
+        if tools_catalog and not catalog:
+            tabs_key = "tools_tabs"
+            hidden_tabs = set(getattr(win, "_tab_hidden", {}).get(tabs_key, set()))
+            tab_rows = build_main_tab_editor_rows(
+                tools_catalog, hidden_tabs, ui_mode=ui_mode, tabs_key=tabs_key
+            )
+            self._tools_tabs_page = _EditorListPage(
+                "Tools drawer tabs (Field layout). "
+                "Hide tabs you rarely use to keep the drawer compact.",
+                legend="Checkbox = tab visible. At least one tab must stay on.",
+            )
+            self._tools_tabs_page.set_tab_rows(tab_rows)
+            self._tabs.addTab(self._tools_tabs_page, "Tools tabs")
 
         btn_row = QtWidgets.QHBoxLayout()
         btn_defaults = QtWidgets.QPushButton("Restore defaults")
@@ -412,6 +426,48 @@ class UiEditorDialog(QtWidgets.QDialog):
                 for name in catalog
             ]
             self._main_tabs_page.set_tab_rows(tab_rows)
+        if self._tools_tabs_page is not None:
+            catalog = getattr(self._win, "_tab_catalog", {}).get("tools_tabs", {})
+            tab_rows = [
+                (name, name, MAIN_TAB_HINTS.get(name, ""), True, True)
+                for name in catalog
+            ]
+            self._tools_tabs_page.set_tab_rows(tab_rows)
+
+    def _apply_tab_visibility(
+        self,
+        win: QtWidgets.QWidget,
+        *,
+        tabs_key: str,
+        tab_order: list[str],
+        tab_hidden: list[str],
+        tab_label: str,
+    ) -> bool:
+        catalog = getattr(win, "_tab_catalog", {}).get(tabs_key, {})
+        all_labels = set(catalog.keys())
+        hidden_labels = {lbl for lbl in tab_hidden if lbl in all_labels}
+        if len(all_labels) - len(hidden_labels) < 1 and all_labels:
+            QtWidgets.QMessageBox.warning(
+                self,
+                "UI editor",
+                f"At least one {tab_label} must remain visible.",
+            )
+            return False
+        win._tab_hidden[tabs_key] = hidden_labels  # type: ignore[attr-defined]
+        visible_order = [
+            lbl for lbl in tab_order if lbl in all_labels and lbl not in hidden_labels
+        ]
+        if visible_order:
+            save_tab_order(getattr(win, "_ui_mode", "standard"), tabs_key, visible_order)
+        tabs = (
+            getattr(win, "_main_tabs", None)
+            if tabs_key == "main_tabs"
+            else getattr(win, "_drawer_tabs", None)
+        )
+        if tabs is not None and hasattr(win, "_rebuild_tabs_from_state"):
+            win._rebuild_tabs_from_state(tabs, tabs_key)  # type: ignore[attr-defined]
+            win._persist_tab_state(tabs, tabs_key)  # type: ignore[attr-defined]
+        return True
 
     def _apply(self) -> None:
         win = self._win
@@ -469,25 +525,25 @@ class UiEditorDialog(QtWidgets.QDialog):
 
         if self._main_tabs_page is not None:
             tab_order, tab_hidden = self._main_tabs_page.ordered_checked()
-            catalog = getattr(win, "_tab_catalog", {}).get("main_tabs", {})
-            all_labels = set(catalog.keys())
-            hidden_labels = {lbl for lbl in tab_hidden if lbl in all_labels}
-            if len(all_labels) - len(hidden_labels) < 1 and all_labels:
-                QtWidgets.QMessageBox.warning(
-                    self,
-                    "UI editor",
-                    "At least one main tab must remain visible.",
-                )
+            if not self._apply_tab_visibility(
+                win,
+                tabs_key="main_tabs",
+                tab_order=tab_order,
+                tab_hidden=tab_hidden,
+                tab_label="main tab",
+            ):
                 return
-            key = getattr(win, "_primary_tabs_key", None) or "main_tabs"
-            win._tab_hidden[key] = hidden_labels  # type: ignore[attr-defined]
-            visible_order = [lbl for lbl in tab_order if lbl in all_labels and lbl not in hidden_labels]
-            if visible_order:
-                save_tab_order(getattr(win, "_ui_mode", "standard"), key, visible_order)
-            tabs = getattr(win, "_main_tabs", None)
-            if tabs is not None and hasattr(win, "_rebuild_tabs_from_state"):
-                win._rebuild_tabs_from_state(tabs, key)  # type: ignore[attr-defined]
-                win._persist_tab_state(tabs, key)  # type: ignore[attr-defined]
+
+        if self._tools_tabs_page is not None:
+            tab_order, tab_hidden = self._tools_tabs_page.ordered_checked()
+            if not self._apply_tab_visibility(
+                win,
+                tabs_key="tools_tabs",
+                tab_order=tab_order,
+                tab_hidden=tab_hidden,
+                tab_label="Tools tab",
+            ):
+                return
 
         if hasattr(win, "_log_ui"):
             win._log_ui("[UI] Layout updated.")  # type: ignore[attr-defined]

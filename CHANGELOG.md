@@ -1,7 +1,34 @@
 # Changelog (personal progress)
 
 High-level notes for **this fork / branch** (`feature/multi-ui-layouts-v0.5`).  
-Version = `version.py` / Git tag when you run `.\release.ps1` or tag manually.
+ Version = `version.py` / Git tag when you run `.\release.ps1` or tag manually.
+
+## v1.3.6
+
+- **UI review polish** — product demo steps open the **Terminal** tab reliably (`send`/`terminal` aliases); Field **Ctrl+L** focuses the live log when the log panel is always visible; UI editor copy and tooltips are layout-aware (Standard vs Field Tools tabs).
+- **Field UI editor** — **Tools tabs** page for hiding/reordering drawer tabs (Presets, NMEA, Terminal, …); tab visibility apply uses `_drawer_tabs` for Field instead of main window tabs.
+- **Top-bar migration** — `migrate_topbar_order()` now delegates to `normalize_topbar_order()` so legacy chip cleanup stays in one place.
+- **Tests** — demo tab aliases, tools_tabs hidden-tab prefs roundtrip, migration parity.
+
+## v1.3.5
+
+- **Removed Hidden top-bar chip** — the dedicated **Hidden** tile is gone from the survey bar; tab hide/restore now lives on the tab strip (right-click a tab to hide, right-click empty tab-bar space to restore hidden tabs, or use **UI editor → Main tabs**).
+- **Top-bar migration** — saved layouts that still reference the old `hidden_tabs` chip are cleaned up automatically on load.
+
+## v1.3.4
+
+- **Connect Serial section no longer falls back to white on some PCs** — Standard layout Connect panels (`Serial & network`, inner Serial/Network group boxes, and scroll viewport) now force styled backgrounds on Windows so green/dark surfaces render consistently in packaged builds, not just on dev machines.
+
+## v1.3.3
+
+- **High-contrast dialog guardrail** — added an app-wide contrast stylesheet for `QMessageBox` and tooltips so startup/bridge-failure dialogs no longer show low-contrast text on light backgrounds.
+- **Theme-safe application of contrast rules** — contrast guard is now re-applied on theme changes from shared UI logic, keeping warnings/errors readable across Standard/Field/Minimal/Log-first and random theme variants.
+- **Regression coverage added** — new tests lock in global contrast guard injection and idempotent re-application behavior.
+
+## v1.3.2
+
+- **Frozen Diagnostics scripts restored** — PyInstaller spec now bundles Diagnostics helper scripts (`check_setup.py`, `com_free.py`, `verify_all.py`, TCP/UDP bench helpers, and related runtime tools) so Bench/Boat checklist and Automated checks run from the downloaded zip build.
+- **Frozen guide availability fixed** — `docs/` is now included in one-folder releases so Bench setup guidance and in-app operator guide links resolve in packaged deployments.
 
 ## v1.3.1
 

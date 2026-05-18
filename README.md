@@ -1,6 +1,6 @@
 # nmea-serial-bridge
 
-**Current release: v1.3.1** — Windows desktop app that **bidirectionally bridges** traffic between **UDP/TCP** and a **serial COM port**. Primary use: **NMEA 0183 text** for survey / USV workflows — Ethernet GNSS or INS (e.g. Trimble R10) → bridge → physical COM destination.
+**Current release: v1.3.6** — Windows desktop app that **bidirectionally bridges** traffic between **UDP/TCP** and a **serial COM port**. Primary use: **NMEA 0183 text** for survey / USV workflows — Ethernet GNSS or INS (e.g. Trimble R10) → bridge → physical COM destination.
 
 **Stack:** Python 3.10+, [PySide6](https://doc.qt.io/qtforpython/), [pyserial-asyncio](https://pyserial-asyncio.readthedocs.io/). Bridge I/O runs on a **background asyncio thread**; the GUI stays on the Qt main thread.
 

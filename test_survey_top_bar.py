@@ -207,13 +207,13 @@ class SurveyTopBarTests(unittest.TestCase):
         for key, label in (
             ("view", "View"),
             ("presets", "Presets"),
-            ("hidden_tabs", "Hidden tabs"),
+            ("ui_editor", "UI editor"),
             ("demo", "Demo"),
         ):
             btn = QtWidgets.QToolButton()
             configure_topbar_button(btn, label)
             bar.register(key, label, btn)
-        bar.set_prefs(["view", "presets", "hidden_tabs", "demo"], set())
+        bar.set_prefs(["view", "presets", "ui_editor", "demo"], set())
         bar.resize(260, 40)
         bar.show()
         app.processEvents()

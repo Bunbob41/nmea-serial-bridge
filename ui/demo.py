@@ -96,10 +96,21 @@ def _open_tools(win: QtWidgets.QWidget, tab_title: str) -> None:
     tabs = getattr(win, "_drawer_tabs", None) or getattr(win, "_main_tabs", None)
     if tabs is None:
         return
-    key = tab_title.lower()[:4]
+    want = tab_title.lower().strip()
+    aliases = {
+        "send": ("send", "terminal"),
+        "terminal": ("terminal", "send"),
+        "diag": ("diag", "diagnostic"),
+        "diagnostics": ("diag", "diagnostic"),
+        "preset": ("preset",),
+        "presets": ("preset",),
+        "nmea": ("nmea",),
+        "guide": ("guide",),
+        "theme": ("theme",),
+    }.get(want, (want,))
     for i in range(tabs.count()):
         label = tabs.tabText(i).lower()
-        if label.startswith(key) or key in label:
+        if any(label.startswith(key) or key in label for key in aliases):
             tabs.setCurrentIndex(i)
             return
 
@@ -155,7 +166,7 @@ def _tcp_demo(win: QtWidgets.QWidget) -> None:
 
 
 def _send_sample(win: QtWidgets.QWidget) -> None:
-    _open_tools(win, "send")
+    _open_tools(win, "terminal")
     if hasattr(win, "_insert_send_sample"):
         win._insert_send_sample()  # type: ignore[attr-defined]
 

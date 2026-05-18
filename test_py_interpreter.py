@@ -53,6 +53,14 @@ class TestCliPythonExecutable(unittest.TestCase):
                 got = Path(py_interpreter.cli_python_executable())
             self.assertEqual(got.resolve(), py.resolve())
 
+    def test_frozen_app_uses_path_python_when_sys_executable_is_app(self) -> None:
+        app = Path(r"C:\tmp\nmea-serial-bridge.exe")
+        with mock.patch.object(sys, "executable", str(app)):
+            with mock.patch.object(sys, "frozen", True, create=True):
+                with mock.patch.object(py_interpreter.shutil, "which", return_value=r"C:\Python314\python.exe"):
+                    got = Path(py_interpreter.cli_python_executable())
+        self.assertEqual(got, Path(r"C:\Python314\python.exe"))
+
 
 if __name__ == "__main__":
     unittest.main()

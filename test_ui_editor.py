@@ -6,6 +6,7 @@ import unittest
 from unittest.mock import MagicMock
 
 from ui.connect_panels import DEFAULT_CONNECT_HIDDEN, sanitize_connect_panel_hidden
+from ui.survey_top_bar import normalize_topbar_order
 from ui.ui_editor import (
     MAIN_TAB_HINTS,
     build_connect_panel_editor_rows,
@@ -24,9 +25,19 @@ class TestUiEditor(unittest.TestCase):
         self.assertNotIn("demo", order)
 
     def test_migrate_hidden_drops_demo(self) -> None:
-        hidden = migrate_topbar_hidden({"demo", "randomize_theme"})
+        hidden = migrate_topbar_hidden({"demo", "randomize_theme", "hidden_tabs"})
         self.assertNotIn("demo", hidden)
+        self.assertNotIn("hidden_tabs", hidden)
         self.assertIn("randomize_theme", hidden)
+
+    def test_migrate_order_drops_hidden_tabs_chip(self) -> None:
+        order = migrate_topbar_order(["view", "hidden_tabs", "hud"])
+        self.assertNotIn("hidden_tabs", order)
+        self.assertIn("hud", order)
+
+    def test_migrate_order_matches_normalize(self) -> None:
+        raw = ["view", "demo", "hidden_tabs", "hud", "ui_editor"]
+        self.assertEqual(migrate_topbar_order(raw), normalize_topbar_order(raw))
 
     def test_default_connect_hidden_includes_ntrip(self) -> None:
         self.assertIn("ntrip", DEFAULT_CONNECT_HIDDEN)

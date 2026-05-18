@@ -115,6 +115,14 @@ class TestUiPrefs(unittest.TestCase):
                 loaded = ui_prefs.load_hidden_tabs("standard", "main_tabs")
                 self.assertEqual(loaded, ["Diagnostics", "Theme"])
 
+    def test_hidden_tabs_tools_tabs_roundtrip(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "ui_prefs.json"
+            with patch.object(ui_prefs, "CONFIG_PATH", path):
+                ui_prefs.save_hidden_tabs("field", "tools_tabs", ["Theme", "Guide"])
+                loaded = ui_prefs.load_hidden_tabs("field", "tools_tabs")
+                self.assertEqual(loaded, ["Theme", "Guide"])
+
     def test_file_log_prefs_roundtrip(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "ui_prefs.json"

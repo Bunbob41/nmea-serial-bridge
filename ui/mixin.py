@@ -55,7 +55,7 @@ from ui.bench_setup import extract_operator_guide_section, show_bench_setup_dial
 from ui.stats_line import format_live_stats_line, stats_snapshot_from_merged
 from ui.stats_popout import SurveyStatsPopout
 from ui.app_icon import apply_app_icon
-from ui.styles import bridge_stylesheet
+from ui.styles import apply_global_contrast_guard, bridge_stylesheet
 from ui.theme_choice import (
     THEME_IDS,
     THEME_RANDOM_CURRENT,
@@ -300,9 +300,7 @@ class BridgeLogicMixin:
         view_menu.addAction(act_pop)
 
         act_ui_editor = QtGui.QAction("UI editor…", self)
-        act_ui_editor.setStatusTip(
-            "Show or hide top bar tiles, Connect sections, and main tabs for this workspace"
-        )
+        act_ui_editor.setStatusTip(self._ui_editor_status_tip())
         act_ui_editor.triggered.connect(self._open_ui_editor)
         view_menu.addAction(act_ui_editor)
         act_demo = QtGui.QAction("Product demo…", self)
@@ -400,25 +398,6 @@ class BridgeLogicMixin:
         self._survey_btn_tools = tools_btn
         bar.register("tools", "Tools", tools_btn)
 
-        hidden_btn = QtWidgets.QToolButton()
-        hidden_btn.setObjectName("surveyQuickBtn")
-        hidden_btn.setText("Hidden tabs")
-        hidden_btn.setToolButtonStyle(QtCore.Qt.ToolButtonStyle.ToolButtonTextOnly)
-        hidden_btn.setPopupMode(QtWidgets.QToolButton.ToolButtonPopupMode.InstantPopup)
-        hidden_btn.setAutoRaise(True)
-        hidden_btn.setToolTip("Show tabs hidden from the tab strip")
-        self._hidden_tabs_menu = QtWidgets.QMenu(hidden_btn)
-        hidden_btn.setMenu(self._hidden_tabs_menu)
-        configure_topbar_button(
-            hidden_btn,
-            "Hidden tabs",
-            tooltip="Show tabs hidden from the tab strip",
-        )
-        self._hidden_tabs_btn = hidden_btn
-        self._topbar_widgets["hidden_tabs"] = hidden_btn
-        self._topbar_labels["hidden_tabs"] = "Hidden tabs"
-        bar.register("hidden_tabs", "Hidden tabs", hidden_btn)
-
         for key, text, tip, slot in (
             (
                 "randomize_theme",
@@ -435,7 +414,7 @@ class BridgeLogicMixin:
             (
                 "ui_editor",
                 "UI editor",
-                "Show or hide top bar tiles, Connect sections (NTRIP, Quick log, …), and main tabs",
+                self._ui_editor_status_tip(),
                 self._open_ui_editor,
             ),
             (
@@ -495,7 +474,6 @@ class BridgeLogicMixin:
             self._topbar_chip_weights,
         )
         self.survey_menu_bar = bar
-        self._refresh_hidden_tabs_menu()
         self._ensure_readable_top_bar()
         return bar
 
@@ -545,7 +523,6 @@ class BridgeLogicMixin:
             )
         finally:
             self._topbar_rebuild_guard = False
-        self._refresh_hidden_tabs_menu()
 
     def _save_top_bar_prefs(self) -> None:
         weights = dict(getattr(self, "_topbar_chip_weights", {}))
@@ -698,8 +675,10 @@ class BridgeLogicMixin:
             self._tab_rebuild_guard = False
         bar = tabs.tabBar()
         bar.setMovable(True)
-        bar.setToolTip("Drag tabs left/right to reorder")
-        self._refresh_hidden_tabs_menu()
+        bar.setToolTip(
+            "Drag tabs to reorder. Right-click a tab to hide it; "
+            "right-click empty tab-bar space to restore hidden tabs."
+        )
 
     def _persist_tab_state(self, tabs: QtWidgets.QTabWidget, key: str) -> None:
         if self._tab_rebuild_guard:
@@ -708,55 +687,44 @@ class BridgeLogicMixin:
         save_tab_order(getattr(self, "_ui_mode", "standard"), key, order)
         hidden = sorted(self._tab_hidden.get(key, set()))
         save_hidden_tabs(getattr(self, "_ui_mode", "standard"), key, hidden)
-        self._refresh_hidden_tabs_menu()
         self._log_ui(f"[UI] Reordered {key.replace('_', ' ')}.")
+
+    def _populate_hidden_tab_restore_actions(self, menu: QtWidgets.QMenu, key: str) -> bool:
+        hidden = sorted(self._tab_hidden.get(key, set()))
+        if not hidden:
+            return False
+        show_all = QtGui.QAction("Show all hidden tabs", self)
+        show_all.triggered.connect(lambda checked=False, k=key: self._show_all_hidden_tabs(k))
+        menu.addAction(show_all)
+        for label in hidden:
+            act = QtGui.QAction(f"Show {label}", self)
+            act.triggered.connect(lambda checked=False, n=label, k=key: self._show_hidden_tab(k, n))
+            menu.addAction(act)
+        return True
 
     def _on_tabs_context_menu(
         self, tabs: QtWidgets.QTabWidget, key: str, pos: QtCore.QPoint
     ) -> None:
         bar = tabs.tabBar()
         idx = bar.tabAt(pos)
-        if idx < 0:
-            return
-        label = tabs.tabText(idx).strip()
-        if not label:
-            return
         menu = QtWidgets.QMenu(self)
-        hide_action = QtGui.QAction(f"Hide tab: {label}", self)
-        hide_action.setEnabled(tabs.count() > 1)
-        menu.addAction(hide_action)
-        chosen = menu.exec(bar.mapToGlobal(pos))
-        if chosen is hide_action and tabs.count() > 1:
-            self._tab_hidden.setdefault(key, set()).add(label)
-            self._rebuild_tabs_from_state(tabs, key)
-            self._persist_tab_state(tabs, key)
-
-    def _refresh_hidden_tabs_menu(self) -> None:
-        btn = getattr(self, "_hidden_tabs_btn", None)
-        menu = getattr(self, "_hidden_tabs_menu", None)
-        if btn is None or menu is None:
-            return
-        key = self._primary_tabs_key
-        if not key:
-            btn.setEnabled(False)
-            return
-        hidden = sorted(self._tab_hidden.get(key, set()))
-        menu.clear()
-        if not hidden:
-            empty = QtGui.QAction("(no hidden tabs)", self)
-            empty.setEnabled(False)
-            menu.addAction(empty)
-            btn.setEnabled(False)
-            return
-        btn.setEnabled(True)
-        show_all = QtGui.QAction("Show all hidden tabs", self)
-        show_all.triggered.connect(lambda checked=False, k=key: self._show_all_hidden_tabs(k))
-        menu.addAction(show_all)
-        menu.addSeparator()
-        for label in hidden:
-            act = QtGui.QAction(f"Show {label}", self)
-            act.triggered.connect(lambda checked=False, n=label, k=key: self._show_hidden_tab(k, n))
-            menu.addAction(act)
+        if idx >= 0:
+            label = tabs.tabText(idx).strip()
+            if label:
+                hide_action = QtGui.QAction(f"Hide tab: {label}", self)
+                hide_action.setEnabled(tabs.count() > 1)
+                menu.addAction(hide_action)
+                if self._tab_hidden.get(key):
+                    menu.addSeparator()
+                    self._populate_hidden_tab_restore_actions(menu, key)
+                chosen = menu.exec(bar.mapToGlobal(pos))
+                if chosen is hide_action and tabs.count() > 1:
+                    self._tab_hidden.setdefault(key, set()).add(label)
+                    self._rebuild_tabs_from_state(tabs, key)
+                    self._persist_tab_state(tabs, key)
+                return
+        if self._populate_hidden_tab_restore_actions(menu, key):
+            menu.exec(bar.mapToGlobal(pos))
 
     def _show_hidden_tab(self, key: str, label: str) -> None:
         hidden = self._tab_hidden.setdefault(key, set())
@@ -792,9 +760,22 @@ class BridgeLogicMixin:
         act.triggered.connect(slot)  # type: ignore[arg-type]
         self.addAction(act)
 
+    def _ui_editor_status_tip(self) -> str:
+        mode = getattr(self, "_ui_mode", "standard")
+        if mode == "standard":
+            return (
+                "Show or hide top bar tiles, Connect sections, and main window tabs "
+                "(Standard layout)"
+            )
+        return "Show or hide top bar tiles and Tools drawer tabs (Field layout)"
+
     def _toggle_log_visibility_shortcut(self) -> None:
         if getattr(self, "_ui_mode", "") == "standard":
             self._focus_log_tab()
+            return
+        view = getattr(self, "log_view", None)
+        if view is not None:
+            view.setFocus(QtCore.Qt.FocusReason.ShortcutFocusReason)
             return
         chk = getattr(self, "chk_show_log", None)
         if chk is not None:
@@ -1257,6 +1238,7 @@ class BridgeLogicMixin:
         ui_mode = getattr(self, "_ui_mode", "standard")
         self.setStyleSheet("")  # clear cached rules so theme swap is visible
         self.setStyleSheet(bridge_stylesheet(ui_mode, theme_id))
+        apply_global_contrast_guard(QtWidgets.QApplication.instance())
         pop = getattr(self, "_stats_popout_window", None)
         if pop is not None:
             try:

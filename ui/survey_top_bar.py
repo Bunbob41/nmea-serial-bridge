@@ -16,7 +16,6 @@ DEFAULT_TOPBAR_ORDER: tuple[str, ...] = (
     "recent",
     "hud",
     "tools",
-    "hidden_tabs",
     "randomize_theme",
     "standardize_theme",
     "ui_editor",
@@ -34,7 +33,6 @@ TOPBAR_SHORT_LABEL: dict[str, str] = {
     "recent": "Recent",
     "hud": "HUD",
     "tools": "Tools",
-    "hidden_tabs": "Hidden",
     "randomize_theme": "Rand",
     "standardize_theme": "Strd",
     "ui_editor": "UI",
@@ -159,6 +157,8 @@ def normalize_topbar_order(order: list[str]) -> list[str]:
         k = str(key).strip()
         if k == "demo":
             k = "ui_editor"
+        if k == "hidden_tabs":
+            continue
         if k and k not in seen:
             seen.add(k)
             out.append(k)

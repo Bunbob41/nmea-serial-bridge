@@ -9,6 +9,26 @@ root = Path(SPECPATH)
 
 pyside_datas, pyside_binaries, pyside_hidden = collect_all("PySide6")
 
+HELPER_SCRIPTS = [
+    "verify_all.py",
+    "com_free.py",
+    "check_setup.py",
+    "nmea_static_sample.py",
+    "bench_tcp_stress.py",
+    "bench_capacity_probe.py",
+    "bench_gui_smoke.py",
+    "bridge_headless.py",
+    "bench_stress.py",
+]
+
+helper_datas = [
+    (str(root / name), ".")
+    for name in HELPER_SCRIPTS
+    if (root / name).is_file()
+]
+
+docs_datas = ([(str(root / "docs"), "docs")] if (root / "docs").is_dir() else [])
+
 APP_HIDDEN = [
     "serial_asyncio",
     "serial.tools.list_ports",
@@ -42,6 +62,8 @@ a = Analysis(
     binaries=pyside_binaries,
     datas=pyside_datas
     + [(str(root / "bench_defaults.json"), ".")]
+    + helper_datas
+    + docs_datas
     + ([(str(root / "assets"), "assets")] if (root / "assets").is_dir() else []),
     hiddenimports=[*APP_HIDDEN, *pyside_hidden],
     hookspath=[],

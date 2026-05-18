@@ -67,6 +67,27 @@ QToolButton#connectPanelDisclosure:checked {
     background-color: rgba(96, 139, 102, 0.95);
     color: #f7fbf4;
 }
+QWidget#connectPanelHost,
+QWidget#connectSectionBody {
+    background: transparent;
+    color: #f6eee0;
+}
+QScrollArea#connectSectionScroll,
+QWidget#connectSectionScrollViewport {
+    background: transparent;
+}
+QGroupBox#connectGroupBox {
+    background-color: rgba(36, 26, 31, 0.55);
+    border: 1px solid #6f8d63;
+    border-radius: 10px;
+    margin-top: 12px;
+    padding: 10px;
+    color: #f4f0ea;
+}
+QGroupBox#connectGroupBox::title {
+    color: #d8e8d0;
+    font-weight: 600;
+}
 """
 
 _ROUND_CONNECT_ROWS_LIGHT = """
@@ -99,6 +120,27 @@ QToolButton#connectPanelDisclosure:checked {
     border-color: #67865a;
     background-color: rgba(190, 214, 178, 0.99);
     color: #1d281d;
+}
+QWidget#connectPanelHost,
+QWidget#connectSectionBody {
+    background: transparent;
+    color: #1a1a1a;
+}
+QScrollArea#connectSectionScroll,
+QWidget#connectSectionScrollViewport {
+    background: transparent;
+}
+QGroupBox#connectGroupBox {
+    background-color: rgba(238, 245, 234, 0.95);
+    border: 1px solid #96aa86;
+    border-radius: 10px;
+    margin-top: 12px;
+    padding: 10px;
+    color: #1a1a1a;
+}
+QGroupBox#connectGroupBox::title {
+    color: #253025;
+    font-weight: 600;
 }
 """
 
@@ -1286,3 +1328,59 @@ def hud_stylesheet(theme_id: str) -> str:
     from ui.theme_palette import apply_theme_colors
 
     return apply_theme_colors(SURVEY_STATS_POPOUT_STYLESHEET, _normalize_theme_id(theme_id))
+
+
+GLOBAL_CONTRAST_GUARD_STYLESHEET = """
+QToolTip {
+    background-color: #1b1418;
+    color: #f4f0ea;
+    border: 1px solid #8d6a34;
+    padding: 4px 6px;
+}
+QMessageBox, QErrorMessage {
+    background-color: #241a1f;
+    color: #f4f0ea;
+}
+QMessageBox QLabel, QErrorMessage QLabel {
+    background: transparent;
+    color: #f4f0ea;
+}
+QMessageBox QPushButton, QErrorMessage QPushButton {
+    background-color: #5a3240;
+    color: #f4f0ea;
+    border: 1px solid #8d6a34;
+    border-radius: 6px;
+    padding: 6px 12px;
+    min-width: 84px;
+}
+QMessageBox QPushButton:hover, QErrorMessage QPushButton:hover {
+    background-color: #6b3a4a;
+}
+QMessageBox QPlainTextEdit,
+QMessageBox QTextEdit,
+QErrorMessage QPlainTextEdit,
+QErrorMessage QTextEdit {
+    background-color: #1e181c;
+    color: #ece6dc;
+    border: 1px solid #7a5a2d;
+}
+"""
+
+
+def apply_global_contrast_guard(app: object | None) -> None:
+    """Apply high-contrast dialog/tool-tip rules across the whole app."""
+    if app is None or not hasattr(app, "styleSheet"):
+        return
+    marker = "/* BRIDGE_GLOBAL_CONTRAST_GUARD */"
+    base_prop = "_bridge_base_stylesheet"
+    stored_base = None
+    if hasattr(app, "property"):
+        stored_base = app.property(base_prop)
+    if isinstance(stored_base, str):
+        base = stored_base
+    else:
+        base = str(app.styleSheet() or "")
+        if hasattr(app, "setProperty"):
+            app.setProperty(base_prop, base)
+    merged = f"{base}\n{marker}\n{GLOBAL_CONTRAST_GUARD_STYLESHEET}"
+    app.setStyleSheet(merged)

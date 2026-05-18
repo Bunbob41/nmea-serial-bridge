@@ -166,6 +166,7 @@ def setup_connect_tab_panels(
 
     host = QtWidgets.QWidget()
     host.setObjectName("connectPanelHost")
+    host.setAttribute(QtCore.Qt.WidgetAttribute.WA_StyledBackground, True)
     host.setSizePolicy(
         QtWidgets.QSizePolicy.Policy.Preferred,
         QtWidgets.QSizePolicy.Policy.Preferred,
@@ -280,6 +281,7 @@ def _rebuild_connect_panels(win: QtWidgets.QWidget) -> None:
             on_layout_changed=lambda w=win: _apply_connect_splitter_sizes(w),
         )
         row.setObjectName("connectPanelRow")
+        row.setAttribute(QtCore.Qt.WidgetAttribute.WA_StyledBackground, True)
         row.setProperty("connectPanelKey", key)
         row.tool_button().toggled.connect(
             lambda on, k=key, w=win: _on_connect_panel_toggled(w, k, on)
