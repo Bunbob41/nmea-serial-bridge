@@ -171,7 +171,7 @@ $notes = @"
 Windows x64 one-folder build (PyInstaller).
 
 - Unzip and run ``nmea-serial-bridge.exe`` (keep the whole folder).
-- First launch: pick Standard / Minimal / Log-first UI.
+- First launch: pick Standard or Field UI.
 - Bench preset uses ``bench_defaults.json`` beside the exe.
 - SmartScreen may warn (unsigned app).
 
