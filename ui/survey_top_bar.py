@@ -55,8 +55,8 @@ COMPACT_CHIP_WIDTH = 54
 COMPACT_EXIT_ABOVE_PX = 80
 EXPANDED_FIT_SLACK_PX = 12
 CHIP_TEXT_PAD = 12
-CHIP_MARGINS_EXPANDED = (7, 4, 3, 4)
-CHIP_MARGINS_COMPACT = (4, 3, 2, 3)
+CHIP_MARGINS_EXPANDED = (8, 5, 4, 5)
+CHIP_MARGINS_COMPACT = (5, 4, 3, 4)
 _GRIP_WIDTH = 12
 _RESIZE_EDGE_WIDTH = 5
 _PROP_FULL = "topBarFullText"
@@ -403,8 +403,8 @@ class SurveyTopBar(QtWidgets.QWidget):
             QtWidgets.QSizePolicy.Policy.Fixed,
         )
         self._track_lay = QtWidgets.QHBoxLayout(self._track)
-        self._track_lay.setContentsMargins(6, 3, 6, 3)
-        self._track_lay.setSpacing(6)
+        self._track_lay.setContentsMargins(6, 4, 6, 4)
+        self._track_lay.setSpacing(8)
         outer = QtWidgets.QHBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
         outer.setSpacing(0)
@@ -754,7 +754,7 @@ class SurveyTopBar(QtWidgets.QWidget):
         for chip in self._chips.values():
             if chip.isVisible():
                 h = max(h, chip.sizeHint().height())
-        self.setFixedHeight(max(h + 8, 30))
+        self.setFixedHeight(max(h + 12, 40))
 
     def _emit_persist(self) -> None:
         self.order_changed.emit(list(self._order))

@@ -516,7 +516,6 @@ QWidget#surveyMenuBar {
     background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #3a2a31, stop:1 #2a1d22);
     border-bottom: 1px solid #7a5a2d;
     min-height: 0;
-    max-height: 40px;
 }
 QWidget#surveyTopBarTrack {
     min-width: 0;
@@ -524,14 +523,14 @@ QWidget#surveyTopBarTrack {
 QWidget#surveyMenuBar QToolButton {
     background: transparent;
     border: none;
-    padding: 2px 10px;
+    padding: 5px 10px;
     color: #f6eee0;
     font-weight: 600;
 }
 QWidget#surveyMenuBar QToolButton:hover { background-color: #5f3643; }
 QWidget#surveyMenuBar QToolButton::menu-indicator { image: none; width: 0; }
 QWidget#surveyMenuBar QToolButton#surveyQuickBtn {
-    font-weight: 500; font-size: 9pt; padding: 2px 7px;
+    font-weight: 500; font-size: 9pt; padding: 5px 7px;
 }
 QWidget#surveyMenuBar QToolButton#surveyQuickBtn:checked {
     background-color: #5f3643; color: #ffe2a1;
@@ -541,7 +540,6 @@ QFrame#topBarChip {
     border: 1px solid #7a5a2d;
     border-radius: 5px;
     background-color: rgba(255, 255, 255, 0.04);
-    margin: 1px 0;
 }
 QFrame#topBarChip:hover { border-color: #c9a227; background-color: rgba(201, 162, 39, 0.08); }
 QFrame#topBarChip[dragging="true"] {
@@ -575,7 +573,7 @@ QWidget#topBarResizeEdge:hover {
 QFrame#topBarDropLine { background-color: #d4af37; border: none; max-width: 2px; }
 QWidget#surveyMenuBar QFrame#topBarChip QToolButton {
     border: none;
-    padding: 2px 6px;
+    padding: 5px 8px;
     margin: 0;
     min-width: 0;
     qproperty-toolButtonStyle: ToolButtonTextOnly;
@@ -670,19 +668,18 @@ QWidget#surveyMenuBar {
     background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #e7dcc9, stop:1 #ddd8d0);
     border-bottom: 1px solid #b28a42;
     min-height: 0;
-    max-height: 40px;
 }
 QWidget#surveyMenuBar QToolButton {
     background: transparent;
     border: none;
-    padding: 2px 10px;
+    padding: 5px 10px;
     color: #4a202a;
     font-weight: 600;
 }
 QWidget#surveyMenuBar QToolButton:hover { background-color: #d9c6a1; }
 QWidget#surveyMenuBar QToolButton::menu-indicator { image: none; width: 0; }
 QWidget#surveyMenuBar QToolButton#surveyQuickBtn {
-    font-weight: 500; font-size: 9pt; padding: 2px 7px;
+    font-weight: 500; font-size: 9pt; padding: 5px 7px;
 }
 QWidget#surveyMenuBar QToolButton#surveyQuickBtn:checked {
     background-color: #d9c6a1; color: #4a202a;
@@ -692,7 +689,6 @@ QFrame#topBarChip {
     border: 1px solid #b28a42;
     border-radius: 5px;
     background-color: rgba(255, 255, 255, 0.35);
-    margin: 1px 0;
 }
 QFrame#topBarChip:hover { border-color: #8a6a30; background-color: rgba(255, 255, 255, 0.55); }
 QFrame#topBarChip[dragging="true"] {
@@ -718,7 +714,7 @@ QLabel#topBarDragGrip {
 QFrame#topBarDropLine { background-color: #8a6a30; border: none; max-width: 2px; }
 QWidget#surveyMenuBar QFrame#topBarChip QToolButton {
     border: none;
-    padding: 2px 6px;
+    padding: 5px 8px;
     margin: 0;
     min-width: 0;
     qproperty-toolButtonStyle: ToolButtonTextOnly;
@@ -797,7 +793,6 @@ QWidget#surveyMenuBar {
     background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #3a2a31, stop:1 #2a1d22);
     border-bottom: 1px solid #7a5a2d;
     min-height: 0;
-    max-height: 40px;
 }
 QWidget#surveyTopBarTrack {
     min-width: 0;
@@ -805,14 +800,14 @@ QWidget#surveyTopBarTrack {
 QWidget#surveyMenuBar QToolButton {
     background: transparent;
     border: none;
-    padding: 2px 10px;
+    padding: 5px 10px;
     color: #f6eee0;
     font-weight: 600;
 }
 QWidget#surveyMenuBar QToolButton:hover { background-color: #5f3643; }
 QWidget#surveyMenuBar QToolButton::menu-indicator { image: none; width: 0; }
 QWidget#surveyMenuBar QToolButton#surveyQuickBtn {
-    font-weight: 500; font-size: 9pt; padding: 2px 7px;
+    font-weight: 500; font-size: 9pt; padding: 5px 7px;
 }
 QWidget#surveyMenuBar QToolButton#surveyQuickBtn:checked {
     background-color: #5f3643; color: #ffe2a1;
@@ -822,7 +817,6 @@ QFrame#topBarChip {
     border: 1px solid #7a5a2d;
     border-radius: 5px;
     background-color: rgba(255, 255, 255, 0.04);
-    margin: 1px 0;
 }
 QFrame#topBarChip:hover { border-color: #c9a227; background-color: rgba(201, 162, 39, 0.08); }
 QFrame#topBarChip[dragging="true"] {
@@ -856,7 +850,7 @@ QWidget#topBarResizeEdge:hover {
 QFrame#topBarDropLine { background-color: #d4af37; border: none; max-width: 2px; }
 QWidget#surveyMenuBar QFrame#topBarChip QToolButton {
     border: none;
-    padding: 2px 6px;
+    padding: 5px 8px;
     margin: 0;
     min-width: 0;
     qproperty-toolButtonStyle: ToolButtonTextOnly;

@@ -2,7 +2,11 @@
 from __future__ import annotations
 
 import argparse
+import os
 import sys
+
+if sys.platform == "win32":
+    import ctypes
 
 from PySide6 import QtWidgets
 
@@ -37,6 +41,16 @@ def main() -> None:
         help="Open the product demo guide (Field layout recommended)",
     )
     args = parser.parse_args()
+
+    if sys.platform == "win32":
+        try:
+            # PROCESS_PER_MONITOR_DPI_AWARE (value 2) — prevents DWM from forcing a
+            # legacy scaling context switch that can shrink the taskbar and system icons.
+            ctypes.windll.shcore.SetProcessDpiAwareness(2)
+        except Exception:
+            # shcore not available on very old Windows versions; fall back silently.
+            os.environ.setdefault("QT_AUTO_SCREEN_SCALE_FACTOR", "1")
+
     app = QtWidgets.QApplication(sys.argv)
     apply_app_icon(app)
     from ui.picker import load_saved_ui, resolve_ui_id
