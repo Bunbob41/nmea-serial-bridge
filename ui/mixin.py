@@ -8,6 +8,7 @@ from typing import Deque, Optional
 
 import asyncio
 import json
+import sys
 import serial.tools.list_ports
 from PySide6 import QtCore, QtGui, QtWidgets
 
@@ -126,7 +127,22 @@ from ui.ui_prefs import (
     save_hidden_tabs,
 )
 
-_REPO_ROOT = Path(__file__).resolve().parent.parent
+def _resolve_repo_root() -> Path:
+    """Return the directory that contains loose helper scripts.
+
+    Dev (source run): two levels up from this file → project root.
+    Frozen (PyInstaller one-folder): sys._MEIPASS is the exe directory where
+    datas (verify_all.py, com_free.py, …) are extracted by the spec.
+    """
+    if getattr(sys, "frozen", False):
+        meipass = getattr(sys, "_MEIPASS", None)
+        if meipass:
+            return Path(meipass)
+        return Path(sys.executable).resolve().parent
+    return Path(__file__).resolve().parent.parent
+
+
+_REPO_ROOT = _resolve_repo_root()
 _DEFAULT_DIAG_CARD_ORDER = [
     "file_log",
     "screen_log",
@@ -2988,6 +3004,19 @@ class BridgeLogicMixin:
         proc.setProgram(exe)
         proc.setArguments([str(rel), *args])
         proc.setWorkingDirectory(str(_REPO_ROOT))
+        # Ensure the subprocess can import project modules (bench_config, nmea_codec,
+        # bridge_core, etc.) from the same directory the scripts live in.  In a frozen
+        # build _REPO_ROOT = sys._MEIPASS where the spec bundles all HELPER_MODULES as
+        # raw .py files; in dev _REPO_ROOT is the project root.
+        env = QtCore.QProcessEnvironment.systemEnvironment()
+        existing_pypath = env.value("PYTHONPATH", "")
+        new_pypath = (
+            f"{_REPO_ROOT}{';' if sys.platform == 'win32' else ':'}{existing_pypath}"
+            if existing_pypath
+            else str(_REPO_ROOT)
+        )
+        env.insert("PYTHONPATH", new_pypath)
+        proc.setProcessEnvironment(env)
         proc.setProcessChannelMode(QtCore.QProcess.ProcessChannelMode.SeparateChannels)
         proc.readyReadStandardOutput.connect(self._diag_on_stdout)
         proc.readyReadStandardError.connect(self._diag_on_stderr)
@@ -3086,6 +3115,20 @@ class BridgeLogicMixin:
         self._diag_release_process(user_stop=True)
 
     def _diag_run_verify_all(self) -> None:
+        if getattr(sys, "frozen", False):
+            # verify_all.py runs the full unit-test tree which is not shipped in the
+            # portable build.  Detect this early and tell the user instead of silently
+            # failing deep inside the script.
+            test_probe = _REPO_ROOT / "test_bridge_core.py"
+            if not test_probe.is_file():
+                self._append_diag_output(
+                    "Full verify is not available in the portable (.exe) build.\n"
+                    "The unit-test files are not included in the distribution.\n\n"
+                    "To run verify_all, clone the repository and use:\n"
+                    "  python verify_all.py\n"
+                )
+                self._log_ui("[UI] verify_all skipped — portable build has no test tree.")
+                return
         self._diag_start_script("verify_all (full automated suite)", "verify_all.py", [])
 
     def _operator_guide_path(self) -> Path:

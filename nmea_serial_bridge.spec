@@ -21,9 +21,21 @@ HELPER_SCRIPTS = [
     "bench_stress.py",
 ]
 
+# Python module files imported by the helper scripts when they run as subprocesses.
+# QProcess spawns a fresh Python interpreter; it can only import from the working
+# directory (sys._MEIPASS).  These files are bundled as raw .py so the subprocess
+# can find them via the automatic sys.path[0] = working-directory rule.
+HELPER_MODULES = [
+    "bench_config.py",
+    "bench_udp_test.py",
+    "nmea_codec.py",
+    "bridge_core.py",
+    "py_interpreter.py",
+]
+
 helper_datas = [
     (str(root / name), ".")
-    for name in HELPER_SCRIPTS
+    for name in HELPER_SCRIPTS + HELPER_MODULES
     if (root / name).is_file()
 ]
 

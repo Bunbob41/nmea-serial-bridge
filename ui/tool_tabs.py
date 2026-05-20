@@ -351,45 +351,169 @@ def wrap_main_tab_scroll(inner: QtWidgets.QWidget) -> QtWidgets.QScrollArea:
     return _scrollable(inner)
 
 
+_GUIDE_CSS = """
+body  { font-family: sans-serif; font-size: 13px; margin: 0; padding: 0; }
+h2    { font-size: 15px; font-weight: bold; margin: 0 0 4px 0; }
+h3    { font-size: 13px; font-weight: bold; margin: 10px 0 2px 0; }
+p     { margin: 4px 0 8px 0; }
+ol    { margin: 4px 0 8px 16px; padding: 0; }
+ul    { margin: 2px 0 4px 20px; padding: 0; }
+li    { margin-bottom: 3px; }
+hr    { border: none; border-top: 1px solid #555; margin: 10px 0; }
+code  { background: #2a2a2a; color: #e8e8e8; padding: 1px 4px; border-radius: 3px; font-size: 12px; }
+.note { color: #999; font-style: italic; margin-top: 6px; }
+"""
+
+_GUIDE_UDP = """
+<h2>Method 1 — UDP Flow (Point-to-Point / Broadcast)</h2>
+<p><em>Best for fast, connectionless data streams to a specific machine or local software
+(e.g. bench testing, MissionPlanner, local chart plotter).</em></p>
+<hr/>
+<h3>How to Configure</h3>
+<ol>
+  <li>Open the <b>Tools</b> drawer and navigate to the <b>Presets</b> tab.</li>
+  <li>Click <b>Add New Preset</b>.</li>
+  <li>Name your preset (e.g. <em>"Bench UDP Test"</em>).</li>
+  <li><b>Serial Configuration:</b>
+    <ul>
+      <li>Select the target <b>COM Port</b> (e.g. COM7).</li>
+      <li>Set the <b>Baud Rate</b> (e.g. 115200).</li>
+    </ul>
+  </li>
+  <li><b>Network Configuration (UDP):</b>
+    <ul>
+      <li>Set Protocol to <b>UDP Remote</b> or <b>UDP Listen</b>.</li>
+      <li>Set <b>Target IP:</b> the IP address receiving the data
+          (use <code>127.0.0.1</code> for local software).</li>
+      <li>Set <b>Target Port:</b> the port the receiving software listens on
+          (e.g. <code>10110</code>).</li>
+    </ul>
+  </li>
+  <li>Click <b>Save Preset</b>.</li>
+  <li>Return to the <b>Connect</b> tab, open the <b>Run bridge</b> panel,
+      select your preset, and click <b>Start bridge</b>.</li>
+</ol>
+<p class="note">UDP Listen mode tracks every sender that transmits to your port and can
+fan-out replies to all of them (toggle the <em>Fan-out to all UDP peers</em> checkbox).</p>
+"""
+
+_GUIDE_TCP_CLIENT = """
+<h2>Method 2 — TCP Client Flow (Connecting Outward)</h2>
+<p><em>Best for connecting your local serial hardware to an established remote server.</em></p>
+<hr/>
+<h3>How to Configure</h3>
+<ol>
+  <li>Open the <b>Tools</b> drawer and navigate to the <b>Presets</b> tab.</li>
+  <li>Click <b>Add New Preset</b>.</li>
+  <li>Name your preset (e.g. <em>"Remote Server Link"</em>).</li>
+  <li><b>Serial Configuration:</b>
+    <ul>
+      <li>Select the target <b>COM Port</b>.</li>
+      <li>Set the <b>Baud Rate</b>.</li>
+    </ul>
+  </li>
+  <li><b>Network Configuration (TCP Client):</b>
+    <ul>
+      <li>Set Protocol to <b>TCP Client</b>.</li>
+      <li>Set <b>Server IP:</b> the exact IP address of the remote machine.</li>
+      <li>Set <b>Server Port:</b> the port the remote server has opened for you.</li>
+    </ul>
+  </li>
+  <li>Click <b>Save Preset</b>.</li>
+  <li>Return to the <b>Connect</b> tab, select the preset, and click <b>Start bridge</b>.
+      The app will actively attempt to connect to the remote server.</li>
+</ol>
+<p class="note">The bridge retries the connection automatically if the server drops.
+Watch the Network chip in the status bar for connection state.</p>
+"""
+
+_GUIDE_TCP_SERVER = """
+<h2>Method 3 — TCP Server Flow (Hosting Locally)</h2>
+<p><em>Best for allowing external software or remote machines to connect to your local
+serial hardware.</em></p>
+<hr/>
+<h3>How to Configure</h3>
+<ol>
+  <li>Open the <b>Tools</b> drawer and navigate to the <b>Presets</b> tab.</li>
+  <li>Click <b>Add New Preset</b>.</li>
+  <li>Name your preset (e.g. <em>"Local Host Access"</em>).</li>
+  <li><b>Serial Configuration:</b>
+    <ul>
+      <li>Select the target <b>COM Port</b>.</li>
+      <li>Set the <b>Baud Rate</b>.</li>
+    </ul>
+  </li>
+  <li><b>Network Configuration (TCP Server):</b>
+    <ul>
+      <li>Set Protocol to <b>TCP Server</b>.</li>
+      <li>Set <b>Listen IP:</b> use <code>0.0.0.0</code> to accept connections from any
+          machine, or <code>127.0.0.1</code> to restrict to this computer only.</li>
+      <li>Set <b>Listen Port:</b> choose an open port (e.g. <code>10110</code>).
+          Ensure this port is not blocked by your firewall.</li>
+    </ul>
+  </li>
+  <li>Click <b>Save Preset</b>.</li>
+  <li>Return to the <b>Connect</b> tab, select the preset, and click <b>Start bridge</b>.
+      The app will listen and wait for a client to connect.</li>
+</ol>
+<p class="note">Only one TCP client can connect at a time in server mode. The status bar
+Network chip shows the connected client address once a connection is established.</p>
+"""
+
+_GUIDE_CHECKLIST = """
+<h2>Technical Verification Checklist</h2>
+<p><em>Verify these fields before starting the bridge to avoid silent data corruption.</em></p>
+<hr/>
+<ul>
+  <li><b>COM Port:</b> must be a valid local identifier (COM1–256 on Windows,
+      <code>/dev/tty…</code> on Linux). Use the Refresh button if it does not appear.</li>
+  <li><b>Baud Rate:</b> must match the physical hardware exactly —
+      a mismatch produces garbled NMEA sentences without an error.</li>
+  <li><b>Target / Listen IP:</b> must be a valid IPv4 address (<code>X.X.X.X</code>).</li>
+  <li><b>Port Numbers:</b> integer between <code>1</code> and <code>65535</code>.
+      Avoid ports below <code>1024</code> — they are OS-reserved and may require
+      elevated privileges.</li>
+  <li><b>Firewall:</b> TCP Server and UDP Listen modes require the chosen port to be
+      reachable. Add a Windows Defender inbound rule if external machines cannot connect.</li>
+  <li><b>NMEA Mode:</b> use <em>Passthrough</em> for trusted hardware;
+      use <em>Strict</em> to drop malformed sentences and track rejects in the status bar.</li>
+</ul>
+<p class="note">After clicking Start bridge, watch the Serial and Network chips in the
+bottom status bar. Green text indicates an active connection; red indicates an error.</p>
+"""
+
+
 def build_guide_tab(_parent: QtWidgets.QWidget) -> QtWidgets.QWidget:
-    """Transparent quick guide: what works well, limits, and current focus."""
+    """Structured connection workflow guide with one tab per method."""
     host = QtWidgets.QWidget()
     lay = QtWidgets.QVBoxLayout(host)
-    lay.setContentsMargins(14, 14, 14, 14)
-    lay.setSpacing(10)
+    lay.setContentsMargins(10, 10, 10, 10)
+    lay.setSpacing(6)
 
-    title = QtWidgets.QLabel("Project guide — honest status")
-    title.setObjectName("tabHint")
-    lay.addWidget(title)
+    header = QtWidgets.QLabel("Network ↔ COM Bridge — Connection Workflows")
+    header.setObjectName("tabHint")
+    lay.addWidget(header)
 
-    body = QtWidgets.QLabel(
-        "What this bridge does well:\n"
-        "• Reliable UDP/TCP ↔ COM forwarding for survey INS/GNSS.\n"
-        "• Preset-driven startup with quick field workflows.\n"
-        "• Clear run-state chips, logs, and bench diagnostics.\n\n"
-        "Known limits / trade-offs:\n"
-        "• No kernel virtual COM driver (user-space only).\n"
-        "• Layout polish is active work; first-paint edge cases can still appear.\n"
-        "• Diagnostics are practical but not a full terminal/packet suite.\n\n"
-        "Current focus:\n"
-        "• Connect tab stability (no clipping / no stale layout states).\n"
-        "• Readability and field ergonomics (chips, cards, quick controls).\n"
-        "• Truthful operator guidance and safer defaults."
-    )
-    body.setWordWrap(True)
-    body.setObjectName("tabNote")
-    body.setTextInteractionFlags(QtCore.Qt.TextInteractionFlag.TextSelectableByMouse)
-    lay.addWidget(body)
+    tabs = QtWidgets.QTabWidget()
+    tabs.setObjectName("guideTabWidget")
+    tabs.setDocumentMode(True)
 
-    note = QtWidgets.QLabel(
-        "Use Product Demo for live walkthrough actions. "
-        "Use this Guide tab for static operation/evaluation notes."
-    )
-    note.setWordWrap(True)
-    note.setObjectName("tabHint")
-    lay.addWidget(note)
-    lay.addStretch(1)
-    return _scrollable(host)
+    for tab_title, html in (
+        ("UDP", _GUIDE_UDP),
+        ("TCP Client", _GUIDE_TCP_CLIENT),
+        ("TCP Server", _GUIDE_TCP_SERVER),
+        ("Checklist", _GUIDE_CHECKLIST),
+    ):
+        browser = QtWidgets.QTextBrowser()
+        browser.setObjectName("guideTextBrowser")
+        browser.setOpenExternalLinks(False)
+        browser.setFrameShape(QtWidgets.QFrame.Shape.NoFrame)
+        browser.document().setDefaultStyleSheet(_GUIDE_CSS)
+        browser.setHtml(html)
+        tabs.addTab(browser, tab_title)
+
+    lay.addWidget(tabs, 1)
+    return host
 
 
 def build_send_tab(parent: QtWidgets.QWidget) -> QtWidgets.QWidget:

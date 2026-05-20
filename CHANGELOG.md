@@ -3,6 +3,22 @@
 High-level notes for **this fork / branch** (`feature/multi-ui-layouts-v0.5`).  
  Version = `version.py` / Git tag when you run `.\release.ps1` or tag manually.
 
+## v1.4.8
+
+- **Diagnostic scripts work in the portable `.exe` build** — three-part fix:
+  1. `nmea_serial_bridge.spec`: added `HELPER_MODULES` list (`bench_config.py`, `bench_udp_test.py`, `nmea_codec.py`, `bridge_core.py`, `py_interpreter.py`) to `datas` alongside the existing helper scripts so a fresh Python subprocess can import project modules from `_MEIPASS`.
+  2. `ui/mixin.py` `_diag_start_script`: now injects `PYTHONPATH=_REPO_ROOT` into the `QProcess` environment, guaranteeing imports resolve even if the working-directory rule doesn't fire.
+  3. `_diag_run_verify_all`: in a frozen build, checks for `test_bridge_core.py` and shows a clear "not available in portable build / clone and run from source" message instead of silently failing.
+- Scripts that work in the portable build after this fix: `com_free`, `check_setup`, `nmea_static_sample`, `bench_tcp_stress`, `bench_capacity_probe`. `verify_all` requires the source tree.
+
+## v1.4.7
+
+- **Diagnostics scripts found in frozen `.exe` build** — `_REPO_ROOT` in `ui/mixin.py` was resolved using `Path(__file__).parent.parent` which points inside PyInstaller's bootstrap tree, not the exe directory. Replaced with `_resolve_repo_root()`: when `sys.frozen` is set, uses `sys._MEIPASS` (the one-folder dist directory where the spec bundles `verify_all.py`, `com_free.py`, etc. via `helper_datas`). Source runs unchanged. Added top-level `import sys` to `mixin.py`.
+
+## v1.4.6
+
+- **Guide tab rewritten** — replaced the old three-line disclaimer with a full structured workflow guide. Four tabs: UDP Flow, TCP Client, TCP Server, and Checklist. Each method has numbered setup steps with inline code spans for IPs/ports. Rendered via `QTextBrowser` with per-theme QSS (dark and light). The old static `QLabel` body is gone.
+
 ## v1.4.5
 
 ### Part A — "Run bridge" panel cleanup

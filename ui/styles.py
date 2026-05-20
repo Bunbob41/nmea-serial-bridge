@@ -357,6 +357,30 @@ QListWidget#toolsNavList::item:selected {
 QListWidget#toolsNavList::item:hover:!selected {
     background-color: #3a2a31;
 }
+QTabWidget#guideTabWidget::pane {
+    border: 1px solid #5a3a2a;
+    background: transparent;
+}
+QTabWidget#guideTabWidget > QTabBar::tab {
+    padding: 5px 14px;
+    color: #c8b89a;
+    background: #2a1e18;
+    border: 1px solid #5a3a2a;
+    border-bottom: none;
+    margin-right: 2px;
+    border-radius: 4px 4px 0 0;
+}
+QTabWidget#guideTabWidget > QTabBar::tab:selected {
+    background: #4a2a1e;
+    color: #fff8ec;
+    font-weight: 600;
+}
+QTextBrowser#guideTextBrowser {
+    background: transparent;
+    color: #e8ddd0;
+    border: none;
+    selection-background-color: #6b3a4a;
+}
 """
 
 _TAB_PAGE_LIGHT = """
@@ -533,6 +557,30 @@ QListWidget#toolsNavList::item:selected {
 }
 QListWidget#toolsNavList::item:hover:!selected {
     background-color: #d0cbc4;
+}
+QTabWidget#guideTabWidget::pane {
+    border: 1px solid #a09888;
+    background: transparent;
+}
+QTabWidget#guideTabWidget > QTabBar::tab {
+    padding: 5px 14px;
+    color: #4a3a2a;
+    background: #ddd6cc;
+    border: 1px solid #a09888;
+    border-bottom: none;
+    margin-right: 2px;
+    border-radius: 4px 4px 0 0;
+}
+QTabWidget#guideTabWidget > QTabBar::tab:selected {
+    background: #f5ecd8;
+    color: #3a1f13;
+    font-weight: 600;
+}
+QTextBrowser#guideTextBrowser {
+    background: transparent;
+    color: #2a1e18;
+    border: none;
+    selection-background-color: #d4af37;
 }
 """
 
