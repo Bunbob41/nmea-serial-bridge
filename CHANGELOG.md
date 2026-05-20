@@ -3,6 +3,79 @@
 High-level notes for **this fork / branch** (`feature/multi-ui-layouts-v0.5`).  
  Version = `version.py` / Git tag when you run `.\release.ps1` or tag manually.
 
+## v1.4.5
+
+### Part A — "Run bridge" panel cleanup
+- **Ghost text removed** — `CONNECT_PANEL_COLLAPSED_HINTS["run"]` trimmed to `"Start/Stop"` (dropped stale "bench setup" copy). Same fix in `CONNECT_PANEL_HINTS` in `ui_editor.py`.
+- **Button row breathing room** — `al.setContentsMargins` changed from `(0,4,0,4)` to `(5,5,5,5)` and spacing from `6` to `10` px, eliminating the Start/Stop button overhang.
+
+### Part B — HUD `KeyError` killed permanently
+- **`default_layout()` fixed** (`ui/survey_hud_layout.py`) — `gnss_hdop` is now included in the metrics dict with value `False` (off by default) instead of absent. Old configs that exclude it are no longer broken at the source.
+- **`_migrate_hud_metrics()` added** (`ui/stats_popout.py`) — migration helper called at the top of `_HudLayoutDialog.__init__` before `deepcopy`. Any metric ID missing from the saved config is back-filled with `True` before checkboxes are built, making future metric additions safe without a version bump.
+
+## v1.4.4
+
+- **Splitter state save/restore fixed** — reverted the 1.3.8 over-fix that always wiped panel sizes on every rebuild. `_rebuild_connect_panels` now passes the normalized `saved_sizes` dict back to `save_connect_panel_prefs` (corruption guard already cleaned it to `{}` when needed) and uses the `use_default_sizes` flag from `_normalize_connect_launch_prefs`. Result: drag-to-resize heights are restored on every normal relaunch; corrupted states still boot from defaults.
+- **"Run bridge" panel cap raised** — `_PANEL_EXPANDED_CAP["run"]` raised from 72 → 120 px so the Start/Stop buttons + Fan-out checkbox aren't cramped on first-launch defaults.
+- **Status bar anchored** — `self.statusBar` now has `Expanding × Fixed` size policy and explicit `stretch=0` in the outer VBox, ensuring it is always pinned to the bottom of the window regardless of splitter sizing.
+
+## v1.4.3
+
+- **UDP Mode toggle UI** — "Fan-out — send serial data to all UDP peers" checkbox added to the Network (UDP listen) section of the Connect tab. Checked = fan-out to all registered peers (new default); unchecked = single-link, replies only to the most recent sender (legacy behaviour). Setting is saved per-preset and restored when a preset is loaded.
+- **`bridge_core.SerialNetBridge`** — new `udp_fanout: bool = True` constructor parameter; `_send_net` branches on `self._udp_fanout` to select fan-out vs single-link path.
+- **Tests** — 3 new cases in `test_udp_fanout.py`: single-link sends only to `last_udp_addr`, single-link with no addr sends nothing, default constructor has fan-out enabled.
+
+## v1.4.2
+
+- **UDP fan-out (one COM → many network clients)** — in `UDP_LISTEN` mode the bridge now tracks every UDP sender that contacts it during a session (`_udp_peers: set`) and forwards the serial→net stream to all of them simultaneously. Previously only the most-recent sender received serial data. Key behaviour:
+  - First new peer shows `peer <addr>` in the network status label; additional peers show `N peers`.
+  - If `sendto` fails for a peer (e.g. ICMP unreachable), that peer is silently pruned from the fan-out set; remaining peers continue receiving.
+  - `abort_now` / Stop clears the peer set so the next session starts fresh.
+  - `UDP_REMOTE` and TCP modes are unchanged (single-endpoint, no fan-out).
+  - New `udp_peer_count` property; `udp_peers` key added to stats dict.
+- **Tests** — `test_udp_fanout.py`: 12 new tests covering peer registration, multi-peer send, dead-peer pruning, remote-mode isolation, abort cleanup, and stats emission.
+
+## v1.4.1
+
+- **Native scrolling restored** — nuked the entire manual geometry-toggle system in `connect_panels.py` that was the root cause of clipping and scrollbar breakage:
+  - `_sync_connect_panel_scroll_geometry` now only **releases** previously-applied Fixed height locks (scroll, page, tab) and re-applies `Expanding × Expanding` on the scroll area — it never pins anything to a content height.
+  - `_reflow_connect_panel_host` replaced: all `sole_expanded` / `in_scroll` / `setFixedHeight` branching removed; host and splitter are always set to `Preferred × Minimum` and released from any prior lock.
+  - `_set_connect_tab_stretch` always uses stretch=1 — the old `compact→0` path was zeroing the scroll area out of the layout entirely.
+  - `panel_scroll` construction now explicitly sets `Expanding × Expanding` policy so no subsequent call can accidentally override it.
+- **Top-alignment preserved** — `page_lay.setAlignment(AlignTop)` and `addStretch(1)` already ensured panels stack from the top; the cleanup ensures this is always restored after any geometry flush.
+- **Test updated** — `test_sync_scroll_compact_height` and `test_sync_scroll_geometry_reapplies_when_signature_same` reflect the new lock-release contract.
+
+## v1.4.0
+
+- **Panel expand clipping fix** — `DisclosureRow._set_expanded(True)` now releases the row's own `maximumHeight` cap (`setMaximumHeight(WIDGET_SIZE_MAX)`) before making the body visible. Previously the row stayed clamped at 44 px while the body tried to render, causing content to paint underneath the splitter handle until the deferred reflow timer fired.
+- **"Tools" chip removed from ribbon** — the top utility ribbon no longer creates or registers a "Tools" chip for Standard layout (it has a dedicated Tools tab instead). Field layout is unaffected — the chip is still created and wired to `_drawer_btn` there. Drawer-sync code now uses `getattr(self, "_survey_btn_tools", None)` so it is safe on any layout.
+- **Reverted `load_top_bar_prefs` default-hidden approach** — prefs loading is back to the original clean implementation; ribbon visibility is now controlled structurally (chip not created) rather than via a hidden pref.
+
+## v1.3.9
+
+- **Collapse-all 0 px fix** — `_apply_connect_splitter_sizes` now clamps every slot to `_COLLAPSED_STRIP_HEIGHT` before calling `splitter.setSizes()`, preventing Qt from distributing below widget minimums when available height is tight. "Collapse all" also flushes the QScrollArea geometry via timer so the area compacts immediately.
+- **Full header bubble clickable** — `DisclosureRow` button now uses `Expanding × Fixed` size policy so it fills the entire header strip width; `PointingHandCursor` is set on hover. Clicking anywhere on the panel header title bar now toggles it.
+- **Toolbar buttons right-aligned** — Connect toolbar `addStretch(1)` moved to the front of the layout, pushing UI editor / Expand all / Collapse all / Reset sizes flush against the right edge.
+- **Run bridge panel cleanup** — removed the "Bench pair setup…" button; Start bridge and Stop bridge are now capped to 200 px wide with a trailing stretch so they stay left-aligned and compact at any window width.
+- **Standard layout chip bar defaults** — "Tools" and "UI editor" chips are hidden by default on first launch (Standard mode) since the Tools tab and Connect toolbar already cover both functions. Users can restore them via the UI editor.
+- **Window freely resizable** — confirmed no `setFixedSize` anywhere on `BridgeWindowStandard`.
+
+## v1.3.8
+
+- **Ghost-state splitter fix** — Connect tab panels no longer crush to 0 px on boot from a corrupted saved layout. `_rebuild_connect_panels` now always boots with default geometry (`use_defaults=True`) and clears the prefs sizes dict on every rebuild, so stale values can never override `setMinimumHeight` constraints. Drag-to-resize still persists new sizes for "Reset sizes" baseline; they are simply not re-applied on next launch.
+- **`_normalize_connect_launch_prefs` hardened** — added an explicit any-zero/any-negative guard in addition to the existing all-at-strip-height check; either condition now wipes the saved sizes dict before it can reach `splitter.setSizes()`.
+
+## v1.3.7
+
+- **3-tab Standard layout** — reduced top-level tabs from 8 down to 3 (Connect, Log, Tools); Presets, NMEA, Terminal, Diagnostics, Theme, and Guide now live inside a clean sidebar-nav + stacked-page Tools drawer, eliminating tab overload.
+- **Greedy button fix** — Start bridge / Stop bridge / Bench pair setup buttons now use `Expanding × Fixed` size policy with enforced minimum heights so they resize horizontally but never stretch vertically inside the Run bridge panel.
+- **Connect tab scroll & anti-squish** — every splitter panel gets a hard minimum height floor (preventing 0-pixel collapse), and the scroll area is stretch-weighted so it grows to fill available space on large monitors.
+- **DPI scaling cleanup** — removed conflicting `ctypes.SetProcessDpiAwareness` call; Qt6-native env vars (`QT_AUTO_SCREEN_SCALE_FACTOR`, `QT_ENABLE_HIGHDPI_SCALING`) are now set before `QApplication` construction, fixing Windows taskbar shrink on launch.
+- **Top-bar box model** — replaced CSS `margin` on clickable buttons with `padding` (larger hitboxes); removed rigid `max-height` constraints; layout now uses `setSpacing` / `setContentsMargins` for breathing room.
+- **UI editor resilience** — `_apply_tab_visibility` and `_apply` wrap rebuild calls in `hasattr` + `try/except`; `ordered_checked()` strict-None guards prevent crashes on dynamic drag.
+- **Tools sidebar styling** — `QListWidget#toolsNavList` gets themed background, border-right separator, and hover/selected states in both dark and light themes.
+- **Test update** — `test_standard_has_theme_tab` updated to assert Theme lives inside the Tools sidebar nav rather than as a top-level tab.
+
 ## v1.3.6
 
 - **UI review polish** — product demo steps open the **Terminal** tab reliably (`send`/`terminal` aliases); Field **Ctrl+L** focuses the live log when the log panel is always visible; UI editor copy and tooltips are layout-aware (Standard vs Field Tools tabs).

@@ -343,12 +343,15 @@ class BridgeLogicMixin:
         presets_btn.setObjectName("surveyQuickBtn")
         presets_btn.setText("Presets")
         presets_btn.setToolButtonStyle(QtCore.Qt.ToolButtonStyle.ToolButtonTextOnly)
-        presets_btn.setPopupMode(QtWidgets.QToolButton.ToolButtonPopupMode.InstantPopup)
+        # MenuButtonPopup: left-click navigates to the Presets page;
+        # the small arrow on the right still opens the quick-load dropdown.
+        presets_btn.setPopupMode(QtWidgets.QToolButton.ToolButtonPopupMode.MenuButtonPopup)
         presets_btn.setAutoRaise(True)
         presets_btn.setToolTip(
-            "Load a preset and start the bridge (COM, UDP, survey fields). "
-            "Use Presets tab to edit; Diagnostics for bench/boat checklists."
+            "Click to open the Presets page. "
+            "Click the arrow ▾ to load a saved preset and start the bridge."
         )
+        presets_btn.clicked.connect(self._open_presets_tab)
         self._presets_quick_menu = QtWidgets.QMenu(presets_btn)
         self._presets_menu_group = QtGui.QActionGroup(self)
         self._presets_menu_group.setExclusive(True)
@@ -357,7 +360,7 @@ class BridgeLogicMixin:
         configure_topbar_button(
             presets_btn,
             "Presets",
-            tooltip="Load preset and start bridge (edit on Presets tab; checklists on Diagnostics)",
+            tooltip="Click to open Presets page · Arrow ▾ to quick-load a preset",
         )
         self._topbar_widgets["presets"] = presets_btn
         self._topbar_labels["presets"] = "Presets"
@@ -388,15 +391,18 @@ class BridgeLogicMixin:
         hud_btn.setDefaultAction(act_pop)
         bar.register("hud", "HUD", hud_btn)
 
-        tools_btn = self._make_topbar_tool_button(
-            "Tools",
-            "Show or hide NMEA / Terminal / Diagnostics (Field layout)",
-            None,
-            key="tools",
-            checkable=True,
-        )
-        self._survey_btn_tools = tools_btn
-        bar.register("tools", "Tools", tools_btn)
+        # Tools chip is only meaningful on layouts with a floating drawer (Field).
+        # Standard layout has a dedicated "Tools" tab; skip to avoid ribbon clutter.
+        if getattr(self, "_ui_mode", "standard") != "standard":
+            tools_btn = self._make_topbar_tool_button(
+                "Tools",
+                "Show or hide NMEA / Terminal / Diagnostics (Field layout)",
+                None,
+                key="tools",
+                checkable=True,
+            )
+            self._survey_btn_tools = tools_btn
+            bar.register("tools", "Tools", tools_btn)
 
         for key, text, tip, slot in (
             (
@@ -431,12 +437,14 @@ class BridgeLogicMixin:
         bar.register("ui_switch", "Layout", ui_inner, pin_right=True)
 
         drawer = getattr(self, "_drawer_btn", None)
-        if drawer is not None:
-            tools_btn.setChecked(drawer.isChecked())
-            drawer.toggled.connect(tools_btn.setChecked)
-            tools_btn.toggled.connect(drawer.setChecked)
-        else:
-            tools_btn.clicked.connect(self._toggle_tools_drawer)
+        _tools_chip = getattr(self, "_survey_btn_tools", None)
+        if _tools_chip is not None:
+            if drawer is not None:
+                _tools_chip.setChecked(drawer.isChecked())
+                drawer.toggled.connect(_tools_chip.setChecked)
+                _tools_chip.toggled.connect(drawer.setChecked)
+            else:
+                _tools_chip.clicked.connect(self._toggle_tools_drawer)
         shortcuts_btn = self._make_topbar_tool_button(
             "Shortcuts",
             "Show or hide the keyboard shortcuts legend",
@@ -2095,11 +2103,14 @@ class BridgeLogicMixin:
             udp_port = _parse_port(self.udp_port.text(), "UDP port")
         except ValueError:
             udp_port = 0
+        fanout_chk = getattr(self, "chk_udp_fanout", None)
+        udp_fanout = fanout_chk is None or fanout_chk.isChecked()
         return {
             "com": com,
             "baud": baud,
             "udp_host": udp_host,
             "udp_port": udp_port,
+            "udp_fanout": udp_fanout,
         }
 
     def _validate_connection_preset_fields(self, fields: dict[str, str | int]) -> Optional[str]:
@@ -2266,7 +2277,22 @@ class BridgeLogicMixin:
         menu.addAction(act_edit)
 
     def _open_presets_tab(self) -> None:
-        tabs = getattr(self, "_main_tabs", None) or getattr(self, "_drawer_tabs", None)
+        # Standard layout: Presets lives inside the Tools tab as a sidebar nav item.
+        tools_nav = getattr(self, "_tools_nav", None)
+        main_tabs = getattr(self, "_main_tabs", None)
+        if tools_nav is not None and main_tabs is not None:
+            for i in range(main_tabs.count()):
+                if main_tabs.tabText(i).lower() == "tools":
+                    main_tabs.setCurrentIndex(i)
+                    break
+            for row in range(tools_nav.count()):
+                item = tools_nav.item(row)
+                if item is not None and item.text().lower().startswith("preset"):
+                    tools_nav.setCurrentRow(row)
+                    return
+            return
+        # Field / drawer layouts: Presets is a top-level drawer tab.
+        tabs = getattr(self, "_drawer_tabs", None)
         if tabs is None:
             return
         drawer = getattr(self, "_drawer_btn", None)
@@ -2291,6 +2317,9 @@ class BridgeLogicMixin:
         udp_host = str(data["udp_host"])
         udp_port = int(data["udp_port"])
         self._apply_com_preset(com, baud, udp_host, udp_port)
+        fanout_chk = getattr(self, "chk_udp_fanout", None)
+        if fanout_chk is not None:
+            fanout_chk.setChecked(bool(data.get("udp_fanout", True)))
         self._apply_preset_survey_fields(data)
         if name:
             self._set_active_preset(name)
@@ -3498,6 +3527,8 @@ class BridgeLogicMixin:
         nmea_filter = self._selected_nmea_filter()
         verbose = self.chk_verbose_log.isChecked
         log_hex = getattr(self, "chk_log_hex", None) is not None and self.chk_log_hex.isChecked()
+        _fanout_chk = getattr(self, "chk_udp_fanout", None)
+        udp_fanout = _fanout_chk is None or _fanout_chk.isChecked()
 
         def build(loop: asyncio.AbstractEventLoop) -> SerialNetBridge:
             common = dict(
@@ -3509,6 +3540,7 @@ class BridgeLogicMixin:
                 stats_cb=self._worker.stats_msg.emit,
                 file_log=file_log,
                 tcp_reconnect_delay=tcp_reconnect,
+                udp_fanout=udp_fanout,
                 nmea_mode=nmea_mode,
                 nmea_filter=nmea_filter,
                 serial_auto_reconnect=getattr(

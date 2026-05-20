@@ -97,9 +97,8 @@ def default_layout() -> dict[str, Any]:
             for sid in SECTION_IDS
         },
         "metrics": {
-            mid: True
+            mid: mid not in ("gnss_hdop",)  # gnss_hdop off by default; others on
             for mid in METRIC_IDS
-            if mid not in ("gnss_hdop",)
         },
         "footer": True,
         # Section strips: drag handles swap order; persisted here.

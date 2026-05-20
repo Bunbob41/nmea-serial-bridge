@@ -249,6 +249,7 @@ class SerialNetBridge:
         tcp_client_host: str = "127.0.0.1",
         tcp_client_port: int = 4001,
         tcp_reconnect_delay: float = DEFAULT_TCP_RECONNECT_S,
+        udp_fanout: bool = True,
         nmea_mode: NmeaMode = NmeaMode.PASSTHROUGH,
         nmea_filter: Optional[NmeaFilter] = None,
         serial_auto_reconnect: bool = True,
@@ -293,6 +294,10 @@ class SerialNetBridge:
         self._tcp_reader_task: Optional[asyncio.Task] = None
 
         self.last_udp_addr = None
+        # Fan-out: every UDP sender that contacts us during a session is remembered
+        # and receives the serial→net stream.  Cleared on stop/abort.
+        self._udp_fanout: bool = bool(udp_fanout)
+        self._udp_peers: set[tuple] = set()
         self._gps_state: list[Optional[str]] = [None]
         self._nav_quality_state: list[Optional[dict]] = [None]
 
@@ -412,6 +417,11 @@ class SerialNetBridge:
         """Rolling ~1 s rate of GUI inject batches toward COM, not lines per batch."""
         return rolling_hz_last_second(self._hz_gui_times)
 
+    @property
+    def udp_peer_count(self) -> int:
+        """Number of distinct UDP peers registered for fan-out this session."""
+        return len(self._udp_peers)
+
     def _note_serial_wire_hz(self, now: float) -> None:
         """One wire-Hz tick per serial read burst (avoids com0com echo inflating From COM)."""
         if (
@@ -436,6 +446,7 @@ class SerialNetBridge:
                 "hz_up": self.hz_serial_to_net(),
                 "lines_down": self.lines_remote_to_serial,
                 "lines_up": self.lines_serial_to_net,
+                "udp_peers": self.udp_peer_count,
                 **self.navigation_quality_stats(),
             }
         )
@@ -587,13 +598,17 @@ class SerialNetBridge:
     def on_udp_datagram(self, data: bytes, addr) -> None:
         if not self.running:
             return
-        if self.last_udp_addr != addr and self.mode == NetMode.UDP_LISTEN and self.udp_listen:
+        is_new_peer = addr not in self._udp_peers
+        self._udp_peers.add(addr)
+        self.last_udp_addr = addr
+        if is_new_peer and self.mode == NetMode.UDP_LISTEN and self.udp_listen:
             host, port = self.udp_listen
+            n = len(self._udp_peers)
+            peer_label = f"{n} peers" if n > 1 else f"peer {addr}"
             self._set_status(
                 f"Serial: {self.com} @ {self.baud} — open",
-                f"Network: UDP listen {host}:{port} — peer {addr}",
+                f"Network: UDP listen {host}:{port} — {peer_label}",
             )
-        self.last_udp_addr = addr
         self._ingest_net(data, f"UDP←{addr}")
 
     def schedule_net_to_serial(self, data: bytes, tag: str = "INJECT→SER") -> None:
@@ -936,8 +951,26 @@ class SerialNetBridge:
 
     async def _send_net(self, data: bytes) -> None:
         if self.mode in (NetMode.UDP_LISTEN, NetMode.UDP_REMOTE) and self.udp_transport:
-            if self.mode == NetMode.UDP_LISTEN and self.last_udp_addr:
-                self.udp_transport.sendto(data, self.last_udp_addr)
+            if self.mode == NetMode.UDP_LISTEN:
+                if self._udp_fanout:
+                    # Fan-out: send to every peer that has contacted us this session.
+                    dead: list[tuple] = []
+                    for peer in list(self._udp_peers):
+                        try:
+                            self.udp_transport.sendto(data, peer)
+                        except Exception as e:
+                            self._ui_log(_friendly_network_error(e, f"UDP send→{peer}"))
+                            dead.append(peer)
+                    for peer in dead:
+                        self._udp_peers.discard(peer)
+                        if self.last_udp_addr == peer:
+                            self.last_udp_addr = next(iter(self._udp_peers), None)
+                elif self.last_udp_addr:
+                    # Single-link: reply only to the most recent sender.
+                    try:
+                        self.udp_transport.sendto(data, self.last_udp_addr)
+                    except Exception as e:
+                        self._ui_log(_friendly_network_error(e, f"UDP send→{self.last_udp_addr}"))
             else:
                 try:
                     self.udp_transport.sendto(data)
@@ -956,6 +989,8 @@ class SerialNetBridge:
         """Synchronous teardown — must not block the Qt thread (no wait_closed on serial)."""
         self._teardown = True
         self.running = False
+        self._udp_peers.clear()
+        self.last_udp_addr = None
 
         while not self.net_to_serial.empty():
             try:

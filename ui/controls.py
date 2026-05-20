@@ -150,6 +150,15 @@ def create_connection_controls(parent: QtWidgets.QWidget) -> None:
         "UDP listen port. Bench simulators and INS outputs send datagrams here "
         "(e.g. 127.0.0.1:10110 on one PC)."
     )
+    p.chk_udp_fanout = QtWidgets.QCheckBox("Fan-out  —  send serial data to all UDP peers")
+    p.chk_udp_fanout.setChecked(True)
+    p.chk_udp_fanout.setToolTip(
+        "UDP listen mode only.\n\n"
+        "Checked (Fan-out): serial→network data is broadcast to every UDP sender that has\n"
+        "contacted the bridge during this session.\n\n"
+        "Unchecked (Single-link): only the most recent sender receives the serial stream\n"
+        "(legacy one-to-one behaviour)."
+    )
     p.chk_advanced_net = QtWidgets.QCheckBox("Advanced network (TCP / UDP remote / all modes)")
     p.chk_advanced_net.setToolTip(
         "Show full network mode picker (UDP listen, UDP remote, TCP server, TCP client) "

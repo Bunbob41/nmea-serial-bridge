@@ -312,6 +312,10 @@ QDialog#UiEditorDialog QListWidget#uiEditorList::item:hover:!selected {
 QDialog#UiEditorDialog QListWidget#uiEditorList::item:alternate {
     background-color: rgba(36, 28, 32, 0.45);
 }
+QDialog#UiEditorDialog QListWidget#uiEditorList::item:focus {
+    outline: none;
+    border: none;
+}
 QCheckBox { color: #f0ebe4; }
 QRadioButton { color: #f0ebe4; }
 QFrame#iosCard {
@@ -333,6 +337,25 @@ QToolButton#iosCardToggle:hover {
 }
 QWidget#iosCardBody {
     background: transparent;
+}
+QListWidget#toolsNavList {
+    background-color: #1e181c;
+    border: none;
+    border-right: 1px solid #7a5a2d;
+    outline: none;
+}
+QListWidget#toolsNavList::item {
+    padding: 8px 10px;
+    color: #f0ebe4;
+    border-radius: 0;
+}
+QListWidget#toolsNavList::item:selected {
+    background-color: #6b3a4a;
+    color: #fff8ec;
+    font-weight: 600;
+}
+QListWidget#toolsNavList::item:hover:!selected {
+    background-color: #3a2a31;
 }
 """
 
@@ -466,6 +489,10 @@ QDialog#UiEditorDialog QListWidget#uiEditorList::item:hover:!selected {
 QDialog#UiEditorDialog QListWidget#uiEditorList::item:alternate {
     background-color: #ece8e2;
 }
+QDialog#UiEditorDialog QListWidget#uiEditorList::item:focus {
+    outline: none;
+    border: none;
+}
 QCheckBox { color: #1a1a1a; }
 QRadioButton { color: #1a1a1a; }
 QFrame#iosCard {
@@ -487,6 +514,25 @@ QToolButton#iosCardToggle:hover {
 }
 QWidget#iosCardBody {
     background: transparent;
+}
+QListWidget#toolsNavList {
+    background-color: #e8e0d4;
+    border: none;
+    border-right: 1px solid #a09888;
+    outline: none;
+}
+QListWidget#toolsNavList::item {
+    padding: 8px 10px;
+    color: #1a1a1a;
+    border-radius: 0;
+}
+QListWidget#toolsNavList::item:selected {
+    background-color: #d4af37;
+    color: #3a1f13;
+    font-weight: 600;
+}
+QListWidget#toolsNavList::item:hover:!selected {
+    background-color: #d0cbc4;
 }
 """
 

@@ -85,6 +85,7 @@ class BridgeWindowStandard(BridgeLogicMixin, QtWidgets.QWidget):
         uf.addRow("Listen host:", self.udp_host)
         uf.addRow("Listen port:", self.udp_port)
         nv.addLayout(uf)
+        nv.addWidget(self.chk_udp_fanout)
         nv.addWidget(self.chk_advanced_net)
         nv.addWidget(self._advanced_net)
         cv.addWidget(net_box)
@@ -112,19 +113,23 @@ class BridgeWindowStandard(BridgeLogicMixin, QtWidgets.QWidget):
             QtWidgets.QSizePolicy.Policy.Maximum,
         )
         al = QtWidgets.QHBoxLayout(act_box)
-        al.setContentsMargins(0, 0, 0, 0)
-        self.start_btn.setText("Start bridge")
-        self.stop_btn.setText("Stop bridge")
-        al.addWidget(self.start_btn, 2)
-        al.addWidget(self.stop_btn, 1)
-        self.btn_bench_pair_setup = QtWidgets.QPushButton("Bench pair setup…")
-        self.btn_bench_pair_setup.setObjectName("btnBenchPairSetupRun")
-        self.btn_bench_pair_setup.setToolTip(
-            "Open the bench/com0com operator guide and run com_free + check_setup preflight "
-            "(install com0com separately — see operator guide section 5)."
+        al.setContentsMargins(5, 5, 5, 5)
+        al.setSpacing(10)
+        _fixed_row_policy = (
+            QtWidgets.QSizePolicy.Policy.Fixed,
+            QtWidgets.QSizePolicy.Policy.Fixed,
         )
-        self.btn_bench_pair_setup.clicked.connect(self._open_bench_pair_setup)
-        al.addWidget(self.btn_bench_pair_setup, 1)
+        self.start_btn.setText("Start bridge")
+        self.start_btn.setSizePolicy(*_fixed_row_policy)
+        self.start_btn.setMinimumHeight(36)
+        self.start_btn.setMaximumWidth(200)
+        self.stop_btn.setText("Stop bridge")
+        self.stop_btn.setSizePolicy(*_fixed_row_policy)
+        self.stop_btn.setMinimumHeight(36)
+        self.stop_btn.setMaximumWidth(200)
+        al.addWidget(self.start_btn)
+        al.addWidget(self.stop_btn)
+        al.addStretch(1)
 
         ntrip_box = QtWidgets.QWidget()
         ntrip_box.setObjectName("connectNtripBox")
@@ -168,6 +173,41 @@ class BridgeWindowStandard(BridgeLogicMixin, QtWidgets.QWidget):
                 "ntrip": ntrip_box,
             },
         )
+        # --- Tools tab: sidebar nav (left) + stacked pages (right) ---
+        tools_tab = QtWidgets.QWidget()
+        tools_tab.setObjectName("toolsDrawerTab")
+        tools_h = QtWidgets.QHBoxLayout(tools_tab)
+        tools_h.setContentsMargins(0, 0, 0, 0)
+        tools_h.setSpacing(0)
+
+        tools_nav = QtWidgets.QListWidget()
+        tools_nav.setObjectName("toolsNavList")
+        tools_nav.setMaximumWidth(130)
+        tools_nav.setSizePolicy(
+            QtWidgets.QSizePolicy.Policy.Fixed,
+            QtWidgets.QSizePolicy.Policy.Expanding,
+        )
+        for item_text in ("Presets", "NMEA", "Terminal", "Diagnostics", "Theme", "Guide"):
+            tools_nav.addItem(item_text)
+
+        tools_stack = QtWidgets.QStackedWidget()
+        tools_stack.addWidget(create_presets_tab(self, include_advanced_net=False))  # 0
+        tools_stack.addWidget(create_nmea_controls(self))                             # 1
+        tools_stack.addWidget(create_send_controls(self))                             # 2
+        tools_stack.addWidget(create_diagnostics_controls(self))                      # 3
+        tools_stack.addWidget(create_theme_controls(self))                            # 4
+        tools_stack.addWidget(create_guide_tab(self))                                 # 5
+
+        tools_nav.currentRowChanged.connect(tools_stack.setCurrentIndex)
+        tools_nav.setCurrentRow(0)
+
+        self._tools_nav = tools_nav
+        self._tools_stack = tools_stack
+
+        tools_h.addWidget(tools_nav)
+        tools_h.addWidget(tools_stack, 1)
+        # ----------------------------------------------------------------
+
         tabs = QtWidgets.QTabWidget()
         self._main_tabs = tabs
         tabs.setDocumentMode(True)
@@ -175,14 +215,7 @@ class BridgeWindowStandard(BridgeLogicMixin, QtWidgets.QWidget):
         log_panel = create_log_panel(self)
         tabs.addTab(connect_tab, "Connect")
         tabs.addTab(log_panel, "Log")
-        tabs.addTab(create_presets_tab(self, include_advanced_net=False), "Presets")
-        tabs.addTab(create_nmea_controls(self), "NMEA")
-        tabs.addTab(create_theme_controls(self), "Theme")
-        tabs.addTab(create_guide_tab(self), "Guide")
-        send_tab = create_send_controls(self)
-        diag_tab = create_diagnostics_controls(self)
-        tabs.addTab(send_tab, "Terminal")
-        tabs.addTab(diag_tab, "Diagnostics")
+        tabs.addTab(tools_tab, "Tools")
         self._setup_reorderable_tabs(tabs, "main_tabs")
         tabs.currentChanged.connect(lambda *_args: self._schedule_connect_reflow(0))
         tabs.currentChanged.connect(lambda *_args: self._schedule_connect_reflow(48))
@@ -190,14 +223,14 @@ class BridgeWindowStandard(BridgeLogicMixin, QtWidgets.QWidget):
         connect_tab.installEventFilter(self)
         tabs.setTabToolTip(0, "COM, UDP listen, advanced TCP/UDP, Start and Stop")
         tabs.setTabToolTip(1, "Live bridge log, filters, pause, clear, and save")
-        tabs.setTabToolTip(2, "Named presets and optional boat LAN reference fields")
-        tabs.setTabToolTip(3, "Passthrough, strict filter, or raw binary forwarding")
-        tabs.setTabToolTip(4, "Theme studio: randomize, favorite, and seed-lock options")
-        tabs.setTabToolTip(5, "Transparent project guide: strengths, limits, and current focus")
-        tabs.setTabToolTip(6, "Inject test NMEA to serial or network while the bridge is Running")
-        tabs.setTabToolTip(7, "File log, automated bench checks, UI layout switch")
+        tabs.setTabToolTip(2, "Presets, NMEA mode, Terminal injection, Diagnostics, Theme, and Guide")
 
         self.statusBar = QtWidgets.QStatusBar()
+        # Fixed vertical policy prevents the status bar from absorbing spare stretch.
+        self.statusBar.setSizePolicy(
+            QtWidgets.QSizePolicy.Policy.Expanding,
+            QtWidgets.QSizePolicy.Policy.Fixed,
+        )
         self.status_serial = QtWidgets.QLabel("Serial: stopped")
         self.status_network = QtWidgets.QLabel("Network: stopped")
         self.status_nmea = QtWidgets.QLabel("NMEA: passthrough")
@@ -217,8 +250,8 @@ class BridgeWindowStandard(BridgeLogicMixin, QtWidgets.QWidget):
         outer = QtWidgets.QVBoxLayout(self)
         outer.setContentsMargins(6, 4, 6, 4)
         outer.setSpacing(2)
-        outer.addWidget(tabs, 1)
-        outer.addWidget(self.statusBar)
+        outer.addWidget(tabs, 1)        # stretch=1: all spare vertical space goes here
+        outer.addWidget(self.statusBar, 0)  # stretch=0: always fixed height at bottom
 
         self._finalize_ui()
         self._schedule_connect_reflow(0)

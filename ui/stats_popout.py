@@ -660,12 +660,25 @@ class _HudSection(QtWidgets.QFrame):
         return any(m.isVisible() for m in self._metric_order)
 
 
+def _migrate_hud_metrics(cfg: dict[str, Any]) -> None:
+    """Back-fill metric IDs added after a config file was first written.
+
+    Any METRIC_ID absent from cfg["metrics"] is defaulted to True (visible)
+    rather than raising a KeyError when the layout dialog builds its checkboxes.
+    """
+    metrics: dict[str, bool] = cfg.setdefault("metrics", {})
+    for mid in METRIC_IDS:
+        metrics.setdefault(mid, True)
+
+
 class _HudLayoutDialog(QtWidgets.QDialog):
     def __init__(self, cfg: dict[str, Any], parent: QtWidgets.QWidget | None) -> None:
         super().__init__(parent)
         self.setObjectName("SurveyHudLayoutDialog")
         self.setWindowTitle("Survey HUD layout")
         self.setMinimumWidth(400)
+        # Migrate any metric keys missing from an old saved config before deepcopy.
+        _migrate_hud_metrics(cfg)
         self._cfg_in = deepcopy(cfg)
         self._cfg_out: dict[str, Any] = deepcopy(cfg)
 

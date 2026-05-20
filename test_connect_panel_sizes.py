@@ -249,6 +249,10 @@ class ConnectPanelSizesTests(unittest.TestCase):
             mock_fit.assert_not_called()
 
     def test_sync_scroll_compact_height(self) -> None:
+        # After the native-scrolling refactor, _sync_connect_panel_scroll_geometry
+        # always RELEASES height locks (setMinimumHeight(0), setMaximumHeight(MAX))
+        # regardless of expanded_any.  It no longer pins the scroll area or tab to
+        # a fixed content height.
         scroll = MagicMock()
         page = MagicMock()
         tab = MagicMock()
@@ -258,17 +262,16 @@ class ConnectPanelSizesTests(unittest.TestCase):
         win._connect_tab_widget = tab
         win._connect_tab_layout = MagicMock()
         win._connect_panel_host = MagicMock()
-        with patch.object(
-            connect_panels, "_connect_tab_chrome_height", return_value=40
-        ):
-            connect_panels._sync_connect_panel_scroll_geometry(
-                win, content_h=180, expanded_any=False
-            )  # type: ignore[arg-type]
-        scroll.setMinimumHeight.assert_called_with(180)
-        scroll.setMaximumHeight.assert_called_with(180)
-        tab.setMaximumHeight.assert_called()
+        connect_panels._sync_connect_panel_scroll_geometry(
+            win, content_h=180, expanded_any=False
+        )  # type: ignore[arg-type]
+        scroll.setMinimumHeight.assert_called_with(0)
+        scroll.setMaximumHeight.assert_called_with(connect_panels._WIDGET_SIZE_MAX)
+        # Tab lock is released (setMaximumHeight called with WIDGET_SIZE_MAX).
+        tab.setMaximumHeight.assert_called_with(connect_panels._WIDGET_SIZE_MAX)
 
     def test_sync_scroll_geometry_reapplies_when_signature_same(self) -> None:
+        # Both calls should invoke setMinimumHeight (no early-out on sig match).
         scroll = MagicMock()
         page = MagicMock()
         page.layout.return_value = QtWidgets.QVBoxLayout()
@@ -279,16 +282,13 @@ class ConnectPanelSizesTests(unittest.TestCase):
         win._connect_tab_widget = tab
         win._connect_tab_layout = MagicMock()
         win._connect_panel_host = MagicMock()
-        with patch.object(
-            connect_panels, "_connect_tab_chrome_height", return_value=40
-        ):
-            connect_panels._sync_connect_panel_scroll_geometry(
-                win, content_h=220, expanded_any=True
-            )  # type: ignore[arg-type]
-            first_calls = scroll.setMinimumHeight.call_count
-            connect_panels._sync_connect_panel_scroll_geometry(
-                win, content_h=220, expanded_any=True
-            )  # type: ignore[arg-type]
+        connect_panels._sync_connect_panel_scroll_geometry(
+            win, content_h=220, expanded_any=True
+        )  # type: ignore[arg-type]
+        first_calls = scroll.setMinimumHeight.call_count
+        connect_panels._sync_connect_panel_scroll_geometry(
+            win, content_h=220, expanded_any=True
+        )  # type: ignore[arg-type]
         self.assertGreater(scroll.setMinimumHeight.call_count, first_calls)
 
     def test_expand_restores_short_window(self) -> None:

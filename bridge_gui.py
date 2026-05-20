@@ -5,9 +5,6 @@ import argparse
 import os
 import sys
 
-if sys.platform == "win32":
-    import ctypes
-
 from PySide6 import QtWidgets
 
 from bridge_core import (  # noqa: F401 — re-export for older scripts
@@ -42,22 +39,17 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    if sys.platform == "win32":
-        try:
-            # PROCESS_PER_MONITOR_DPI_AWARE (value 2) — prevents DWM from forcing a
-            # legacy scaling context switch that can shrink the taskbar and system icons.
-            ctypes.windll.shcore.SetProcessDpiAwareness(2)
-        except Exception:
-            # shcore not available on very old Windows versions; fall back silently.
-            os.environ.setdefault("QT_AUTO_SCREEN_SCALE_FACTOR", "1")
+    # Qt6-native high-DPI scaling — must be set before QApplication is constructed.
+    os.environ["QT_AUTO_SCREEN_SCALE_FACTOR"] = "1"
+    os.environ["QT_ENABLE_HIGHDPI_SCALING"] = "1"
 
     app = QtWidgets.QApplication(sys.argv)
     apply_app_icon(app)
     from ui.picker import load_saved_ui, resolve_ui_id
 
-    show_picker = args.pick_ui or (
-        args.ui is None and load_saved_ui() is None
-    )
+    # Only show the picker when explicitly requested via --pick-ui.
+    # Field is the default layout; users swap to Standard via the Layout chip.
+    show_picker = args.pick_ui
     ui_id = resolve_ui_id(args.ui, show_picker=show_picker)
     w = create_window(ui_id)
     w.show()

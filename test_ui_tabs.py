@@ -60,7 +60,12 @@ class TestUiTabs(unittest.TestCase):
         tabs = win._main_tabs
         labels = [tabs.tabText(i) for i in range(tabs.count())]
         self.assertIn("Log", labels)
-        self.assertIn("Theme", labels)
+        # "Theme" is now inside the Tools drawer, not a top-level tab
+        self.assertIn("Tools", labels)
+        tools_nav = getattr(win, "_tools_nav", None)
+        self.assertIsNotNone(tools_nav, "_tools_nav sidebar must exist on Standard layout")
+        nav_labels = [tools_nav.item(i).text() for i in range(tools_nav.count())]  # type: ignore[union-attr]
+        self.assertIn("Theme", nav_labels)
         self.assertTrue(tabs.tabBar().isMovable())
         self.assertIs(_tab_page_containing(win.log_view), tabs.widget(labels.index("Log")))
         self.assertTrue(hasattr(win, "connect_mini_log"))

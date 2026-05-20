@@ -11,7 +11,7 @@ UI_STANDARD = "standard"
 UI_FIELD = "field"
 UI_MINIMAL = "minimal"
 UI_LOGFIRST = "logfirst"
-UI_DEFAULT = UI_STANDARD
+UI_DEFAULT = UI_FIELD
 
 # Launcher / picker choices (merged minimal + log-first → field)
 UI_LABELS: Dict[str, str] = {

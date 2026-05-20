@@ -24,7 +24,7 @@ CONNECT_PANEL_LABELS: dict[str, str] = {
     "ntrip": "NTRIP corrections",
 }
 CONNECT_PANEL_COLLAPSED_HINTS: dict[str, str] = {
-    "run": "Start/Stop, bench setup",
+    "run": "Start/Stop",
     "hint": "Current workflow guidance",
     "quick_log": "Recent bridge messages",
     "quick_terminal": "Bench script output",
@@ -62,7 +62,7 @@ _DEFAULT_PANEL_HEIGHTS: dict[str, int] = {
 
 # Cap scaled height for compact sections (avoids giant Start row when alone expanded).
 _PANEL_EXPANDED_CAP: dict[str, int] = {
-    "run": 72,
+    "run": 120,   # Start + Stop buttons (36px each) + fan-out checkbox + margins
     "hint": 64,
     "quick_log": 220,
     "quick_terminal": 220,
@@ -157,9 +157,10 @@ def setup_connect_tab_panels(
     for key in CONNECT_TOOLBAR_KEYS:
         if key not in toolbar_order:
             toolbar_order.append(key)
+    # Stretch at the front pushes all buttons to the right edge of the toolbar row.
+    tool_row.addStretch(1)
     for key in toolbar_order:
         tool_row.addWidget(toolbar_buttons[key])
-    tool_row.addStretch(1)
     lay.addLayout(tool_row)
     win._connect_toolbar_buttons = toolbar_buttons
     win._connect_toolbar_layout = tool_row
@@ -206,8 +207,13 @@ def setup_connect_tab_panels(
     panel_scroll.setAttribute(QtCore.Qt.WidgetAttribute.WA_StyledBackground, True)
     panel_scroll.viewport().setObjectName("toolTabScrollViewport")
     panel_scroll.viewport().setAttribute(QtCore.Qt.WidgetAttribute.WA_StyledBackground, True)
+    # Permanently Expanding — never switched to Fixed; native scrollbar handles overflow.
+    panel_scroll.setSizePolicy(
+        QtWidgets.QSizePolicy.Policy.Expanding,
+        QtWidgets.QSizePolicy.Policy.Expanding,
+    )
     panel_scroll.setWidget(panel_page)
-    lay.addWidget(panel_scroll, 0)
+    lay.addWidget(panel_scroll, 1)
 
     win._connect_panel_host = host
     win._connect_panel_host_lay = host_lay
@@ -289,9 +295,14 @@ def _rebuild_connect_panels(win: QtWidgets.QWidget) -> None:
         _apply_row_expand_style(row, start_open, sole_expanded=False)
         disclosures[key] = row
         splitter.addWidget(row)
+        # Hard floor: prevent corrupted saved sizes from squishing the header to 0px.
+        row.setMinimumHeight(_COLLAPSED_STRIP_HEIGHT)
 
     win._connect_panel_disclosures = disclosures
     win._connect_panel_order = list(visible_order)
+    # `saved_sizes` was already cleaned by _normalize_connect_launch_prefs:
+    # - corrupted (zeros, all-at-strip-height) → {} so ghost state is never re-baked
+    # - valid user drag heights → preserved so the layout is restored next launch
     save_connect_panel_prefs(
         ui_mode,
         order,
@@ -299,6 +310,9 @@ def _rebuild_connect_panels(win: QtWidgets.QWidget) -> None:
         sizes=saved_sizes,
         hidden=list(hidden_set),
     )
+    # use_default_sizes is False when valid saved sizes exist, True when they were
+    # cleared by the corruption guard.  This restores the user's last layout on
+    # every normal boot while still booting from defaults after a corrupted state.
     _schedule_connect_splitter_sizes(win, use_defaults=use_default_sizes)
 
 
@@ -344,15 +358,28 @@ def _normalize_connect_launch_prefs(
     sizes: dict[str, int],
     order: list[str],
 ) -> tuple[dict[str, bool], dict[str, int], bool]:
-    """Keep saved collapse state; only discard strip-only size prefs from old bugs."""
+    """Keep saved collapse state; discard size prefs on any ghost-state signal.
+
+    Ghost-state signals (either of these → wipe sizes and boot from defaults):
+    - No sizes at all.
+    - All saved expanded-panel sizes collapsed down to strip height (old crash artifact).
+    - ANY saved size is 0 or negative (corrupted QSplitter state blob bled into JSON).
+    """
     if not order:
         return collapsed, sizes, not bool(sizes)
     use_defaults = not sizes
-    if sizes and all(
-        sizes.get(k, _DEFAULT_PANEL_HEIGHTS.get(k, 80)) <= _COLLAPSED_STRIP_HEIGHT + 4 for k in order
-    ):
-        use_defaults = True
-        sizes = {}
+    if sizes:
+        # Any zero/negative value is a definitive corruption marker.
+        if any(sizes.get(k, 1) <= 0 for k in order if k in sizes):
+            use_defaults = True
+            sizes = {}
+        # All panels saved at or below the collapsed strip height → ghost state.
+        elif all(
+            sizes.get(k, _DEFAULT_PANEL_HEIGHTS.get(k, 80)) <= _COLLAPSED_STRIP_HEIGHT + 4
+            for k in order
+        ):
+            use_defaults = True
+            sizes = {}
     return collapsed, sizes, use_defaults
 
 
@@ -419,15 +446,19 @@ def schedule_fit_window_to_connect(win: QtWidgets.QWidget) -> None:
 
 
 def _set_connect_tab_stretch(win: QtWidgets.QWidget, *, compact: bool) -> None:
+    """Keep scroll area at stretch=1 regardless of panel state.
+
+    The old compact→stretch=0 path was the root cause of the scroll area
+    disappearing and panels clipping.  Native Qt scrolling requires the area to
+    always fill the tab; the scrollbar handles any content overflow.
+    """
     lay: QtWidgets.QVBoxLayout | None = getattr(win, "_connect_tab_layout", None)
-    host: QtWidgets.QWidget | None = getattr(win, "_connect_panel_host", None)
     scroll: QtWidgets.QScrollArea | None = getattr(win, "_connect_panel_scroll", None)
-    if lay is None or host is None:
+    if lay is None or scroll is None:
         return
-    if scroll is not None:
-        scroll_idx = lay.indexOf(scroll)
-        if scroll_idx >= 0:
-            lay.setStretch(scroll_idx, 0 if compact else 1)
+    scroll_idx = lay.indexOf(scroll)
+    if scroll_idx >= 0:
+        lay.setStretch(scroll_idx, 1)
     host_lay: QtWidgets.QVBoxLayout | None = getattr(win, "_connect_panel_host_lay", None)
     splitter: QtWidgets.QSplitter | None = getattr(win, "_connect_panel_splitter", None)
     if host_lay is not None and splitter is not None:
@@ -436,7 +467,7 @@ def _set_connect_tab_stretch(win: QtWidgets.QWidget, *, compact: bool) -> None:
         except (TypeError, ValueError, AttributeError):
             sp_idx = -1
         if sp_idx >= 0:
-            host_lay.setStretch(sp_idx, 1 if not compact else 0)
+            host_lay.setStretch(sp_idx, 1)
 
 
 def _schedule_connect_scroll_geometry(
@@ -468,56 +499,39 @@ def _sync_connect_panel_scroll_geometry(
     content_h: int,
     expanded_any: bool,
 ) -> None:
-    """Keep the panel scroll area exactly as tall as its content when collapsed."""
-    sig = (int(content_h), bool(expanded_any))
-    win._connect_scroll_geom_sig = sig
+    """Release all manual Fixed-height locks; native Qt scrolling owns geometry.
+
+    The old implementation switched the QScrollArea between Fixed (all-collapsed)
+    and Expanding (any-expanded) and also pinned the tab widget height.  Those
+    transitions caused clipping and broke the scrollbar.  Now this function only
+    ensures previously-applied locks are cleared and the permanent Expanding
+    policy is (re)applied — content overflow is handled by the scrollbar.
+    """
     scroll: QtWidgets.QScrollArea | None = getattr(win, "_connect_panel_scroll", None)
-    page: QtWidgets.QWidget | None = getattr(win, "_connect_panel_page", None)
-    if scroll is None:
-        return
-    h = max(int(content_h), 48)
-    if not expanded_any:
+    if scroll is not None:
         scroll.setSizePolicy(
-            QtWidgets.QSizePolicy.Policy.Preferred,
-            QtWidgets.QSizePolicy.Policy.Fixed,
-        )
-        scroll.setMinimumHeight(h)
-        scroll.setMaximumHeight(h)
-        if page is not None:
-            page.setMinimumHeight(h)
-            page.setMaximumHeight(h)
-    else:
-        scroll.setSizePolicy(
-            QtWidgets.QSizePolicy.Policy.Preferred,
+            QtWidgets.QSizePolicy.Policy.Expanding,
             QtWidgets.QSizePolicy.Policy.Expanding,
         )
-        scroll.setMinimumHeight(max(min(h, 280), 160))
+        scroll.setMinimumHeight(0)
         scroll.setMaximumHeight(_WIDGET_SIZE_MAX)
-        if page is not None:
-            _release_height_lock(page)
-            lay = page.layout()
-            if isinstance(lay, QtWidgets.QVBoxLayout):
-                lay.setAlignment(QtCore.Qt.AlignmentFlag.AlignTop)
-    scroll.updateGeometry()
+        scroll.updateGeometry()
+
+    page: QtWidgets.QWidget | None = getattr(win, "_connect_panel_page", None)
+    if page is not None:
+        _release_height_lock(page)
+        lay = page.layout()
+        if isinstance(lay, QtWidgets.QVBoxLayout):
+            lay.setAlignment(QtCore.Qt.AlignmentFlag.AlignTop)
+
     tab: QtWidgets.QWidget | None = getattr(win, "_connect_tab_widget", None)
-    if tab is None:
-        return
-    chrome = _connect_tab_chrome_height(win)
-    if not expanded_any:
-        total = chrome + h + 4
-        tab.setSizePolicy(
-            QtWidgets.QSizePolicy.Policy.Preferred,
-            QtWidgets.QSizePolicy.Policy.Fixed,
-        )
-        tab.setMinimumHeight(total)
-        tab.setMaximumHeight(total)
-    else:
+    if tab is not None:
         _release_height_lock(tab)
         tab.setSizePolicy(
             QtWidgets.QSizePolicy.Policy.Preferred,
             QtWidgets.QSizePolicy.Policy.Preferred,
         )
-    tab.updateGeometry()
+        tab.updateGeometry()
 
 
 def _reflow_connect_panel_host(
@@ -527,97 +541,36 @@ def _reflow_connect_panel_host(
     user_resize: bool = False,
     sole_expanded: bool = False,
 ) -> None:
-    """Collapse = short stack at top; expand = splitter fills host and accepts drag."""
+    """Release manual height locks and let Qt's layout engine size everything.
+
+    The old implementation pinned host/splitter/scroll to exact pixel heights
+    based on expanded state, which caused clipping and broke native scrolling.
+    Now the QScrollArea is always Expanding; the host and splitter use Minimum
+    so they shrink to fit their content but never clip it.
+    """
     splitter: QtWidgets.QSplitter | None = getattr(win, "_connect_panel_splitter", None)
     host: QtWidgets.QWidget | None = getattr(win, "_connect_panel_host", None)
-    order: list[str] = getattr(win, "_connect_panel_order", [])
-    disclosures: dict[str, DisclosureRow] = getattr(win, "_connect_panel_disclosures", {})
     if splitter is None or host is None or not sizes:
         return
-    content_h = _splitter_content_height(splitter, sizes)
-    expanded_any = _any_panel_expanded(disclosures, order)
-    _set_connect_tab_stretch(win, compact=not expanded_any)
-    if expanded_any:
-        if user_resize and not sole_expanded:
-            host.updateGeometry()
-            return
-        if sole_expanded:
-            _release_height_lock(host)
-            _release_height_lock(splitter)
-            host.setSizePolicy(
-                QtWidgets.QSizePolicy.Policy.Preferred,
-                QtWidgets.QSizePolicy.Policy.Fixed,
-            )
-            splitter.setSizePolicy(
-                QtWidgets.QSizePolicy.Policy.Preferred,
-                QtWidgets.QSizePolicy.Policy.Fixed,
-            )
-            host.setMinimumHeight(content_h)
-            host.setMaximumHeight(content_h)
-            splitter.setMinimumHeight(content_h)
-            splitter.setMaximumHeight(content_h)
-            splitter.setSizes(sizes)
-            host_lay: QtWidgets.QVBoxLayout | None = getattr(win, "_connect_panel_host_lay", None)
-            if host_lay is not None and splitter is not None:
-                try:
-                    sp_idx = int(host_lay.indexOf(splitter))
-                except (TypeError, ValueError, AttributeError):
-                    sp_idx = -1
-                if sp_idx >= 0:
-                    host_lay.setStretch(sp_idx, 0)
-        else:
-            _release_height_lock(host)
-            _release_height_lock(splitter)
-            _maybe_restore_connect_window_height(win)
-            splitter.setSizePolicy(
-                QtWidgets.QSizePolicy.Policy.Expanding,
-                QtWidgets.QSizePolicy.Policy.Expanding,
-            )
-            host.setSizePolicy(
-                QtWidgets.QSizePolicy.Policy.Preferred,
-                QtWidgets.QSizePolicy.Policy.Expanding,
-            )
-            host.setMinimumHeight(max(content_h, 80))
-            host.setMaximumHeight(_WIDGET_SIZE_MAX)
-            splitter.setMinimumHeight(max(content_h, 100))
-            splitter.setMaximumHeight(_WIDGET_SIZE_MAX)
-            host_lay = getattr(win, "_connect_panel_host_lay", None)
-            if host_lay is not None and splitter is not None:
-                try:
-                    sp_idx = int(host_lay.indexOf(splitter))
-                except (TypeError, ValueError, AttributeError):
-                    sp_idx = -1
-                if sp_idx >= 0:
-                    host_lay.setStretch(sp_idx, 1)
-    else:
-        in_scroll = bool(getattr(win, "_connect_page_in_main_scroll", False))
-        if in_scroll:
-            host.setSizePolicy(
-                QtWidgets.QSizePolicy.Policy.Preferred,
-                QtWidgets.QSizePolicy.Policy.Minimum,
-            )
-            splitter.setSizePolicy(
-                QtWidgets.QSizePolicy.Policy.Preferred,
-                QtWidgets.QSizePolicy.Policy.Minimum,
-            )
-            host.setMinimumHeight(content_h)
-            host.setMaximumHeight(content_h)
-            splitter.setMinimumHeight(content_h)
-            splitter.setMaximumHeight(content_h)
-        else:
-            host.setSizePolicy(
-                QtWidgets.QSizePolicy.Policy.Preferred,
-                QtWidgets.QSizePolicy.Policy.Fixed,
-            )
-            splitter.setSizePolicy(
-                QtWidgets.QSizePolicy.Policy.Preferred,
-                QtWidgets.QSizePolicy.Policy.Fixed,
-            )
-            splitter.setFixedHeight(content_h)
-            host.setFixedHeight(content_h)
-    _schedule_connect_scroll_geometry(
-        win, content_h=content_h, expanded_any=expanded_any
+
+    # Release any previously-applied Fixed/pin locks so the layout can breathe.
+    _release_height_lock(host)
+    _release_height_lock(splitter)
+    host.setSizePolicy(
+        QtWidgets.QSizePolicy.Policy.Preferred,
+        QtWidgets.QSizePolicy.Policy.Minimum,
     )
+    splitter.setSizePolicy(
+        QtWidgets.QSizePolicy.Policy.Preferred,
+        QtWidgets.QSizePolicy.Policy.Minimum,
+    )
+
+    # Ensure scroll area and tab stretch factors stay at 1 (never 0).
+    _set_connect_tab_stretch(win, compact=False)
+
+    # Schedule the scroll-area geometry flush (releases tab/page locks too).
+    content_h = _splitter_content_height(splitter, sizes)
+    _schedule_connect_scroll_geometry(win, content_h=content_h, expanded_any=True)
     host.updateGeometry()
 
 
@@ -824,6 +777,8 @@ def _set_all_connect_panels(win: QtWidgets.QWidget, expanded: bool) -> None:
         sizes=dict(prefs.get("sizes", {})),
     )
     _apply_connect_splitter_sizes(win)
+    # Flush scroll geometry so the QScrollArea compacts after all panels collapse.
+    QtCore.QTimer.singleShot(0, lambda w=win: _flush_connect_scroll_geometry(w))
 
 
 def _reset_connect_splitter_sizes(win: QtWidgets.QWidget) -> None:
@@ -873,6 +828,11 @@ def _apply_connect_splitter_sizes(win: QtWidgets.QWidget, *, use_defaults: bool 
             sizes.append(_COLLAPSED_STRIP_HEIGHT)
             continue
         sizes.append(_target_row_height(row, key, saved))
+
+    # Hard clamp: splitter.setSizes() can distribute below widget minimumHeight when
+    # total available space is tight.  Never let any slot fall below the strip floor,
+    # whether collapsed or expanded.
+    sizes = [max(s, _COLLAPSED_STRIP_HEIGHT) for s in sizes]
 
     splitter.blockSignals(True)
     try:

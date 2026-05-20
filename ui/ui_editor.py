@@ -41,7 +41,7 @@ TOP_BAR_CHIP_LABELS: dict[str, str] = {
 
 # Short descriptions for main-window tabs (catalog stores tooltips, often empty at build).
 CONNECT_PANEL_HINTS: dict[str, str] = {
-    "run": "Start/Stop, bench preset, status banner",
+    "run": "Start/Stop",
     "hint": "Intent / preset guidance line",
     "quick_log": "Compact live log on Connect",
     "quick_terminal": "Bench output on Connect",
@@ -241,7 +241,10 @@ class _EditorListPage(QtWidgets.QWidget):
             item = self.list.item(i)
             if item is None:
                 continue
-            key = str(item.data(QtCore.Qt.ItemDataRole.UserRole) or "").strip()
+            raw = item.data(QtCore.Qt.ItemDataRole.UserRole)
+            if raw is None:
+                continue
+            key = str(raw).strip()
             if not key:
                 continue
             order.append(key)
@@ -465,8 +468,13 @@ class UiEditorDialog(QtWidgets.QDialog):
             else getattr(win, "_drawer_tabs", None)
         )
         if tabs is not None and hasattr(win, "_rebuild_tabs_from_state"):
-            win._rebuild_tabs_from_state(tabs, tabs_key)  # type: ignore[attr-defined]
-            win._persist_tab_state(tabs, tabs_key)  # type: ignore[attr-defined]
+            try:
+                win._rebuild_tabs_from_state(tabs, tabs_key)  # type: ignore[attr-defined]
+                if hasattr(win, "_persist_tab_state"):
+                    win._persist_tab_state(tabs, tabs_key)  # type: ignore[attr-defined]
+            except Exception as exc:
+                if hasattr(win, "_log_ui"):
+                    win._log_ui(f"[UI editor] Tab rebuild failed ({tabs_key}): {exc}")  # type: ignore[attr-defined]
         return True
 
     def _apply(self) -> None:
@@ -506,7 +514,11 @@ class UiEditorDialog(QtWidgets.QDialog):
                 dict(prefs.get("collapsed", {})),
                 hidden=hidden_list,
             )
-            _rebuild_connect_panels(win)
+            try:
+                _rebuild_connect_panels(win)
+            except Exception as exc:
+                if hasattr(win, "_log_ui"):
+                    win._log_ui(f"[UI editor] Connect panel rebuild failed: {exc}")  # type: ignore[attr-defined]
         if self._connect_toolbar_page is not None:
             toolbar_order, _unused_hidden = self._connect_toolbar_page.ordered_checked()
             ui_mode = getattr(win, "_ui_mode", "standard")
@@ -521,7 +533,11 @@ class UiEditorDialog(QtWidgets.QDialog):
             )
             from ui.connect_panels import apply_connect_toolbar_order
 
-            apply_connect_toolbar_order(win)
+            try:
+                apply_connect_toolbar_order(win)
+            except Exception as exc:
+                if hasattr(win, "_log_ui"):
+                    win._log_ui(f"[UI editor] Connect toolbar rebuild failed: {exc}")  # type: ignore[attr-defined]
 
         if self._main_tabs_page is not None:
             tab_order, tab_hidden = self._main_tabs_page.ordered_checked()

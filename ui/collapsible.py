@@ -70,6 +70,12 @@ class DisclosureRow(QtWidgets.QWidget):
         self._btn.setCheckable(True)
         self._btn.setToolButtonStyle(QtCore.Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
         self._btn.setAutoRaise(True)
+        # Expand to fill the full row width so the entire header strip is clickable.
+        self._btn.setSizePolicy(
+            QtWidgets.QSizePolicy.Policy.Expanding,
+            QtWidgets.QSizePolicy.Policy.Fixed,
+        )
+        self._btn.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
         outer.addWidget(self._btn)
         outer.addWidget(body)
 
@@ -95,6 +101,11 @@ class DisclosureRow(QtWidgets.QWidget):
             QtCore.Qt.ArrowType.DownArrow if expanded else QtCore.Qt.ArrowType.RightArrow
         )
         if expanded:
+            # Release the row's own height cap BEFORE making the body visible.
+            # Without this the row stays clamped at _COLLAPSED_STRIP_HEIGHT while
+            # the body tries to render, causing content to clip under the splitter
+            # handle until the deferred _apply_connect_splitter_sizes timer fires.
+            self.setMaximumHeight(_WIDGET_SIZE_MAX)
             self._body.setMaximumHeight(_WIDGET_SIZE_MAX)
             self._body.setVisible(True)
         else:

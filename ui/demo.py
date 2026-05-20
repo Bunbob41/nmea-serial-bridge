@@ -93,9 +93,6 @@ def _open_drawer(win: QtWidgets.QWidget) -> None:
 
 def _open_tools(win: QtWidgets.QWidget, tab_title: str) -> None:
     _open_drawer(win)
-    tabs = getattr(win, "_drawer_tabs", None) or getattr(win, "_main_tabs", None)
-    if tabs is None:
-        return
     want = tab_title.lower().strip()
     aliases = {
         "send": ("send", "terminal"),
@@ -108,6 +105,31 @@ def _open_tools(win: QtWidgets.QWidget, tab_title: str) -> None:
         "guide": ("guide",),
         "theme": ("theme",),
     }.get(want, (want,))
+
+    # Standard layout: Tools tab holds a sidebar nav + QStackedWidget.
+    # Navigate _main_tabs to "Tools", then select the matching sidebar row.
+    tools_nav = getattr(win, "_tools_nav", None)
+    if tools_nav is not None and getattr(win, "_tools_stack", None) is not None:
+        main_tabs = getattr(win, "_main_tabs", None)
+        if main_tabs is not None:
+            for i in range(main_tabs.count()):
+                if main_tabs.tabText(i).lower() == "tools":
+                    main_tabs.setCurrentIndex(i)
+                    break
+        for row in range(tools_nav.count()):
+            item = tools_nav.item(row)
+            if item is None:
+                continue
+            label = item.text().lower()
+            if any(label.startswith(key) or key in label for key in aliases):
+                tools_nav.setCurrentRow(row)
+                return
+        return
+
+    # Field / logfirst / minimal: pages are direct tabs in _drawer_tabs or _main_tabs.
+    tabs = getattr(win, "_drawer_tabs", None) or getattr(win, "_main_tabs", None)
+    if tabs is None:
+        return
     for i in range(tabs.count()):
         label = tabs.tabText(i).lower()
         if any(label.startswith(key) or key in label for key in aliases):
