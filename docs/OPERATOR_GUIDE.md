@@ -218,6 +218,13 @@ The bridge does not configure routers or VPN — only opens sockets on the Windo
 - **Unlock ports** — tries to release a stuck COM (e.g. PuTTY left open) without restarting the app. Blocked while the bridge is **Running** on that COM; stop the bridge first.
 - **Manual override** — expand the checkbox group below the hub for full COM, fan-out, TCP sink mirror, and **Advanced network** (TCP/UDP remote). When override is on and you edit fields, hub card defaults are ignored until you collapse override or pick a card again.
 - **Bench walkthrough** — see `specs/004-hub-network-discovery/quickstart.md` for resize, refresh, unlock, QoS, and two-sender LAN checks.
+
+### Web control plane (optional, v1.7+)
+
+- **Enable** — Tools → **Guide** → **Enable Web API on this PC** (default port **8765**, localhost only).
+- **Endpoints** — `GET /status`, `GET /config`, `PATCH /config`, `POST /bridge/start`, `POST /bridge/stop` (see `specs/005-hybrid-ui-webui/quickstart.md`).
+- **LAN access** — Off by default. Enabling **Allow LAN access** binds all interfaces; use Windows firewall and optional `token` in `%USERPROFILE%\.cursor-udp-com-bridge\ui_prefs.json` under `web_ui`.
+- **Dev install** — `python -m pip install -r requirements-web.txt` when running from source.
 - **Run** — **Start bridge** / **Stop bridge** (always visible at top of tab).
 - **Intent hint** — one-line guidance for preset, UDP listen, or TCP mode (full text on hover).
 - **COM / Baud / Refresh** — serial toward target device or com0com (under Manual override when hub is shown).

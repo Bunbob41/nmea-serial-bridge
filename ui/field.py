@@ -18,6 +18,7 @@ from ui.mixin import BridgeLogicMixin
 from ui.styles import bridge_stylesheet
 from ui.theme_choice import load_theme_choice
 from ui.ui_prefs import load_field_prefs, save_field_prefs
+from ui.ui_loader import LayoutLoadError, load_field_control_strip
 from version import __version__
 
 # Default log / control-strip split for ~960×580 (strip ≈ COM + status + preset + tool row).
@@ -88,43 +89,8 @@ class BridgeWindowField(BridgeLogicMixin, QtWidgets.QWidget):
             QtWidgets.QSizePolicy.Policy.Expanding,
         )
 
-        strip = QtWidgets.QFrame()
-        strip.setObjectName("controlStrip")
+        strip = self._build_field_control_strip()
         self._control_strip = strip
-        strip.setSizePolicy(
-            QtWidgets.QSizePolicy.Policy.Preferred,
-            QtWidgets.QSizePolicy.Policy.Minimum,
-        )
-        sl = QtWidgets.QVBoxLayout(strip)
-        sl.setContentsMargins(8, 4, 8, 4)
-        sl.setSpacing(3)
-        r1 = QtWidgets.QHBoxLayout()
-        r1.setSpacing(6)
-        self.com_cb.setMinimumWidth(170)
-        self.com_cb.setSizePolicy(
-            QtWidgets.QSizePolicy.Policy.Expanding, QtWidgets.QSizePolicy.Policy.Fixed
-        )
-        self.baud_edit.setMaximumWidth(88)
-        r1.addWidget(QtWidgets.QLabel("COM"))
-        r1.addWidget(self.com_cb, 1)
-        r1.addWidget(self.refresh_btn)
-        r1.addWidget(QtWidgets.QLabel("Baud"))
-        r1.addWidget(self.baud_edit)
-        r1.addWidget(QtWidgets.QLabel("UDP"))
-        self.udp_host.setMaximumWidth(100)
-        self.udp_host.setToolTip("UDP listen bind address (Tools → Presets for TCP modes).")
-        r1.addWidget(self.udp_host)
-        r1.addWidget(QtWidgets.QLabel(":"))
-        self.udp_port.setMaximumWidth(64)
-        self.udp_port.setToolTip("UDP listen port — senders use this port on the host above.")
-        r1.addWidget(self.udp_port)
-        sl.addLayout(r1)
-        self._field_connect_summary = QtWidgets.QLabel("")
-        self._field_connect_summary.setObjectName("fieldConnectSummary")
-        self._field_connect_summary.setWordWrap(True)
-        sl.addWidget(self._field_connect_summary)
-        sl.addWidget(self.status_line)
-        sl.addWidget(self.intent_hint)
 
         drawer = QtWidgets.QToolButton()
         self._drawer_btn = drawer
@@ -194,9 +160,11 @@ class BridgeWindowField(BridgeLogicMixin, QtWidgets.QWidget):
         r2.addWidget(self.btn_clear_log)
         r2.addWidget(self.btn_save_live_log)
         r2.addStretch(1)
-        sl.addLayout(r2)
-        sl.addWidget(drawer_tabs)
-        sl.addStretch(1)
+        strip_lay = strip.layout()
+        if strip_lay is not None:
+            strip_lay.addLayout(r2)
+            strip_lay.addWidget(drawer_tabs)
+            strip_lay.addStretch(1)
 
         self._splitter = QtWidgets.QSplitter(QtCore.Qt.Orientation.Vertical)
         self._splitter.setObjectName("fieldMainSplitter")
@@ -252,6 +220,73 @@ class BridgeWindowField(BridgeLogicMixin, QtWidgets.QWidget):
     def resizeEvent(self, event: QtGui.QResizeEvent) -> None:
         super().resizeEvent(event)
         self._apply_intent_hint_display()
+
+    def _build_field_control_strip(self) -> QtWidgets.QFrame:
+        r1 = QtWidgets.QHBoxLayout()
+        r1.setSpacing(6)
+        self.com_cb.setMinimumWidth(170)
+        self.com_cb.setSizePolicy(
+            QtWidgets.QSizePolicy.Policy.Expanding, QtWidgets.QSizePolicy.Policy.Fixed
+        )
+        self.baud_edit.setMaximumWidth(88)
+        r1.addWidget(QtWidgets.QLabel("COM"))
+        r1.addWidget(self.com_cb, 1)
+        r1.addWidget(self.refresh_btn)
+        r1.addWidget(QtWidgets.QLabel("Baud"))
+        r1.addWidget(self.baud_edit)
+        r1.addWidget(QtWidgets.QLabel("UDP"))
+        self.udp_host.setMaximumWidth(100)
+        self.udp_host.setToolTip("UDP listen bind address (Tools → Presets for TCP modes).")
+        r1.addWidget(self.udp_host)
+        r1.addWidget(QtWidgets.QLabel(":"))
+        self.udp_port.setMaximumWidth(64)
+        self.udp_port.setToolTip("UDP listen port — senders use this port on the host above.")
+        r1.addWidget(self.udp_port)
+
+        self._field_connect_summary = QtWidgets.QLabel("")
+        self._field_connect_summary.setObjectName("fieldConnectSummary")
+        self._field_connect_summary.setWordWrap(True)
+
+        try:
+            shell = load_field_control_strip(self)
+            shell.setObjectName("controlStrip")
+            shell.setSizePolicy(
+                QtWidgets.QSizePolicy.Policy.Preferred,
+                QtWidgets.QSizePolicy.Policy.Minimum,
+            )
+            strip_host = shell.findChild(QtWidgets.QWidget, "fieldStripHost")
+            if strip_host is not None:
+                host_lay = QtWidgets.QVBoxLayout(strip_host)
+                host_lay.setContentsMargins(0, 0, 0, 0)
+                host_lay.setSpacing(3)
+                host_lay.addLayout(r1)
+                host_lay.addWidget(self._field_connect_summary)
+            status_host = shell.findChild(QtWidgets.QWidget, "fieldStatusHost")
+            if status_host is not None:
+                st_lay = QtWidgets.QVBoxLayout(status_host)
+                st_lay.setContentsMargins(0, 0, 0, 0)
+                st_lay.setSpacing(3)
+                st_lay.addWidget(self.status_line)
+                st_lay.addWidget(self.intent_hint)
+            return shell  # type: ignore[return-value]
+        except LayoutLoadError:
+            return self._build_field_strip_programmatic(r1)
+
+    def _build_field_strip_programmatic(self, r1: QtWidgets.QHBoxLayout) -> QtWidgets.QFrame:
+        strip = QtWidgets.QFrame()
+        strip.setObjectName("controlStrip")
+        strip.setSizePolicy(
+            QtWidgets.QSizePolicy.Policy.Preferred,
+            QtWidgets.QSizePolicy.Policy.Minimum,
+        )
+        sl = QtWidgets.QVBoxLayout(strip)
+        sl.setContentsMargins(8, 4, 8, 4)
+        sl.setSpacing(3)
+        sl.addLayout(r1)
+        sl.addWidget(self._field_connect_summary)
+        sl.addWidget(self.status_line)
+        sl.addWidget(self.intent_hint)
+        return strip
 
     def _set_status_banner(self, state: str, title: str, detail: str = "") -> None:
         self.status_line.setProperty("state", state)

@@ -760,6 +760,54 @@ def save_discovery_scan_prefs(*, background_enabled: bool, background_interval_s
     _write_json(data)
 
 
+_WEB_UI_DEFAULTS = {
+    "enabled": False,
+    "host": "127.0.0.1",
+    "port": 8765,
+    "lan_bind": False,
+    "token": None,
+}
+
+
+def load_web_ui_prefs() -> dict[str, Any]:
+    data = _read_json()
+    raw = data.get("web_ui")
+    if not isinstance(raw, dict):
+        return dict(_WEB_UI_DEFAULTS)
+    port = raw.get("port", 8765)
+    try:
+        port_i = int(port)
+    except (TypeError, ValueError):
+        port_i = 8765
+    token = raw.get("token")
+    return {
+        "enabled": bool(raw.get("enabled", False)),
+        "host": str(raw.get("host", "127.0.0.1")).strip() or "127.0.0.1",
+        "port": max(1024, min(65535, port_i)),
+        "lan_bind": bool(raw.get("lan_bind", False)),
+        "token": str(token).strip() if token else None,
+    }
+
+
+def save_web_ui_prefs(
+    *,
+    enabled: bool,
+    host: str,
+    port: int,
+    lan_bind: bool,
+    token: Optional[str],
+) -> None:
+    data = _read_json()
+    data["web_ui"] = {
+        "enabled": bool(enabled),
+        "host": (host or "127.0.0.1").strip(),
+        "port": max(1024, min(65535, int(port))),
+        "lan_bind": bool(lan_bind),
+        "token": (token or "").strip() or None,
+    }
+    _write_json(data)
+
+
 def save_last_known_good(device_id: str, config: dict) -> None:
     did = (device_id or "").strip()
     if not did or not isinstance(config, dict):

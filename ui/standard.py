@@ -23,6 +23,7 @@ from ui.controls import (
 from ui.mixin import BridgeLogicMixin
 from ui.styles import bridge_stylesheet
 from ui.theme_choice import load_theme_choice
+from ui.ui_loader import LayoutLoadError, load_standard_connect_shell
 from version import __version__
 
 
@@ -51,70 +52,8 @@ class BridgeWindowStandard(BridgeLogicMixin, QtWidgets.QWidget):
         self.intent_hint.setObjectName("intentHint")
         self.intent_hint.setWordWrap(True)
 
-        connect_body = QtWidgets.QWidget()
-        connect_body.setObjectName("connectSectionBody")
-        connect_body.setAttribute(QtCore.Qt.WidgetAttribute.WA_StyledBackground, True)
-        cv = QtWidgets.QVBoxLayout(connect_body)
-        cv.setContentsMargins(10, 8, 10, 8)
-        cv.setSpacing(6)
-        sub = QtWidgets.QLabel(f"v{__version__} — Network ↔ serial (UDP/TCP NMEA)")
-        sub.setObjectName("appSubtitle")
-        sub.setWordWrap(True)
-        cv.addWidget(sub)
-        cv.addWidget(self.status_banner)
-
-        ser_box = QtWidgets.QGroupBox("Serial")
-        ser_box.setObjectName("connectGroupBox")
-        sf = QtWidgets.QFormLayout(ser_box)
-        row = QtWidgets.QHBoxLayout()
-        row.addWidget(self.com_cb, 1)
-        row.addWidget(self.refresh_btn)
-        cw = QtWidgets.QWidget()
-        cw.setLayout(row)
-        sf.addRow("COM:", cw)
-        sf.addRow("Baud:", self.baud_edit)
-        sf.addRow("", self.chk_serial_auto_reconnect)
-        sf.addRow("", self.chk_auto_discover)
-
-        net_box = QtWidgets.QGroupBox("Network (UDP listen)")
-        net_box.setObjectName("connectGroupBox")
-        nv = QtWidgets.QVBoxLayout(net_box)
-        hint_net = QtWidgets.QLabel(
-            "Bind address and port on this PC. Enable Advanced below for TCP or UDP remote."
-        )
-        hint_net.setWordWrap(True)
-        hint_net.setObjectName("tabHint")
-        nv.addWidget(hint_net)
-        uf = QtWidgets.QFormLayout()
-        uf.addRow("Listen host:", self.udp_host)
-        uf.addRow("Listen port:", self.udp_port)
-        nv.addLayout(uf)
-        nv.addWidget(self.chk_udp_fanout)
-        sink_row = QtWidgets.QHBoxLayout()
-        sink_row.addWidget(self.chk_tcp_sink_enable)
-        sink_row.addWidget(QtWidgets.QLabel("Port:"))
-        sink_row.addWidget(self.tcp_sink_port)
-        sink_row.addStretch(1)
-        nv.addLayout(sink_row)
-        nv.addWidget(self.chk_advanced_net)
-        nv.addWidget(self._advanced_net)
-        embed_connection_hub_on_connect_body(self, connect_body, [ser_box, net_box])
-        cv.addStretch(1)
-
-        connect_scroll = QtWidgets.QScrollArea()
-        connect_scroll.setObjectName("connectSectionScroll")
-        connect_scroll.setWidgetResizable(True)
-        connect_scroll.setFrameShape(QtWidgets.QFrame.Shape.NoFrame)
-        connect_scroll.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        connect_scroll.setAttribute(QtCore.Qt.WidgetAttribute.WA_StyledBackground, True)
-        connect_scroll.viewport().setObjectName("connectSectionScrollViewport")
-        connect_scroll.viewport().setAttribute(QtCore.Qt.WidgetAttribute.WA_StyledBackground, True)
-        connect_scroll.setWidget(connect_body)
-        connect_scroll.setMinimumHeight(180)
-        connect_scroll.setSizePolicy(
-            QtWidgets.QSizePolicy.Policy.Expanding,
-            QtWidgets.QSizePolicy.Policy.Expanding,
-        )
+        connect_scroll = self._build_standard_connection_scroll()
+        connect_panel = self._wrap_standard_connect_shell(connect_scroll)
 
         act_box = QtWidgets.QWidget()
         act_box.setObjectName("runGroup")
@@ -179,7 +118,7 @@ class BridgeWindowStandard(BridgeLogicMixin, QtWidgets.QWidget):
                 "hint": self.intent_hint,
                 "quick_log": create_connect_mini_log(self),
                 "quick_terminal": create_connect_quick_terminal(self),
-                "connection": connect_scroll,
+                "connection": connect_panel,
                 "ntrip": ntrip_box,
             },
         )
@@ -267,6 +206,109 @@ class BridgeWindowStandard(BridgeLogicMixin, QtWidgets.QWidget):
         self._schedule_connect_reflow(0)
         self._schedule_connect_reflow(80)
         self._schedule_connect_reflow(180)
+
+    def _build_standard_connection_scroll(self) -> QtWidgets.QScrollArea:
+        connect_body = QtWidgets.QWidget()
+        connect_body.setObjectName("connectSectionBody")
+        connect_body.setAttribute(QtCore.Qt.WidgetAttribute.WA_StyledBackground, True)
+        cv = QtWidgets.QVBoxLayout(connect_body)
+        cv.setContentsMargins(0, 0, 0, 0)
+        cv.setSpacing(6)
+
+        ser_box = QtWidgets.QGroupBox("Serial")
+        ser_box.setObjectName("connectGroupBox")
+        sf = QtWidgets.QFormLayout(ser_box)
+        row = QtWidgets.QHBoxLayout()
+        row.addWidget(self.com_cb, 1)
+        row.addWidget(self.refresh_btn)
+        cw = QtWidgets.QWidget()
+        cw.setLayout(row)
+        sf.addRow("COM:", cw)
+        sf.addRow("Baud:", self.baud_edit)
+        sf.addRow("", self.chk_serial_auto_reconnect)
+        sf.addRow("", self.chk_auto_discover)
+
+        net_box = QtWidgets.QGroupBox("Network (UDP listen)")
+        net_box.setObjectName("connectGroupBox")
+        nv = QtWidgets.QVBoxLayout(net_box)
+        hint_net = QtWidgets.QLabel(
+            "Bind address and port on this PC. Enable Advanced below for TCP or UDP remote."
+        )
+        hint_net.setWordWrap(True)
+        hint_net.setObjectName("tabHint")
+        nv.addWidget(hint_net)
+        uf = QtWidgets.QFormLayout()
+        uf.addRow("Listen host:", self.udp_host)
+        uf.addRow("Listen port:", self.udp_port)
+        nv.addLayout(uf)
+        nv.addWidget(self.chk_udp_fanout)
+        sink_row = QtWidgets.QHBoxLayout()
+        sink_row.addWidget(self.chk_tcp_sink_enable)
+        sink_row.addWidget(QtWidgets.QLabel("Port:"))
+        sink_row.addWidget(self.tcp_sink_port)
+        sink_row.addStretch(1)
+        nv.addLayout(sink_row)
+        nv.addWidget(self.chk_advanced_net)
+        nv.addWidget(self._advanced_net)
+        embed_connection_hub_on_connect_body(self, connect_body, [ser_box, net_box])
+        cv.addStretch(1)
+
+        connect_scroll = QtWidgets.QScrollArea()
+        connect_scroll.setObjectName("connectSectionScroll")
+        connect_scroll.setWidgetResizable(True)
+        connect_scroll.setFrameShape(QtWidgets.QFrame.Shape.NoFrame)
+        connect_scroll.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        connect_scroll.setAttribute(QtCore.Qt.WidgetAttribute.WA_StyledBackground, True)
+        connect_scroll.viewport().setObjectName("connectSectionScrollViewport")
+        connect_scroll.viewport().setAttribute(QtCore.Qt.WidgetAttribute.WA_StyledBackground, True)
+        connect_scroll.setWidget(connect_body)
+        connect_scroll.setMinimumHeight(180)
+        connect_scroll.setSizePolicy(
+            QtWidgets.QSizePolicy.Policy.Expanding,
+            QtWidgets.QSizePolicy.Policy.Expanding,
+        )
+        return connect_scroll
+
+    def _wrap_standard_connect_shell(self, connect_scroll: QtWidgets.QScrollArea) -> QtWidgets.QWidget:
+        try:
+            shell = load_standard_connect_shell(self)
+            sub = shell.findChild(QtWidgets.QLabel, "appSubtitle")
+            if sub is not None:
+                sub.setText(f"v{__version__} — Network ↔ serial (UDP/TCP NMEA)")
+            status_host = shell.findChild(QtWidgets.QWidget, "statusBannerHost")
+            if status_host is not None:
+                host_lay = QtWidgets.QVBoxLayout(status_host)
+                host_lay.setContentsMargins(0, 0, 0, 0)
+                host_lay.addWidget(self.status_banner)
+            panel_host = shell.findChild(QtWidgets.QWidget, "connectPanelHost")
+            if panel_host is not None:
+                panel_lay = QtWidgets.QVBoxLayout(panel_host)
+                panel_lay.setContentsMargins(0, 0, 0, 0)
+                panel_lay.addWidget(connect_scroll, 1)
+            shell.setSizePolicy(
+                QtWidgets.QSizePolicy.Policy.Expanding,
+                QtWidgets.QSizePolicy.Policy.Expanding,
+            )
+            return shell
+        except LayoutLoadError:
+            return self._build_standard_shell_programmatic(connect_scroll)
+
+    def _build_standard_shell_programmatic(
+        self, connect_scroll: QtWidgets.QScrollArea
+    ) -> QtWidgets.QWidget:
+        wrap = QtWidgets.QWidget()
+        wrap.setObjectName("connectSectionBody")
+        wrap.setAttribute(QtCore.Qt.WidgetAttribute.WA_StyledBackground, True)
+        lay = QtWidgets.QVBoxLayout(wrap)
+        lay.setContentsMargins(10, 8, 10, 8)
+        lay.setSpacing(6)
+        sub = QtWidgets.QLabel(f"v{__version__} — Network ↔ serial (UDP/TCP NMEA)")
+        sub.setObjectName("appSubtitle")
+        sub.setWordWrap(True)
+        lay.addWidget(sub)
+        lay.addWidget(self.status_banner)
+        lay.addWidget(connect_scroll, 1)
+        return wrap
 
     def _on_ui_ready(self) -> None:
         self._set_status_banner("stopped", "Stopped", "Load a preset or set COM/UDP, then Start.")

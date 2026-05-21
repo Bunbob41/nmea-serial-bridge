@@ -34,6 +34,7 @@
 
 - **Survey workflow** — Survey HUD popout, **GNSS** status (GGA fix / sats / HDOP), product demo teleprompter, preflight menus, themes.
 - **Connection Hub (Standard Connect)** — card grid for GNSS COM + UDP listen + **LAN-discovered** hosts (Refresh discovery); **Unlock ports** for bench COM conflicts; live **QoS** on the active card; **Manual override** for TCP/advanced; optional **TCP sink mirror** (parallel egress with fan-out). Field strip adds Refresh/Unlock.
+- **Hybrid UI (v1.7+)** — Standard/Field shells load from Qt Designer `.ui` files; optional **Web API** on localhost (`requirements-web.txt`) for status, config, and start/stop — see `specs/005-hybrid-ui-webui/quickstart.md`.
 - **Connect tab (Standard)** — collapsible panels, NTRIP corrections (phase 1), quick log/terminal.
 - **Log tab** — full live log (replaces side-only log in Standard).
 

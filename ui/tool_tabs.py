@@ -483,7 +483,7 @@ bottom status bar. Green text indicates an active connection; red indicates an e
 """
 
 
-def build_guide_tab(_parent: QtWidgets.QWidget) -> QtWidgets.QWidget:
+def build_guide_tab(parent: QtWidgets.QWidget) -> QtWidgets.QWidget:
     """Structured connection workflow guide with one tab per method."""
     host = QtWidgets.QWidget()
     lay = QtWidgets.QVBoxLayout(host)
@@ -493,6 +493,30 @@ def build_guide_tab(_parent: QtWidgets.QWidget) -> QtWidgets.QWidget:
     header = QtWidgets.QLabel("Network ↔ COM Bridge — Connection Workflows")
     header.setObjectName("tabHint")
     lay.addWidget(header)
+
+    web_box = QtWidgets.QGroupBox("Web control (localhost)")
+    web_box.setObjectName("connectGroupBox")
+    web_form = QtWidgets.QFormLayout(web_box)
+    parent.chk_web_enabled = QtWidgets.QCheckBox("Enable Web API on this PC")
+    parent.chk_web_enabled.setToolTip(
+        "Starts a local HTTP server (default 127.0.0.1:8765) for /status, /config, and start/stop. "
+        "See specs/005-hybrid-ui-webui/quickstart.md."
+    )
+    parent.spin_web_port = QtWidgets.QSpinBox()
+    parent.spin_web_port.setRange(1024, 65535)
+    parent.spin_web_port.setValue(8765)
+    parent.chk_web_lan = QtWidgets.QCheckBox("Allow LAN access (use firewall + token in ui_prefs)")
+    parent.chk_web_lan.setToolTip(
+        "Binds 0.0.0.0 when enabled. Prefer localhost on field laptops."
+    )
+    web_form.addRow("", parent.chk_web_enabled)
+    web_form.addRow("Port:", parent.spin_web_port)
+    web_form.addRow("", parent.chk_web_lan)
+    if hasattr(parent, "_on_web_ui_prefs_changed"):
+        parent.chk_web_enabled.toggled.connect(parent._on_web_ui_prefs_changed)
+        parent.spin_web_port.valueChanged.connect(parent._on_web_ui_prefs_changed)
+        parent.chk_web_lan.toggled.connect(parent._on_web_ui_prefs_changed)
+    lay.addWidget(web_box)
 
     tabs = QtWidgets.QTabWidget()
     tabs.setObjectName("guideTabWidget")

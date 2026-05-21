@@ -1,0 +1,5 @@
+# Optional Web control plane (Hybrid UI Layer 2). Install for dev/bench:
+#   python -m pip install -r requirements-web.txt
+fastapi>=0.110
+uvicorn[standard]>=0.27
+httpx>=0.27

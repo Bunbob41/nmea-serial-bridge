@@ -230,6 +230,10 @@ class BridgeLogicMixin:
         self._log_tab_auto_timer.timeout.connect(self._auto_switch_to_log_tab)
         self._ntrip_future: Optional[asyncio.Future] = None
         self._bench_preflight_chain = False
+        from app_facade import BridgeAppFacade
+
+        self._app_facade = BridgeAppFacade(self)
+        self._web_server = None
 
     def _reset_ui_log_serial_coalesce(self) -> None:
         self._ui_log_serial_dup_last = None
@@ -1771,6 +1775,90 @@ class BridgeLogicMixin:
 
     def _on_ui_ready(self) -> None:
         self._wire_connection_hub()
+        facade = getattr(self, "_app_facade", None)
+        if facade is not None:
+            facade.attach_window(self)
+        self._restore_web_ui_prefs()
+        self._maybe_start_web_server()
+
+    def _restore_web_ui_prefs(self) -> None:
+        from ui.ui_prefs import load_web_ui_prefs
+
+        prefs = load_web_ui_prefs()
+        chk = getattr(self, "chk_web_enabled", None)
+        if chk is not None:
+            chk.blockSignals(True)
+            chk.setChecked(bool(prefs.get("enabled")))
+            chk.blockSignals(False)
+        spin = getattr(self, "spin_web_port", None)
+        if spin is not None:
+            spin.blockSignals(True)
+            spin.setValue(int(prefs.get("port", 8765)))
+            spin.blockSignals(False)
+        lan = getattr(self, "chk_web_lan", None)
+        if lan is not None:
+            lan.blockSignals(True)
+            lan.setChecked(bool(prefs.get("lan_bind")))
+            lan.blockSignals(False)
+
+    def _persist_web_ui_prefs(self) -> None:
+        from ui.ui_prefs import load_web_ui_prefs, save_web_ui_prefs
+
+        prev = load_web_ui_prefs()
+        enabled = getattr(self, "chk_web_enabled", None)
+        port = getattr(self, "spin_web_port", None)
+        lan = getattr(self, "chk_web_lan", None)
+        save_web_ui_prefs(
+            enabled=enabled.isChecked() if enabled is not None else prev["enabled"],
+            host=str(prev.get("host", "127.0.0.1")),
+            port=port.value() if port is not None else int(prev.get("port", 8765)),
+            lan_bind=lan.isChecked() if lan is not None else bool(prev.get("lan_bind")),
+            token=prev.get("token"),
+        )
+
+    def _on_web_ui_prefs_changed(self, *_args: object) -> None:
+        self._persist_web_ui_prefs()
+        self._stop_web_server()
+        self._maybe_start_web_server()
+
+    def _maybe_start_web_server(self) -> None:
+        from ui.ui_prefs import load_web_ui_prefs
+
+        prefs = load_web_ui_prefs()
+        if not prefs.get("enabled"):
+            return
+        try:
+            from version import __version__
+            from web_api import create_app
+            from web_server import WebServerThread
+
+            token = prefs.get("token") if prefs.get("lan_bind") else None
+            app = create_app(
+                self._app_facade,
+                version=__version__,
+                lan_token=token,
+            )
+            server = WebServerThread()
+            server.start(
+                app,
+                host=str(prefs.get("host", "127.0.0.1")),
+                port=int(prefs.get("port", 8765)),
+                lan_bind=bool(prefs.get("lan_bind")),
+            )
+            self._web_server = server
+            host = "127.0.0.1" if not prefs.get("lan_bind") else "0.0.0.0"
+            self._log_ui(
+                f"Web control plane: http://{host}:{prefs.get('port')}/ "
+                "(status, config, start/stop — see Tools → Guide)"
+            )
+        except Exception as exc:
+            self._log_ui(f"Web control plane failed to start: {exc}")
+
+    def _stop_web_server(self) -> None:
+        server = getattr(self, "_web_server", None)
+        if server is not None:
+            server.stop(join_timeout=2.0)
+            self._web_server = None
 
     def _wire_connection_hub(self) -> None:
         hub = getattr(self, "connection_hub", None)
@@ -3229,6 +3317,9 @@ class BridgeLogicMixin:
             self._last_hub_poll_mono = _time.monotonic()
             self._poll_discovery_snapshot()
         self._apply_hub_quality()
+        facade = getattr(self, "_app_facade", None)
+        if facade is not None:
+            facade.publish_from_window(self)
         from ui.controls import elide_status_label
 
         elide_status_label(self.lbl_stats, format_live_stats_line(merged))
@@ -3240,6 +3331,9 @@ class BridgeLogicMixin:
         if self._is_bridge_running():
             self._stats_from_bridge({})
         else:
+            facade = getattr(self, "_app_facade", None)
+            if facade is not None:
+                facade.publish_from_window(self)
             from ui.controls import elide_status_label
 
             elide_status_label(
@@ -4126,6 +4220,7 @@ class BridgeLogicMixin:
             )
 
     def closeEvent(self, event: QtGui.QCloseEvent) -> None:
+        self._stop_web_server()
         self._diag_stop()
         self._cancel_discovery_worker()
         self._stop_auto_discovery_thread()

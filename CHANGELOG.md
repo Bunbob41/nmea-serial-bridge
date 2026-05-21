@@ -3,6 +3,13 @@
 High-level notes for **this fork / branch** (`feature/multi-ui-layouts-v0.5`).  
  Version = `version.py` / Git tag when you run `.\release.ps1` or tag manually.
 
+## v1.7.0
+
+- **Hybrid UI Layer 1** — Standard Connect and Field control strip load from Qt Designer `.ui` files at runtime (`ui/ui_loader.py`, `ui/resources/`); programmatic fallback if assets are missing.
+- **Hybrid UI Layer 2** — Optional **Web control plane** on `127.0.0.1:8765` (FastAPI): `GET /status`, `GET/PATCH /config`, `POST /bridge/start`, `POST /bridge/stop`; background uvicorn thread; `BridgeAppFacade` delegates to the same mixin as the desktop UI.
+- **Tools → Guide** — Enable Web API, port, and LAN bind checkbox; prefs in `ui_prefs.json`.
+- **Tests** — `test_ui_loader.py`, `test_app_facade.py`, `test_web_api.py`; optional `requirements-web.txt` and `bench_web_api.py`.
+
 ## v1.6.0
 
 - **Connection Hub Phase 2** — responsive card grid (1–3 columns, card-only scroll), **Refresh discovery** (ARP + bounded UDP probes on survey ports), **Unlock ports** (Smart Release COM without restart), traffic **QoS** chips on the active card from bridge stats.

@@ -76,8 +76,19 @@ a = Analysis(
     + [(str(root / "bench_defaults.json"), ".")]
     + helper_datas
     + docs_datas
-    + ([(str(root / "assets"), "assets")] if (root / "assets").is_dir() else []),
-    hiddenimports=[*APP_HIDDEN, *pyside_hidden],
+    + ([(str(root / "assets"), "assets")] if (root / "assets").is_dir() else [])
+    + (
+        [(str(root / "ui" / "resources"), "ui/resources")]
+        if (root / "ui" / "resources").is_dir()
+        else []
+    ),
+    hiddenimports=[
+        *APP_HIDDEN,
+        *pyside_hidden,
+        "app_facade",
+        "web_api",
+        "web_server",
+    ],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],

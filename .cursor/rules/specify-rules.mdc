@@ -5,11 +5,10 @@ alwaysApply: true
 <!-- SPECKIT START -->
 For additional context about technologies to be used, project structure,
 shell commands, and other important information, read
-`specs/004-hub-network-discovery/plan.md` and
-`specs/004-hub-network-discovery/quickstart.md` (active), plus phase-1
-`specs/003-connection-hub-overhaul/quickstart.md`.
+`specs/005-hybrid-ui-webui/plan.md` and
+`specs/005-hybrid-ui-webui/quickstart.md` (active).
 Non-negotiable project gates live in `.specify/memory/constitution.md`.
-Active feature: Connection Hub Phase 2 (`specs/004-hub-network-discovery/`, FR-401–410).
-Phase 1 as-built: `specs/003-connection-hub-overhaul/` (v1.5.x).
+Active feature: Hybrid UI (`specs/005-hybrid-ui-webui/`, FR-101–305).
+Prior shipped: Connection Hub Phase 2 (`specs/004-hub-network-discovery/`, v1.6.0).
 Baseline reference: `specs/001-baseline-spec/spec.md` (FR-001–FR-021).
 <!-- SPECKIT END -->
