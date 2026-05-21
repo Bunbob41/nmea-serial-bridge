@@ -5,7 +5,9 @@ alwaysApply: true
 <!-- SPECKIT START -->
 For additional context about technologies to be used, project structure,
 shell commands, and other important information, read
-`specs/001-baseline-spec/plan.md` and `specs/001-baseline-spec/quickstart.md`.
+`specs/003-connection-hub-overhaul/plan.md` and
+`specs/003-connection-hub-overhaul/quickstart.md`.
 Non-negotiable project gates live in `.specify/memory/constitution.md`.
-Active baseline spec: `specs/001-baseline-spec/spec.md` (FR-001–FR-020).
+Active feature: Connection Hub (`specs/003-connection-hub-overhaul/spec.md`, FR-301–315).
+Baseline reference: `specs/001-baseline-spec/spec.md` (FR-001–FR-021).
 <!-- SPECKIT END -->
