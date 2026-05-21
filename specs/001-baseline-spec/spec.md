@@ -4,7 +4,7 @@
 
 **Created**: 2026-05-20
 
-**Status**: Draft (baseline reference — not a greenfield build)
+**Status**: Approved (baseline reference — documentation delivery complete)
 
 **Input**: User description: "baseline spec"
 

@@ -8,6 +8,9 @@ Step-by-step guide for survey / bench use. Screenshots are optional; a **shot li
 
 Typical use: INS or GNSS on Ethernet → bridge → designated device COM input.
 
+**Baseline reference**: Spec Kit as-built spec and traceability live under
+[`specs/001-baseline-spec/`](../specs/001-baseline-spec/) (fan-out FR-011–FR-013, FR-020).
+
 ---
 
 ## 1. Before you start
@@ -114,8 +117,9 @@ Use this when testing on your desk: virtual COM pair and UDP from `127.0.0.1`.
 | 2    | **Presets** tab or survey bar **Presets** → load bench preset | COM, baud, UDP fill in; intent hint mentions 127.0.0.1      |
 | 3    | Confirm **COM** = bridge port (not the paired echo port) |                                                                    |
 | 4    | Confirm **Listen port** (e.g. 10110) on **Connect**    | **UDP listen** (Advanced off unless you know why)                  |
+| 4b   | **Fan-out** checkbox (Connect → Run area)              | **Checked** = all UDP senders get serial→net (default); off = last sender only |
 | 5    | Click **Start bridge** on **Connect**                  | Banner → **Running**; log shows UDP listen + serial open           |
-| 6    | Open Tera Term on the **paired** COM (not bridge COM)    |                                                                    |
+| 6    | Open Tera Term on the **paired** COM (not bridge COM)    | Bridge owns one leg; monitor the **paired** port only              |
 | 7    | Send UDP NMEA to the bridge                              | Diagnostics → **UDP sample burst**, or `python nmea_static_sample.py` |
 | 8    | Watch log + Tera Term                                    | Lines on serial; stats Hz > 0 in status bar                        |
 | 9    | **Stop bridge** when done                                | Banner **Stopped**; COM released                                   |
@@ -126,7 +130,7 @@ Use this when testing on your desk: virtual COM pair and UDP from `127.0.0.1`.
 After COM/baud/UDP are correct:
 
 1. **Presets** tab → select a preset → **Save** (or **Save as…** for a new name).
-2. Settings stored in `%USERPROFILE%\.cursor-udp-com-bridge\path_presets.json`.
+2. Settings stored in `%USERPROFILE%\.cursor-udp-com-bridge\path_presets.json` (includes **fan-out** on/off per preset).
 3. Next launch loads the last-used preset automatically.
 
 ### 5.4 Pre-flight checks (optional)
@@ -146,6 +150,21 @@ Or from a terminal in the project folder:
 python check_setup.py
 python com_free.py
 ```
+
+### 5.5 Test UDP fan-out (one bridge, two UDP clients)
+
+You do **not** need a second bridge app. Use **one** Running bridge and two UDP clients that both send at least one datagram to the listen port (this registers each peer).
+
+| Step | Action | Check |
+| ---- | ------ | ----- |
+| 1 | Start bridge with **Fan-out** checked | Status can show `peer …` then `2 peers` after second sender |
+| 2 | Terminal A: `python bench_udp_test.py --seconds 2` | Registers peer A; sends NMEA |
+| 3 | Terminal B: `python bench_fanout_probe.py --seconds 20` | Registers peer B; listens for replies |
+| 4 | Generate COM→net traffic | com0com echo on paired port, or live serial into bridge COM |
+| 5 | Observe B (and A if still listening) | Both receive serial-originated UDP within a few seconds |
+| 6 | Stop → Start with **Fan-out** unchecked | Repeat steps 2–5; only the **last** sender receives serial→net |
+
+See also [`specs/001-baseline-spec/quickstart.md`](../specs/001-baseline-spec/quickstart.md).
 
 ---
 
@@ -171,6 +190,7 @@ Use when the INS sends NMEA UDP to the survey PC and the bridge drives the targe
 | 5    | **NMEA** → **Passthrough** for Trimble NMEA      | Use **Raw** only for binary RTCM / other (rare)     |
 | 6    | **Start bridge**                                 | Running; bridge COM is dedicated                     |
 | 7    | Confirm INS stream                               | Log shows UDP traffic; Hz in status bar / HUD         |
+| 7b   | Multiple UDP consumers (rare)                    | Leave **Fan-out** on so each sender that contacted the bridge receives serial→net |
 | 8    | Verify data at downstream device/app             | Not laptop COM GPS                                  |
 | 9    | **Stop bridge** when done                        |                                                     |
 

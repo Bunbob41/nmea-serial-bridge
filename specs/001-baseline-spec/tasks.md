@@ -10,8 +10,8 @@
 
 **Purpose**: Traceability and spec status
 
-- [ ] T001 Create FR traceability matrix in `specs/001-baseline-spec/traceability.md`
-- [ ] T002 [P] Set spec status to Approved in `specs/001-baseline-spec/spec.md`
+- [x] T001 Create FR traceability matrix in `specs/001-baseline-spec/traceability.md`
+- [x] T002 [P] Set spec status to Approved in `specs/001-baseline-spec/spec.md`
 
 ---
 
@@ -19,8 +19,8 @@
 
 **Purpose**: Operator doc authority aligned with baseline
 
-- [ ] T003 Update UDP listen and fan-out description in `README.md`
-- [ ] T004 [P] Add baseline cross-link in `docs/OPERATOR_GUIDE.md` introduction
+- [x] T003 Update UDP listen and fan-out description in `README.md`
+- [x] T004 [P] Add baseline cross-link in `docs/OPERATOR_GUIDE.md` introduction
 
 **Checkpoint**: README and operator guide reference fan-out default-on behavior
 
@@ -32,8 +32,8 @@
 
 **Independent Test**: Follow OPERATOR_GUIDE §5 with fan-out checkbox visible; Start/Stop unchanged
 
-- [ ] T005 [US1] Expand bench workflow table for fan-out checkbox in `docs/OPERATOR_GUIDE.md` §5.2
-- [ ] T006 [US1] Add com0com monitor-leg reminder to `docs/OPERATOR_GUIDE.md` §5.2
+- [x] T005 [US1] Expand bench workflow table for fan-out checkbox in `docs/OPERATOR_GUIDE.md` §5.2
+- [x] T006 [US1] Add com0com monitor-leg reminder to `docs/OPERATOR_GUIDE.md` §5.2
 
 ---
 
@@ -43,7 +43,7 @@
 
 **Independent Test**: Boat checklist path unchanged; §6 mentions multi-sender fan-out option
 
-- [ ] T007 [US2] Add multi-consumer UDP note in `docs/OPERATOR_GUIDE.md` §6.2
+- [x] T007 [US2] Add multi-consumer UDP note in `docs/OPERATOR_GUIDE.md` §6.2
 
 ---
 
@@ -53,7 +53,7 @@
 
 **Independent Test**: Presets section mentions fan-out persistence
 
-- [ ] T008 [US3] Document fan-out in preset save/load in `docs/OPERATOR_GUIDE.md` §5.3
+- [x] T008 [US3] Document fan-out in preset save/load in `docs/OPERATOR_GUIDE.md` §5.3
 
 ---
 
@@ -63,9 +63,9 @@
 
 **Independent Test**: `bench_fanout_probe.py` + quickstart steps; no second bridge
 
-- [ ] T009 [US4] Add `bench_fanout_probe.py` UDP register/listen helper at repo root
-- [ ] T010 [US4] Add §5.5 two-client fan-out bench procedure in `docs/OPERATOR_GUIDE.md`
-- [ ] T011 [P] [US4] Link quickstart from `specs/001-baseline-spec/quickstart.md` to new §5.5
+- [x] T009 [US4] Add `bench_fanout_probe.py` UDP register/listen helper at repo root
+- [x] T010 [US4] Add §5.5 two-client fan-out bench procedure in `docs/OPERATOR_GUIDE.md`
+- [x] T011 [P] [US4] Link quickstart from `specs/001-baseline-spec/quickstart.md` to new §5.5
 
 ---
 
@@ -75,15 +75,15 @@
 
 **Independent Test**: traceability.md maps FR-018 to Diagnostics tab + verify_all
 
-- [ ] T012 [US5] Complete FR-015–FR-018 rows in `specs/001-baseline-spec/traceability.md`
+- [x] T012 [US5] Complete FR-015–FR-018 rows in `specs/001-baseline-spec/traceability.md`
 
 ---
 
 ## Phase 8: Polish & Cross-Cutting
 
-- [ ] T013 Bump `version.py` to 1.4.10 and add `CHANGELOG.md` entry for baseline docs
-- [ ] T014 [P] Add `test_baseline_docs.py` asserting README fan-out keywords
-- [ ] T015 Run `python verify_all.py` and `python -m unittest discover -s . -p "test_*.py"`
+- [x] T013 Bump `version.py` to 1.4.10 and add `CHANGELOG.md` entry for baseline docs
+- [x] T014 [P] Add `test_baseline_docs.py` asserting README fan-out keywords
+- [x] T015 Run `python verify_all.py` and `python -m unittest discover -s . -p "test_*.py"`
 
 ---
 

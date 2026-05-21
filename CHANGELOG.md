@@ -3,6 +3,13 @@
 High-level notes for **this fork / branch** (`feature/multi-ui-layouts-v0.5`).  
  Version = `version.py` / Git tag when you run `.\release.ps1` or tag manually.
 
+## v1.4.10
+
+- **Spec Kit baseline delivery** — `specs/001-baseline-spec/`: as-built spec (FR-001–FR-020), plan, tasks, traceability matrix, contracts, quickstart. No bridge logic changes.
+- **Operator docs aligned with fan-out** — `README.md` and `docs/OPERATOR_GUIDE.md` document default-on fan-out vs single-link; new §5.5 two-client bench procedure (one bridge, not two apps).
+- **`bench_fanout_probe.py`** — registers a UDP peer and listens for serial→net replies during fan-out bench tests.
+- **`test_baseline_docs.py`** — guards README/operator-guide/traceability keywords.
+
 ## v1.4.9
 
 ### Auto-Discovery — headless GNSS device watcher

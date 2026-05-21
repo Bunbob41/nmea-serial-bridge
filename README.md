@@ -1,6 +1,8 @@
 # nmea-serial-bridge
 
-**Current release: v1.4.5** — Windows desktop app that **bidirectionally bridges** traffic between **UDP/TCP** and a **serial COM port**. Primary use: **NMEA 0183 text** for survey / USV workflows — Ethernet GNSS or INS (e.g. Trimble R10) → bridge → physical COM destination.
+**Current release: v1.4.10** — Windows desktop app that **bidirectionally bridges** traffic between **UDP/TCP** and a **serial COM port**. Primary use: **NMEA 0183 text** for survey / USV workflows — Ethernet GNSS or INS (e.g. Trimble R10) → bridge → physical COM destination.
+
+**Spec Kit baseline**: [`specs/001-baseline-spec/spec.md`](specs/001-baseline-spec/spec.md) (as-built FR traceability).
 
 **Stack:** Python 3.10+, [PySide6](https://doc.qt.io/qtforpython/), [pyserial-asyncio](https://pyserial-asyncio.readthedocs.io/). Bridge I/O runs on a **background asyncio thread**; the GUI stays on the Qt main thread.
 
@@ -11,7 +13,7 @@
 ## Features
 
 - **Network modes (one per session)**  
-  - **UDP listen** — bind on this PC; replies toward serial go to the **last UDP sender** (typical for bench + boat INS).  
+  - **UDP listen** — bind on this PC; remote devices send in. **Fan-out** (default on): serial→network goes to **every UDP sender** registered this session. Uncheck *Fan-out* on Connect for legacy **single-link** (most recent sender only).  
   - **UDP remote** — fixed peer (advanced).  
   - **TCP server** / **TCP client** — under *Advanced* network; TCP client auto-reconnects with configurable delay.
 
