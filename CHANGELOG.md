@@ -3,6 +3,15 @@
 High-level notes for **this fork / branch** (`feature/multi-ui-layouts-v0.5`).  
  Version = `version.py` / Git tag when you run `.\release.ps1` or tag manually.
 
+## v1.4.9
+
+### Auto-Discovery — headless GNSS device watcher
+
+- **`auto_discovery.py`** (new) — `AutoDiscoveryThread(QThread)` polls USB-serial ports every 2 s. Emits `device_detected(port_name: str)` once a matching device has been seen for 2 consecutive polls (stability guard prevents false fires during Windows USB enumeration churn). Resets after absence so reconnecting the same cable triggers again. Default keyword list covers Trimble, U-blox, NovAtel, Septentrio, Leica, Topcon, Hemisphere, SiRF, Garmin — intentionally excludes generic "FTDI" / "Serial" to avoid matching printers and Arduinos.
+- **"Auto-connect on GNSS device detected" checkbox** — added to the serial connection section (below Auto-reconnect). Off by default; state is persisted to `ui_prefs.json`. When checked: COM port is updated automatically on device appearance; bridge auto-starts if the bridge is stopped and configuration passes `_validate_start()`.
+- **Thread lifecycle** — started at `_finalize_ui()` close, stopped cleanly in `closeEvent()` (waits up to 2.5 s). Safe to run alongside all layouts (Standard / Field / Minimal / Log-first).
+- **Tests** — `test_auto_discovery.py`: 13 new cases covering default keywords, `_scan()` matching (description / manufacturer / case-insensitive / custom keywords), stable-poll guard, no-re-emit guard, device-absence reset, `stop()` flag, and a live `run()` smoke test.
+
 ## v1.4.8
 
 - **Diagnostic scripts work in the portable `.exe` build** — three-part fix:

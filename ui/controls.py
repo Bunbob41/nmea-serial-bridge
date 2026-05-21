@@ -140,6 +140,16 @@ def create_connection_controls(parent: QtWidgets.QWidget) -> None:
         "after a disconnect (USB glitch, cable bump). Network forwarding stays up."
     )
 
+    p.chk_auto_discover = QtWidgets.QCheckBox("Auto-connect on GNSS device detected")
+    p.chk_auto_discover.setChecked(False)
+    p.chk_auto_discover.setToolTip(
+        "Watch for USB-serial GNSS devices (Trimble, U-blox, NovAtel, …) in the "
+        "background.  When a matching device appears, its COM port is selected "
+        "automatically.  If the bridge is stopped and a preset is loaded, it also "
+        "starts the bridge.\n\n"
+        "Leave unchecked for full manual control."
+    )
+
     p.udp_host = QtWidgets.QLineEdit("0.0.0.0")
     p.udp_host.setToolTip(
         "UDP listen bind address on this PC (0.0.0.0 = all interfaces). "
@@ -297,6 +307,7 @@ def create_net_tab_scroll(parent: QtWidgets.QWidget) -> QtWidgets.QScrollArea:
     lay.addWidget(parent.chk_advanced_net)
     lay.addWidget(parent._advanced_net)
     lay.addWidget(parent.chk_serial_auto_reconnect)
+    lay.addWidget(parent.chk_auto_discover)
     lay.addStretch(1)
     scroll = _scrollable(host)
     scroll.setMinimumHeight(220)

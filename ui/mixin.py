@@ -265,8 +265,10 @@ class BridgeLogicMixin:
         self._apply_theme(self._theme_id, persist=False)
         apply_app_icon(self)
         self._restore_file_log_prefs_ui()
+        self._restore_auto_discover_pref()
         self._log_startup_self_check()
         self._on_ui_ready()
+        self._start_auto_discovery_thread()
 
     def _log_startup_self_check(self) -> None:
         from version import __version__
@@ -3759,6 +3761,7 @@ class BridgeLogicMixin:
 
     def closeEvent(self, event: QtGui.QCloseEvent) -> None:
         self._diag_stop()
+        self._stop_auto_discovery_thread()
         pop = getattr(self, "_stats_popout_window", None)
         if pop is not None:
             pop.close()
@@ -3777,4 +3780,83 @@ class BridgeLogicMixin:
             QtCore.QTimer.singleShot(200, self.close)
             return
         event.accept()
+
+    # ------------------------------------------------------------------
+    # Auto-discovery: background GNSS device watcher
+    # ------------------------------------------------------------------
+
+    def _start_auto_discovery_thread(self) -> None:
+        """Start the background USB-serial scanner (low-overhead, always on)."""
+        from auto_discovery import AutoDiscoveryThread
+
+        if getattr(self, "_auto_discovery_thread", None) is not None:
+            return
+        thread = AutoDiscoveryThread(parent=self)
+        thread.device_detected.connect(self._on_auto_device_detected)
+        thread.start()
+        self._auto_discovery_thread = thread
+
+    def _stop_auto_discovery_thread(self) -> None:
+        thread = getattr(self, "_auto_discovery_thread", None)
+        if thread is not None:
+            thread.stop()
+            self._auto_discovery_thread = None
+
+    def _restore_auto_discover_pref(self) -> None:
+        """Apply the persisted auto-discover checkbox state on startup."""
+        from ui.ui_prefs import load_auto_discover_pref
+
+        chk = getattr(self, "chk_auto_discover", None)
+        if chk is None:
+            return
+        enabled = load_auto_discover_pref()
+        chk.setChecked(enabled)
+        chk.toggled.connect(self._on_auto_discover_toggled)
+
+    def _on_auto_discover_toggled(self, enabled: bool) -> None:
+        from ui.ui_prefs import save_auto_discover_pref
+
+        save_auto_discover_pref(enabled)
+
+    def _on_auto_device_detected(self, port_name: str) -> None:
+        """Called on the Qt main thread when a GNSS device is found.
+
+        Always refreshes the COM dropdown and selects the detected port.
+        Auto-starts the bridge only when the user has opted in via the
+        'Auto-connect on GNSS device detected' checkbox AND the bridge is
+        currently stopped.
+        """
+        chk = getattr(self, "chk_auto_discover", None)
+        if chk is None or not chk.isChecked():
+            return
+
+        self._log_ui(f"[AutoDiscover] GNSS device detected: {port_name}")
+
+        # Refresh the port list so the new device appears.
+        self.refresh_ports()
+
+        # Select the detected port in the COM dropdown.
+        idx = self.com_cb.findText(port_name)
+        if idx >= 0:
+            self.com_cb.setCurrentIndex(idx)
+        else:
+            self.com_cb.insertItem(0, port_name)
+            self.com_cb.setCurrentIndex(0)
+
+        # Auto-start only if bridge is idle and validation would pass.
+        if self._is_bridge_running() or getattr(self, "_starting", False):
+            self._log_ui(
+                f"[AutoDiscover] Bridge already active — COM set to {port_name}, not restarting."
+            )
+            return
+
+        err = self._validate_start()
+        if err:
+            self._log_ui(
+                f"[AutoDiscover] {port_name} selected; bridge not started: {err}"
+            )
+            return
+
+        self._log_ui(f"[AutoDiscover] Auto-starting bridge on {port_name}…")
+        self.start_bridge()
 

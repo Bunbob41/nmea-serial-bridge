@@ -712,6 +712,21 @@ def save_bench_setup_prefs(*, hide_dialog: bool) -> None:
     _write_json(data)
 
 
+def load_auto_discover_pref() -> bool:
+    """Return whether the auto-discover checkbox should be checked (default False)."""
+    data = _read_json()
+    raw = data.get("auto_discover")
+    if isinstance(raw, dict):
+        return bool(raw.get("enabled", False))
+    return False
+
+
+def save_auto_discover_pref(enabled: bool) -> None:
+    data = _read_json()
+    data["auto_discover"] = {"enabled": bool(enabled)}
+    _write_json(data)
+
+
 def save_ntrip_prefs(prefs: dict[str, str | bool]) -> None:
     data = _read_json()
     data["ntrip"] = {
