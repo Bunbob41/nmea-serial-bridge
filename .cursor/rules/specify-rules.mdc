@@ -4,8 +4,8 @@ alwaysApply: true
 
 <!-- SPECKIT START -->
 For additional context about technologies to be used, project structure,
-shell commands, and other important information, read the current plan under
-`specs/[feature]/plan.md`. Non-negotiable project gates live in
-`.specify/memory/constitution.md` (bridge-core separation, survey operator trust,
-verify_all + unittest, version/CHANGELOG, bounded queues/resilience).
+shell commands, and other important information, read
+`specs/001-baseline-spec/plan.md` and `specs/001-baseline-spec/quickstart.md`.
+Non-negotiable project gates live in `.specify/memory/constitution.md`.
+Active baseline spec: `specs/001-baseline-spec/spec.md` (FR-001–FR-020).
 <!-- SPECKIT END -->
