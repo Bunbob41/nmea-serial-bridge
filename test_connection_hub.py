@@ -3,19 +3,19 @@ from __future__ import annotations
 
 import unittest
 
-from PySide6 import QtWidgets
-
 from discovery_service import DiscoverySnapshot, NetworkCardInfo, SerialDeviceInfo
 from ui.connection_hub import ConnectionHubWidget
+from ui.qt_test_harness import close_all_qt_widgets, ensure_qt_app
 
 
 class TestConnectionHubWidget(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        if not QtWidgets.QApplication.instance():
-            cls._app = QtWidgets.QApplication([])
-        else:
-            cls._app = QtWidgets.QApplication.instance()
+        cls._app = ensure_qt_app([])
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        close_all_qt_widgets()
 
     def test_snapshot_renders_and_click_emits(self) -> None:
         hub = ConnectionHubWidget()
@@ -44,6 +44,22 @@ class TestConnectionHubWidget(unittest.TestCase):
         hub._on_card_clicked("serial:b")
         self.assertEqual(emitted, ["serial:b"])
         self.assertEqual(hub.selected_device_id(), "serial:b")
+
+    def test_refresh_unlock_signals(self) -> None:
+        hub = ConnectionHubWidget()
+        refreshed: list[bool] = []
+        unlocked: list[bool] = []
+        hub.refresh_requested.connect(lambda: refreshed.append(True))
+        hub.unlock_requested.connect(lambda: unlocked.append(True))
+        hub.btn_refresh.click()
+        hub.btn_unlock.click()
+        self.assertEqual(refreshed, [True])
+        self.assertEqual(unlocked, [True])
+
+    def test_column_count_wide(self) -> None:
+        hub = ConnectionHubWidget()
+        hub.resize(800, 400)
+        self.assertGreaterEqual(hub._column_count_for_width(), 2)
 
 
 if __name__ == "__main__":

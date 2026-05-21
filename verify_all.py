@@ -15,6 +15,7 @@ from pathlib import Path
 from bench_config import load_bench_defaults
 from bench_udp_test import port_has_listener
 from py_interpreter import cli_python_executable, subprocess_no_console_kwargs
+from ui.qt_test_harness import is_windows_qt_shutdown_exit, unittest_output_indicates_ok
 
 ROOT = Path(__file__).resolve().parent
 PY = cli_python_executable()
@@ -35,6 +36,35 @@ def _has_traceback(text: str) -> bool:
     return bool(_TRACEBACK_RE.search(text or ""))
 
 
+def _step_success(
+    name: str,
+    code: int | None,
+    stdout: str,
+    stderr: str,
+    *,
+    tb_seen: bool,
+) -> bool:
+    if tb_seen:
+        return False
+    if code == 0:
+        return True
+    if not is_windows_qt_shutdown_exit(code):
+        return False
+    if name == "unittest" and unittest_output_indicates_ok(stdout, stderr):
+        print(
+            "[verify_all] NOTE: unittest Qt shutdown fast-fail (0xC0000409) after OK — treated as pass.",
+            flush=True,
+        )
+        return True
+    if name == "bench_gui_smoke" and "All UIs OK" in (stdout or ""):
+        print(
+            "[verify_all] NOTE: bench_gui_smoke Qt shutdown fast-fail (0xC0000409) after OK — treated as pass.",
+            flush=True,
+        )
+        return True
+    return False
+
+
 def run(name: str, args: list[str], *, echo_output: bool = True) -> tuple[int, bool]:
     print(f"\n>> {name}: {' '.join(args)}", flush=True)
     proc = subprocess.run(
@@ -49,6 +79,8 @@ def run(name: str, args: list[str], *, echo_output: bool = True) -> tuple[int, b
     if echo_output and proc.stderr:
         print(proc.stderr, end="" if proc.stderr.endswith("\n") else "\n", flush=True)
     tb_seen = _has_traceback(proc.stdout or "") or _has_traceback(proc.stderr or "")
+    if _step_success(name, proc.returncode, proc.stdout or "", proc.stderr or "", tb_seen=tb_seen):
+        return 0, False
     return proc.returncode, tb_seen
 
 
@@ -77,10 +109,7 @@ def main() -> int:
 
     steps: list[tuple[str, list[str] | None]] = [
         ("compileall", None),
-        (
-            "unittest",
-            ["-m", "unittest", "discover", "-s", str(ROOT), "-p", "test_*.py", "-q"],
-        ),
+        ("unittest", ["tools/run_unittests.py"]),
         ("com_free", ["com_free.py"]),
         ("check_setup", ["check_setup.py"]),
         ("bench_gui_smoke", ["bench_gui_smoke.py"]),

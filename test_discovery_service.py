@@ -8,10 +8,12 @@ from discovery_service import (
     DEFAULT_KEYWORDS,
     build_network_cards,
     build_snapshot,
+    merge_discovered_network_cards,
     probe_udp_port_available,
     scan_serial_ports,
     serial_device_id,
 )
+from network_scanner import NetworkScanResult
 
 
 def _make_port(device: str, description: str = "", manufacturer: str = "", hwid: str = ""):
@@ -69,6 +71,41 @@ class TestBuildSnapshot(unittest.TestCase):
             snap, counts = build_snapshot()
         self.assertIsInstance(counts, dict)
         self.assertEqual(len(snap.network_cards), 1)
+
+    def test_merge_discovered_hosts(self) -> None:
+        base = build_network_cards(default_udp_port=10110)
+        scan = [
+            NetworkScanResult(
+                host="192.168.1.50",
+                mac="",
+                open_ports=(10110,),
+                method="udp_probe",
+                label="192.168.1.50 (UDP 10110)",
+                stale=False,
+                last_seen_mono=0.0,
+            )
+        ]
+        merged = merge_discovered_network_cards(base, scan)
+        self.assertGreater(len(merged), len(base))
+        ids = [c.device_id for c in merged]
+        self.assertTrue(any("discovered" in i for i in ids))
+
+    def test_build_snapshot_with_scan_results(self) -> None:
+        with patch("discovery_service.serial.tools.list_ports.comports", return_value=[]):
+            snap, _ = build_snapshot(
+                network_scan_results=[
+                    NetworkScanResult(
+                        "10.0.0.5",
+                        "",
+                        (10110,),
+                        "udp_probe",
+                        "10.0.0.5",
+                        False,
+                        0.0,
+                    )
+                ]
+            )
+        self.assertTrue(any("10.0.0.5" in c.host for c in snap.network_cards))
 
 
 class TestProbeUdpPort(unittest.TestCase):

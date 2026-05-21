@@ -3,6 +3,17 @@
 High-level notes for **this fork / branch** (`feature/multi-ui-layouts-v0.5`).  
  Version = `version.py` / Git tag when you run `.\release.ps1` or tag manually.
 
+## v1.6.0
+
+- **Connection Hub Phase 2** — responsive card grid (1–3 columns, card-only scroll), **Refresh discovery** (ARP + bounded UDP probes on survey ports), **Unlock ports** (Smart Release COM without restart), traffic **QoS** chips on the active card from bridge stats.
+- **`network_scanner.py`** — LAN host list from `arp -a`, `scan_network()` with host/port budget; **`port_release.py`** — COM lock probe and smart release; **`ui/discovery_worker.py`**, **`ui/hub_quality.py`**, **`ui/connection_fields.py`**.
+- **Field layout** — **Refresh** / **Unlock** on the bottom strip wired to the same handlers as Standard.
+- **Tests** — `test_network_scanner.py`, `test_port_release.py`, `test_hub_quality.py`, `test_connection_fields.py`; extended discovery/hub/connect-panel tests.
+
+## v1.5.1
+
+- **verify_all / Qt teardown** — `ui/qt_test_harness.py`, `tools/run_unittests.py`, and `verify_all.py` treat Windows `0xC0000409` fast-fail as pass when unittest/GUI smoke output already shows OK. `bench_gui_smoke.py` closes windows and exits cleanly.
+
 ## v1.5.0
 
 - **Connection Hub (Connect tab)** — card grid for detected GNSS serial ports and UDP listen context; selection drives COM/UDP for Start with per-device **last-known-good** in `ui_prefs.json`. Legacy serial/network fields live under collapsible **Manual override**.

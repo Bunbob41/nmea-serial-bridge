@@ -5,9 +5,11 @@ alwaysApply: true
 <!-- SPECKIT START -->
 For additional context about technologies to be used, project structure,
 shell commands, and other important information, read
-`specs/003-connection-hub-overhaul/plan.md` and
+`specs/004-hub-network-discovery/plan.md` and
+`specs/004-hub-network-discovery/quickstart.md` (active), plus phase-1
 `specs/003-connection-hub-overhaul/quickstart.md`.
 Non-negotiable project gates live in `.specify/memory/constitution.md`.
-Active feature: Connection Hub (`specs/003-connection-hub-overhaul/spec.md`, FR-301–315).
+Active feature: Connection Hub Phase 2 (`specs/004-hub-network-discovery/`, FR-401–410).
+Phase 1 as-built: `specs/003-connection-hub-overhaul/` (v1.5.x).
 Baseline reference: `specs/001-baseline-spec/spec.md` (FR-001–FR-021).
 <!-- SPECKIT END -->

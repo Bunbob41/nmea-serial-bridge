@@ -44,6 +44,7 @@ class NetworkCardInfo:
     port_available: bool
     peer_count: int
     status: str  # ready | port_busy | running
+    discovery_source: str = "passive"  # passive | arp | udp_probe
 
 
 @dataclass
@@ -52,6 +53,7 @@ class DiscoverySnapshot:
     serial_devices: list[SerialDeviceInfo] = field(default_factory=list)
     network_cards: list[NetworkCardInfo] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
+    scan_note: str = ""
 
 
 def _combined_port_text(port: Any) -> str:
@@ -192,6 +194,42 @@ def build_network_cards(
     return cards
 
 
+def merge_discovered_network_cards(
+    cards: list[NetworkCardInfo],
+    network_scan_results: list,
+    *,
+    default_udp_port: int = 10110,
+) -> list[NetworkCardInfo]:
+    """Append LAN-discovered cards; dedupe by host+port."""
+    from network_scanner import NetworkScanResult
+
+    seen = {(c.host, c.port) for c in cards}
+    out = list(cards)
+    for item in network_scan_results or []:
+        if not isinstance(item, NetworkScanResult):
+            continue
+        port = int(item.open_ports[0]) if item.open_ports else default_udp_port
+        key = (item.host, port)
+        if key in seen:
+            continue
+        seen.add(key)
+        method = item.method if item.open_ports else "arp"
+        out.append(
+            NetworkCardInfo(
+                device_id=f"net:discovered:{item.host}:{port}",
+                label=item.label or f"LAN {item.host}:{port}",
+                mode_hint="udp_listen",
+                host=item.host,
+                port=port,
+                port_available=True,
+                peer_count=0,
+                status="ready",
+                discovery_source=method,
+            )
+        )
+    return out
+
+
 def build_snapshot(
     *,
     keywords: Sequence[str] = DEFAULT_KEYWORDS,
@@ -202,6 +240,7 @@ def build_snapshot(
     udp_host: str = "0.0.0.0",
     udp_port: int = 10110,
     selected_port: Optional[str] = None,
+    network_scan_results: Optional[list] = None,
 ) -> tuple[DiscoverySnapshot, dict[str, int]]:
     serial_devices, counts = scan_serial_ports(
         keywords=keywords,
@@ -215,16 +254,26 @@ def build_snapshot(
         default_udp_host=udp_host,
         default_udp_port=udp_port,
     )
+    network_cards = merge_discovered_network_cards(
+        network_cards,
+        network_scan_results or [],
+        default_udp_port=udp_port,
+    )
     errors: list[str] = []
     for card in network_cards:
         if card.status == "port_busy":
             errors.append(f"UDP port {card.port} in use on {card.host}")
+    scan_note = ""
+    if network_scan_results is not None:
+        n = len([r for r in network_scan_results if r])
+        scan_note = f"LAN scan: {n} host(s)" if n else "LAN scan: no extra hosts"
     return (
         DiscoverySnapshot(
             mono_ts=time.monotonic(),
             serial_devices=serial_devices,
             network_cards=network_cards,
             errors=errors,
+            scan_note=scan_note,
         ),
         counts,
     )

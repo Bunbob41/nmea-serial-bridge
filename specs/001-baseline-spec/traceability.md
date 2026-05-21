@@ -54,7 +54,7 @@ Recorded so failures on developer PCs are not mistaken for product regressions.
 | Step | Typical failure | Cause | Waiver / remediation |
 |------|-----------------|-------|----------------------|
 | `check_setup` / UDP probe | Port **10110 in use** | **OpenCPN** or another app bound to the bench UDP port | Quit OpenCPN (or change preset port); re-run. `verify_all` skips headless/stress when port busy — message: *hardware stress steps skipped*. |
-| `bench_gui_smoke` | Exit `3221226505` or similar | Qt GUI smoke on headless CI, GPU/driver, or display policy | Run locally with interactive desktop; treat as **environment waiver** if smoke passes on operator PC. Not a substitute for SC-003. |
+| `bench_gui_smoke` | Exit `3221226505` (0xC0000409) after OK | PySide6 Windows teardown fast-fail | `bench_gui_smoke.py` uses `exit_after_qt_work`; `verify_all.py` treats post-OK fast-fail as pass. Re-run `python verify_all.py` if still flagged. |
 | `bench_stress` | Skipped with port in use | Same as OpenCPN conflict | Free port or run `bench_stress.py` manually when COM+UDP exclusive. |
 
 **Last documented verify run** (2026-05-20, branch `2028-baseline-version-sync`): unittest **218 OK**;

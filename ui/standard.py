@@ -110,7 +110,7 @@ class BridgeWindowStandard(BridgeLogicMixin, QtWidgets.QWidget):
         connect_scroll.viewport().setObjectName("connectSectionScrollViewport")
         connect_scroll.viewport().setAttribute(QtCore.Qt.WidgetAttribute.WA_StyledBackground, True)
         connect_scroll.setWidget(connect_body)
-        connect_scroll.setMinimumHeight(120)
+        connect_scroll.setMinimumHeight(180)
         connect_scroll.setSizePolicy(
             QtWidgets.QSizePolicy.Policy.Expanding,
             QtWidgets.QSizePolicy.Policy.Expanding,

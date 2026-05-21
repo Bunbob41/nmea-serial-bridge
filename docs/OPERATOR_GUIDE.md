@@ -213,8 +213,11 @@ The bridge does not configure routers or VPN — only opens sockets on the Windo
 
 ### Connect (Standard only)
 
-- **Connection hub** — card grid at the top of **Serial & network**: pick a detected GNSS COM port or UDP listen context; selection fills COM/baud or listen host/port for **Start**. Successful starts save **last-known-good** per device.
+- **Connection hub** — card grid at the top of **Serial & network**: pick a detected GNSS COM port, UDP listen context, or a **LAN-discovered** host (after **Refresh discovery**). Selection fills COM/baud or listen host/port for **Start**. The active card shows **QoS** (Hz / drops) while the bridge is running. Successful starts save **last-known-good** per device.
+- **Refresh discovery** — scans the local ARP table and sends short UDP probes on survey ports (10110, 4001, 10111) to find peers; completes in a few seconds. Does not replace your INS configuration — it surfaces likely targets on the LAN.
+- **Unlock ports** — tries to release a stuck COM (e.g. PuTTY left open) without restarting the app. Blocked while the bridge is **Running** on that COM; stop the bridge first.
 - **Manual override** — expand the checkbox group below the hub for full COM, fan-out, TCP sink mirror, and **Advanced network** (TCP/UDP remote). When override is on and you edit fields, hub card defaults are ignored until you collapse override or pick a card again.
+- **Bench walkthrough** — see `specs/004-hub-network-discovery/quickstart.md` for resize, refresh, unlock, QoS, and two-sender LAN checks.
 - **Run** — **Start bridge** / **Stop bridge** (always visible at top of tab).
 - **Intent hint** — one-line guidance for preset, UDP listen, or TCP mode (full text on hover).
 - **COM / Baud / Refresh** — serial toward target device or com0com (under Manual override when hub is shown).

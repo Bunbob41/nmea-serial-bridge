@@ -185,6 +185,9 @@ class ConnectPanelSizesTests(unittest.TestCase):
         self.assertTrue(connect_panels._default_collapsed("hint"))
         self.assertTrue(connect_panels._default_collapsed("ntrip"))
 
+    def test_connection_panel_default_height_for_hub(self) -> None:
+        self.assertGreaterEqual(connect_panels._DEFAULT_PANEL_HEIGHTS["connection"], 360)
+
     def test_splitter_target_uses_tab_height(self) -> None:
         host = MagicMock()
         tab = MagicMock()

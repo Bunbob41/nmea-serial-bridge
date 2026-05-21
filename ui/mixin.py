@@ -1782,6 +1782,9 @@ class BridgeLogicMixin:
         self._manual_override_dirty = False
         hub.selection_changed.connect(self._on_hub_selection)
         hub.manual_override_toggled.connect(self._on_manual_override_toggled)
+        hub.refresh_requested.connect(self._on_hub_refresh_discovery)
+        hub.unlock_requested.connect(self._on_hub_unlock_ports)
+        self._discovery_worker = None
         for w in (
             self.com_cb,
             self.baud_edit,
@@ -1823,12 +1826,7 @@ class BridgeLogicMixin:
         self._discovery_timer = timer
         QtCore.QTimer.singleShot(0, self._poll_discovery_snapshot)
 
-    def _poll_discovery_snapshot(self) -> None:
-        from discovery_service import build_snapshot
-
-        hub = getattr(self, "connection_hub", None)
-        if hub is None:
-            return
+    def _discovery_scan_params(self) -> dict:
         presets: list[dict] = []
         try:
             from bench_config import list_preset_names, load_preset
@@ -1844,17 +1842,120 @@ class BridgeLogicMixin:
             udp_port = int(self.udp_port.text().strip())
         except ValueError:
             udp_port = 10110
+        skip_bind: Optional[int] = None
+        if self._is_bridge_running() and self.bridge and getattr(self.bridge, "udp_listen", None):
+            from bridge_core import NetMode
+
+            if self.bridge.mode == NetMode.UDP_LISTEN:
+                skip_bind = int(self.bridge.udp_listen[1])
+        return {
+            "stable_counts": getattr(self, "_discovery_stable_counts", None),
+            "presets": presets,
+            "active_preset": getattr(self, "_active_preset_name", None),
+            "bridge_stats": getattr(self, "_bridge_stats_cache", None),
+            "udp_host": self.udp_host.text().strip() or "0.0.0.0",
+            "udp_port": udp_port,
+            "selected_port": self.com_cb.currentText().strip() or None,
+            "skip_bind_port": skip_bind,
+        }
+
+    def _cancel_discovery_worker(self) -> None:
+        worker = getattr(self, "_discovery_worker", None)
+        if worker is not None:
+            worker.cancel()
+            if worker.isRunning():
+                worker.wait(3000)
+            self._discovery_worker = None
+
+    def _on_hub_refresh_discovery(self) -> None:
+        hub = getattr(self, "connection_hub", None)
+        if hub is None:
+            return
+        self._cancel_discovery_worker()
+        from ui.discovery_worker import DiscoveryScanWorker
+
+        hub.set_scan_busy(True)
+        worker = DiscoveryScanWorker(self._discovery_scan_params(), full_network_scan=True, parent=self)
+        worker.snapshot_ready.connect(self._on_discovery_worker_snapshot)
+        worker.scan_failed.connect(self._on_discovery_worker_failed)
+        worker.finished.connect(lambda: hub.set_scan_busy(False))
+        self._discovery_worker = worker
+        worker.start()
+
+    def _on_discovery_worker_snapshot(self, snap: object, counts: object) -> None:
+        hub = getattr(self, "connection_hub", None)
+        if hub is not None and snap is not None:
+            self._discovery_stable_counts = counts if isinstance(counts, dict) else {}
+            hub.set_snapshot(snap)
+            self._update_field_connect_summary()
+        self._cancel_discovery_worker()
+
+    def _on_discovery_worker_failed(self, message: str) -> None:
+        self._log_ui(f"[Discovery] Scan failed: {message}")
+        hub = getattr(self, "connection_hub", None)
+        if hub is not None:
+            hub.set_scan_busy(False)
+        self._poll_discovery_snapshot()
+        self._cancel_discovery_worker()
+
+    def _on_hub_unlock_ports(self) -> None:
+        from port_release import hint_udp_listen_busy, smart_release_com
+
+        from ui.connection_fields import parse_baud
+
+        hub = getattr(self, "connection_hub", None)
+        com = self.com_cb.currentText().strip()
+        baud = parse_baud(self.baud_edit.text()) or 115200
+        running = self._is_bridge_running()
+        bridge_com = self.bridge.com if self.bridge else None
+        state = smart_release_com(
+            com,
+            baud,
+            bridge_running=running,
+            bridge_com=bridge_com,
+        )
+        if not state.safe_to_release:
+            QtWidgets.QMessageBox.information(self, "Unlock ports", state.reason)
+            return
+        if state.last_attempt_ok:
+            self._log_ui(f"[Unlock] {state.reason}")
+        else:
+            self._log_ui(f"[Unlock] {state.reason}")
+            QtWidgets.QMessageBox.warning(self, "Unlock ports", state.reason)
+        try:
+            udp_port = int(self.udp_port.text().strip())
+        except ValueError:
+            udp_port = 10110
+        hint = hint_udp_listen_busy(self.udp_host.text().strip() or "0.0.0.0", udp_port)
+        if hint:
+            self._log_ui(f"[Unlock] {hint}")
+        self.refresh_ports()
+        if hub is not None:
+            self._on_hub_refresh_discovery()
+
+    def _poll_discovery_snapshot(self) -> None:
+        from discovery_service import build_snapshot
+
+        hub = getattr(self, "connection_hub", None)
+        if hub is None:
+            return
+        if getattr(self, "_discovery_worker", None) is not None and self._discovery_worker.isRunning():
+            return
+        params = self._discovery_scan_params()
         snap, self._discovery_stable_counts = build_snapshot(
-            stable_counts=getattr(self, "_discovery_stable_counts", None),
-            presets=presets,
-            active_preset=getattr(self, "_active_preset_name", None),
-            bridge_stats=getattr(self, "_bridge_stats_cache", None),
-            udp_host=self.udp_host.text().strip() or "0.0.0.0",
-            udp_port=udp_port,
-            selected_port=self.com_cb.currentText().strip() or None,
+            stable_counts=params.get("stable_counts"),
+            presets=params.get("presets"),
+            active_preset=params.get("active_preset"),
+            bridge_stats=params.get("bridge_stats"),
+            udp_host=params.get("udp_host"),
+            udp_port=params.get("udp_port"),
+            selected_port=params.get("selected_port"),
+            network_scan_results=None,
         )
         hub.set_snapshot(snap)
         self._update_field_connect_summary()
+        if self._is_bridge_running():
+            self._apply_hub_quality()
 
     def _update_field_connect_summary(self) -> None:
         lbl = getattr(self, "_field_connect_summary", None)
@@ -1980,6 +2081,20 @@ class BridgeLogicMixin:
         if not device_id:
             return
         save_last_known_good(device_id, self._collect_last_known_good_config())
+
+    def _apply_hub_quality(self) -> None:
+        from ui.hub_quality import quality_from_bridge_stats
+
+        hub = getattr(self, "connection_hub", None)
+        if hub is None:
+            return
+        stats = getattr(self, "_bridge_stats_cache", None) or {}
+        if self.bridge:
+            stats = {**stats, "running": True}
+        else:
+            stats = {**stats, "running": False}
+        device_id = hub.selected_device_id()
+        hub.set_quality(device_id, quality_from_bridge_stats(stats))
 
     def _apply_startup_connection_fields(self) -> None:
         """Load last-used named preset (or built-in Desk test)."""
@@ -2162,12 +2277,11 @@ class BridgeLogicMixin:
             return "Start already in progress."
         if not self.com_cb.currentText().strip():
             return "Select a COM port (Refresh ports if the list is empty)."
-        try:
-            baud = int(self.baud_edit.text())
-            if baud <= 0:
-                raise ValueError
-        except ValueError:
-            return "Enter a valid baud rate (e.g. 115200)."
+        from ui.connection_fields import validate_baud, validate_udp_port
+
+        baud_err = validate_baud(self.baud_edit.text())
+        if baud_err:
+            return baud_err
 
         if self.chk_advanced_net.isChecked():
             try:
@@ -3114,6 +3228,7 @@ class BridgeLogicMixin:
         if hub is not None and (_time.monotonic() - getattr(self, "_last_hub_poll_mono", 0.0)) >= 2.0:
             self._last_hub_poll_mono = _time.monotonic()
             self._poll_discovery_snapshot()
+        self._apply_hub_quality()
         from ui.controls import elide_status_label
 
         elide_status_label(self.lbl_stats, format_live_stats_line(merged))
@@ -4002,6 +4117,7 @@ class BridgeLogicMixin:
         self._update_status_bar("Serial: stopped", "Network: stopped")
         self._refresh_nmea_status_chip()
         self._sync_preset_action_buttons()
+        self._apply_hub_quality()
         pending = self._presets_menu_pending
         if pending:
             self._presets_menu_pending = None
@@ -4011,6 +4127,7 @@ class BridgeLogicMixin:
 
     def closeEvent(self, event: QtGui.QCloseEvent) -> None:
         self._diag_stop()
+        self._cancel_discovery_worker()
         self._stop_auto_discovery_thread()
         pop = getattr(self, "_stats_popout_window", None)
         if pop is not None:

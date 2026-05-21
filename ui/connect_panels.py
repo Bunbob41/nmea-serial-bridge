@@ -56,7 +56,7 @@ _DEFAULT_PANEL_HEIGHTS: dict[str, int] = {
     "hint": 48,
     "quick_log": 120,
     "quick_terminal": 120,
-    "connection": 260,
+    "connection": 360,
     "ntrip": 110,
 }
 

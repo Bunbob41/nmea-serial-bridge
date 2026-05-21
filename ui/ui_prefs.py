@@ -740,6 +740,26 @@ def load_last_known_good(device_id: str) -> Optional[dict]:
     return entry if isinstance(entry, dict) else None
 
 
+def load_discovery_scan_prefs() -> dict:
+    data = _read_json()
+    raw = data.get("discovery_scan")
+    if not isinstance(raw, dict):
+        return {"background_enabled": False, "background_interval_s": 30}
+    return {
+        "background_enabled": bool(raw.get("background_enabled", False)),
+        "background_interval_s": max(10, int(raw.get("background_interval_s", 30))),
+    }
+
+
+def save_discovery_scan_prefs(*, background_enabled: bool, background_interval_s: int) -> None:
+    data = _read_json()
+    data["discovery_scan"] = {
+        "background_enabled": bool(background_enabled),
+        "background_interval_s": max(10, int(background_interval_s)),
+    }
+    _write_json(data)
+
+
 def save_last_known_good(device_id: str, config: dict) -> None:
     did = (device_id or "").strip()
     if not did or not isinstance(config, dict):
