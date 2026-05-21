@@ -14,7 +14,8 @@ Capture the **current** NMEA Serial Bridge product behavior as the Spec Kit base
 Future features MUST declare what they add, change, or deprecate relative to this document.
 This spec describes **what operators can do today**, not a net-new implementation backlog.
 
-**Baseline release referenced**: v1.4.9 (survey Ethernet ↔ COM bridge, Windows desktop).
+**Baseline release referenced**: **Behavior** v1.4.9+ (includes auto-discovery); **doc delivery**
+v1.4.10+ (see `version.py`). Frozen exe metadata must match `version.py` via `version_info.txt`.
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -204,6 +205,14 @@ Diagnostics without losing bridge responsiveness.
 - **FR-018**: The product MUST expose diagnostics entry points (checklists, burst/stress
   helpers, verification guidance) from the UI where the install supports them.
 
+**Auto-discovery (v1.4.9+)**
+
+- **FR-021**: The product MUST optionally watch USB-serial ports for survey GNSS adapters and,
+  when enabled by the operator, auto-select the detected COM port and auto-start the bridge
+  when configuration validates. Detection MUST use a stability guard (consecutive polls) to
+  avoid false triggers during USB enumeration churn, and MUST reset after device absence so
+  reconnecting the same cable can trigger again.
+
 **Out of scope (baseline)**
 
 - **FR-019**: The baseline product does NOT provide kernel virtual COM, passive kernel sniff,
@@ -220,6 +229,8 @@ Diagnostics without losing bridge responsiveness.
 - **Drop / reject counters**: Evidence of backpressure or strict-mode filtering; shown in status
   and HUD.
 - **Survey quality snapshot**: Latest GGA-derived fix/sat/HDOP state for operator assurance.
+- **Auto-discovery watcher**: Background poll of serial port list; optional auto-connect policy
+  driven by operator checkbox and `ui_prefs.json`.
 
 ## Success Criteria *(mandatory)*
 
@@ -231,10 +242,11 @@ Diagnostics without losing bridge responsiveness.
   15 minutes using only the operator guide and in-app Diagnostics hints.
 - **SC-003**: Under sustained 5 Hz NMEA ingress in Passthrough mode, the UI remains interactive
   (resize, Stop, HUD open/close) for a 30-minute observation window without deadlock.
+  Validated per [sc003-hud-stress-validation.md](./sc003-hud-stress-validation.md).
 - **SC-004**: With two UDP clients registered and fan-out enabled, both clients receive
   serial-originated traffic within 5 seconds of serial activity starting.
-- **SC-005**: 100% of baseline functional requirements (FR-001 through FR-018) map to at
-  least one acceptance scenario or edge case in this spec for traceability in future plans.
+- **SC-005**: 100% of baseline functional requirements (FR-001 through FR-021) map to at
+  least one acceptance scenario, edge case, or traceability row for future plans.
 - **SC-006**: Future feature specs explicitly state which FR IDs they extend, modify, or
   supersede when opened against this baseline.
 
@@ -249,5 +261,8 @@ Diagnostics without losing bridge responsiveness.
   the app.
 - Baseline documentation may lag README marketing copy; CHANGELOG and operator guide take
   precedence for fan-out and v1.4.x behavior when they differ from older README bullets.
-- This baseline spec does not mandate new code delivery — it ratifies as-built behavior for
-  Spec Kit planning only.
+- This baseline spec ratifies as-built behavior; it does not require **bridge protocol**
+  changes. Documentation, metadata sync, and bench validation procedures are in scope for
+  cleanup features (see `specs/002-baseline-version-sync/`).
+- **Fan-out UI**: checkbox on Standard **Connect → Run**; Field layout uses **Tools → Presets**
+  (Advanced) for the same settings.

@@ -24,6 +24,15 @@ class TestBaselineDocs(unittest.TestCase):
         body = path.read_text(encoding="utf-8")
         self.assertIn("FR-011", body)
         self.assertIn("FR-020", body)
+        self.assertIn("FR-021", body)
+        self.assertIn("OpenCPN", body)
+
+    def test_sc003_validation_doc_exists(self) -> None:
+        path = ROOT / "specs" / "001-baseline-spec" / "sc003-hud-stress-validation.md"
+        self.assertTrue(path.is_file())
+        body = path.read_text(encoding="utf-8")
+        self.assertIn("bench_udp_test.py", body)
+        self.assertIn("--hz 5", body)
 
 
 if __name__ == "__main__":

@@ -4,7 +4,7 @@
 
 **Created**: 2026-05-20
 
-**Status**: Draft
+**Status**: Approved (implemented via baseline cleanup on branch `2028-baseline-version-sync`)
 
 **Input**: User description: "Baseline cleanup and version sync"
 

@@ -9,6 +9,7 @@ High-level notes for **this fork / branch** (`feature/multi-ui-layouts-v0.5`).
 - **Operator docs aligned with fan-out** — `README.md` and `docs/OPERATOR_GUIDE.md` document default-on fan-out vs single-link; new §5.5 two-client bench procedure (one bridge, not two apps).
 - **`bench_fanout_probe.py`** — registers a UDP peer and listens for serial→net replies during fan-out bench tests.
 - **`test_baseline_docs.py`** — guards README/operator-guide/traceability keywords.
+- **Baseline cleanup** — `version_info.txt` synced to `version.py` (1.4.10) via `tools/sync_version_info.py`; **FR-021** auto-discovery formalized in baseline spec; **SC-003** HUD stress validation doc (`sc003-hud-stress-validation.md`); traceability waivers for OpenCPN UDP port conflict and `bench_gui_smoke` environment failures; `test_version_sync.py` added.
 
 ## v1.4.9
 
