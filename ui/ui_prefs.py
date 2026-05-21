@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 CONFIG_PATH = Path.home() / ".cursor-udp-com-bridge" / "ui_prefs.json"
 PREFS_SCHEMA_VERSION = 2
@@ -724,6 +724,32 @@ def load_auto_discover_pref() -> bool:
 def save_auto_discover_pref(enabled: bool) -> None:
     data = _read_json()
     data["auto_discover"] = {"enabled": bool(enabled)}
+    _write_json(data)
+
+
+def load_last_known_good(device_id: str) -> Optional[dict]:
+    """Per-device last successful bridge settings (COM, UDP, TCP sink, …)."""
+    did = (device_id or "").strip()
+    if not did:
+        return None
+    data = _read_json()
+    lkg = data.get("last_known_good")
+    if not isinstance(lkg, dict):
+        return None
+    entry = lkg.get(did)
+    return entry if isinstance(entry, dict) else None
+
+
+def save_last_known_good(device_id: str, config: dict) -> None:
+    did = (device_id or "").strip()
+    if not did or not isinstance(config, dict):
+        return
+    data = _read_json()
+    lkg = data.get("last_known_good")
+    if not isinstance(lkg, dict):
+        lkg = {}
+    lkg[did] = dict(config)
+    data["last_known_good"] = lkg
     _write_json(data)
 
 

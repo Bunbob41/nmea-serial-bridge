@@ -12,9 +12,9 @@
 
 **Purpose**: Scaffolding and shared types
 
-- [ ] T001 Create `discovery_service.py` with dataclasses `SerialDeviceInfo`, `NetworkCardInfo`, `DiscoverySnapshot` per `data-model.md`
-- [ ] T002 [P] Add `test_discovery_service.py` skeleton importing `DEFAULT_KEYWORDS` from `discovery_service.py`
-- [ ] T003 [P] Create `ui/connection_hub.py` with stub `ConnectionHubWidget` and `EndpointCardWidget` per `contracts/connection-hub-ui.md`
+- [x] T001 Create `discovery_service.py` with dataclasses `SerialDeviceInfo`, `NetworkCardInfo`, `DiscoverySnapshot` per `data-model.md`
+- [x] T002 [P] Add `test_discovery_service.py` skeleton importing `DEFAULT_KEYWORDS` from `discovery_service.py`
+- [x] T003 [P] Create `ui/connection_hub.py` with stub `ConnectionHubWidget` and `EndpointCardWidget` per `contracts/connection-hub-ui.md`
 
 ---
 
@@ -24,12 +24,12 @@
 
 **⚠️ CRITICAL**: No user story UI work until this phase completes
 
-- [ ] T004 Port serial scan + stability guard from `auto_discovery.py` into `discovery_service.py` `scan_serial_ports()`
-- [ ] T005 Implement `probe_udp_port_available()` in `discovery_service.py`
-- [ ] T006 Implement `build_network_cards()` and `build_snapshot()` in `discovery_service.py` (passive/network contextual)
-- [ ] T007 Migrate `test_auto_discovery.py` cases to `test_discovery_service.py`; keep `auto_discovery.py` as thin delegate to service
-- [ ] T008 Add `load_last_known_good()` / `save_last_known_good()` in `ui/ui_prefs.py` keyed by `device_id`
-- [ ] T009 Add discovery poll timer + `_on_discovery_snapshot()` wiring stub in `ui/mixin.py` (2 s coalesced)
+- [x] T004 Port serial scan + stability guard from `auto_discovery.py` into `discovery_service.py` `scan_serial_ports()`
+- [x] T005 Implement `probe_udp_port_available()` in `discovery_service.py`
+- [x] T006 Implement `build_network_cards()` and `build_snapshot()` in `discovery_service.py` (passive/network contextual)
+- [x] T007 Migrate `test_auto_discovery.py` cases to `test_discovery_service.py`; keep `auto_discovery.py` as thin delegate to service
+- [x] T008 Add `load_last_known_good()` / `save_last_known_good()` in `ui/ui_prefs.py` keyed by `device_id`
+- [x] T009 Add discovery poll timer + `_on_discovery_snapshot()` wiring stub in `ui/mixin.py` (2 s coalesced)
 
 **Checkpoint**: `python -m unittest test_discovery_service.py -v` passes
 
@@ -41,16 +41,16 @@
 
 **Independent Test**: Plug GNSS USB → card appears → click → Start opens correct COM (see `quickstart.md` Phase B)
 
-- [ ] T010 [US1] Implement `EndpointCardWidget` serial layout + status chip in `ui/connection_hub.py`
-- [ ] T011 [US1] Implement `ConnectionHubWidget.set_snapshot()` rendering serial cards in `ui/connection_hub.py`
-- [ ] T012 [US1] Wire `selection_changed` signal to `BridgeLogicMixin._on_hub_selection()` in `ui/mixin.py`
-- [ ] T013 [US1] On hub selection load `LastKnownGood` into `com_cb` / `baud_edit` in `ui/mixin.py`
-- [ ] T014 [US1] Embed `ConnectionHubWidget` in Connect `connection` panel via `ui/connect_panels.py`
-- [ ] T015 [US1] Move legacy `create_connection_controls` into collapsible Manual override below hub in `ui/standard.py` / `connect_panels.py`
-- [ ] T016 [US1] Update `_collect_bridge_config()` / `_start_bridge()` to prefer hub selection unless override dirty in `ui/mixin.py`
-- [ ] T017 [US1] Save `LastKnownGood` on successful Start in `ui/mixin.py`
-- [ ] T018 [P] [US1] Add `test_connection_hub.py` — render snapshot with 2 serial cards, click emits `device_id`
-- [ ] T019 [US1] Mark stale card when selected COM missing from latest snapshot in `ui/connection_hub.py`
+- [x] T010 [US1] Implement `EndpointCardWidget` serial layout + status chip in `ui/connection_hub.py`
+- [x] T011 [US1] Implement `ConnectionHubWidget.set_snapshot()` rendering serial cards in `ui/connection_hub.py`
+- [x] T012 [US1] Wire `selection_changed` signal to `BridgeLogicMixin._on_hub_selection()` in `ui/mixin.py`
+- [x] T013 [US1] On hub selection load `LastKnownGood` into `com_cb` / `baud_edit` in `ui/mixin.py`
+- [x] T014 [US1] Embed `ConnectionHubWidget` in Connect `connection` panel via `ui/connect_panels.py`
+- [x] T015 [US1] Move legacy `create_connection_controls` into collapsible Manual override below hub in `ui/standard.py` / `connect_panels.py`
+- [x] T016 [US1] Update `_collect_bridge_config()` / `_start_bridge()` to prefer hub selection unless override dirty in `ui/mixin.py`
+- [x] T017 [US1] Save `LastKnownGood` on successful Start in `ui/mixin.py`
+- [x] T018 [P] [US1] Add `test_connection_hub.py` — render snapshot with 2 serial cards, click emits `device_id`
+- [x] T019 [US1] Mark stale card when selected COM missing from latest snapshot in `ui/connection_hub.py`
 
 **Checkpoint**: Bench plug/unplug USB; card select → Start → NMEA on COM
 
@@ -62,11 +62,11 @@
 
 **Independent Test**: UDP listen Running + sender → card shows peer count; fan-out unchanged (`test_udp_fanout.py`)
 
-- [ ] T020 [US2] Render `NetworkCardInfo` cards in `ConnectionHubWidget` in `ui/connection_hub.py`
-- [ ] T021 [US2] Feed `bridge_stats` from `_tick_stats` / `stats_cb` into `build_snapshot()` in `ui/mixin.py`
-- [ ] T022 [US2] Hub selection for network card applies UDP host/port/mode widgets in `ui/mixin.py`
-- [ ] T023 [US2] Show `port_busy` status when `probe_udp_port_available` false in `ui/connection_hub.py`
-- [ ] T024 [P] [US2] Extend `test_discovery_service.py` for `build_network_cards` with mock stats and busy port
+- [x] T020 [US2] Render `NetworkCardInfo` cards in `ConnectionHubWidget` in `ui/connection_hub.py`
+- [x] T021 [US2] Feed `bridge_stats` from `_tick_stats` / `stats_cb` into `build_snapshot()` in `ui/mixin.py`
+- [x] T022 [US2] Hub selection for network card applies UDP host/port/mode widgets in `ui/mixin.py`
+- [x] T023 [US2] Show `port_busy` status when `probe_udp_port_available` false in `ui/connection_hub.py`
+- [x] T024 [P] [US2] Extend `test_discovery_service.py` for `build_network_cards` with mock stats and busy port
 
 **Checkpoint**: Network card reflects `N peers` during session
 
@@ -78,10 +78,10 @@
 
 **Independent Test**: Override expanded → edit TCP client mode → Save preset → reload
 
-- [ ] T025 [US3] Add `ManualOverridePanel` `QGroupBox` toggled by checkbox in `ui/connection_hub.py`
-- [ ] T026 [US3] When override dirty, `_collect_bridge_config()` ignores hub card defaults in `ui/mixin.py`
-- [ ] T027 [US3] Include override fields in preset serialize/deserialize in `ui/mixin.py` (`_apply_preset_data` / save preset)
-- [ ] T028 [P] [US3] Document override path in `docs/OPERATOR_GUIDE.md` Connect section
+- [x] T025 [US3] Add `ManualOverridePanel` `QGroupBox` toggled by checkbox in `ui/connection_hub.py`
+- [x] T026 [US3] When override dirty, `_collect_bridge_config()` ignores hub card defaults in `ui/mixin.py`
+- [x] T027 [US3] Include override fields in preset serialize/deserialize in `ui/mixin.py` (`_apply_preset_data` / save preset)
+- [x] T028 [P] [US3] Document override path in `docs/OPERATOR_GUIDE.md` Connect section
 
 ---
 
@@ -91,14 +91,14 @@
 
 **Independent Test**: SC-302 in `quickstart.md` — 2 UDP clients + 1 TCP client receive data
 
-- [ ] T029 [US4] Add `TcpSinkConfig` dataclass and fields on `SerialNetBridge` in `bridge_core.py`
-- [ ] T030 [US4] Implement sink `asyncio` server start/stop in `SerialNetBridge.start()` / `abort_now()` in `bridge_core.py`
-- [ ] T031 [US4] Implement `_mirror_to_tcp_sink()` called from `_send_net()` after primary path in `bridge_core.py`
-- [ ] T032 [US4] Expose `tcp_sink_clients` / `tcp_sink_drops` in stats dict in `bridge_core.py`
-- [ ] T033 [P] [US4] Add `test_tcp_sink.py` — fan-out UDP peers + sink client both receive bytes
-- [ ] T034 [US4] Add TCP sink enable + port controls in Manual override or hub network area in `ui/connection_hub.py` / `controls.py`
-- [ ] T035 [US4] Pass `TcpSinkConfig` from mixin `_start_bridge()` in `ui/mixin.py`
-- [ ] T036 [US4] Include `tcp_sink_*` in `LastKnownGood` persistence in `ui/ui_prefs.py`
+- [x] T029 [US4] Add `TcpSinkConfig` dataclass and fields on `SerialNetBridge` in `bridge_core.py`
+- [x] T030 [US4] Implement sink `asyncio` server start/stop in `SerialNetBridge.start()` / `abort_now()` in `bridge_core.py`
+- [x] T031 [US4] Implement `_mirror_to_tcp_sink()` called from `_send_net()` after primary path in `bridge_core.py`
+- [x] T032 [US4] Expose `tcp_sink_clients` / `tcp_sink_drops` in stats dict in `bridge_core.py`
+- [x] T033 [P] [US4] Add `test_tcp_sink.py` — fan-out UDP peers + sink client both receive bytes
+- [x] T034 [US4] Add TCP sink enable + port controls in Manual override or hub network area in `ui/connection_hub.py` / `controls.py`
+- [x] T035 [US4] Pass `TcpSinkConfig` from mixin `_start_bridge()` in `ui/mixin.py`
+- [x] T036 [US4] Include `tcp_sink_*` in `LastKnownGood` persistence in `ui/ui_prefs.py`
 
 **Checkpoint**: `test_tcp_sink.py` + `test_udp_fanout.py` green
 
@@ -110,20 +110,20 @@
 
 **Independent Test**: `python bridge_gui.py --ui field` — SC-303 abbreviated smoke
 
-- [ ] T037 [US5] Add compact connection summary + link to Connect hub in `ui/field.py`
-- [ ] T038 [US5] Ensure Field strip Start/Stop uses hub-derived config when selection set in `ui/mixin.py`
-- [ ] T039 [P] [US5] Verify `bench_gui_smoke.py` passes Field + Standard with hub present
+- [x] T037 [US5] Add compact connection summary + link to Connect hub in `ui/field.py`
+- [x] T038 [US5] Ensure Field strip Start/Stop uses hub-derived config when selection set in `ui/mixin.py`
+- [x] T039 [P] [US5] Verify `bench_gui_smoke.py` passes Field + Standard with hub present
 
 ---
 
 ## Phase 8: Polish & Cross-Cutting
 
-- [ ] T040 Deprecate direct `AutoDiscoveryThread` usage; document migration in `auto_discovery.py` module docstring
-- [ ] T041 [P] Update `docs/OPERATOR_GUIDE.md` with Connection Hub workflow and TCP sink section
-- [ ] T042 [P] Update `README.md` feature list for Connection Hub + TCP sink
-- [ ] T043 Bump `version.py` to **1.5.0**, `CHANGELOG.md`, run `python tools/sync_version_info.py`
-- [ ] T044 Run `python -m unittest discover -s . -p "test_*.py"` and `python verify_all.py`; update `specs/001-baseline-spec/traceability.md` waivers if needed
-- [ ] T045 [P] Add operator quickstart cross-link from `specs/003-connection-hub-overhaul/quickstart.md` to OPERATOR_GUIDE
+- [x] T040 Deprecate direct `AutoDiscoveryThread` usage; document migration in `auto_discovery.py` module docstring
+- [x] T041 [P] Update `docs/OPERATOR_GUIDE.md` with Connection Hub workflow and TCP sink section
+- [x] T042 [P] Update `README.md` feature list for Connection Hub + TCP sink
+- [x] T043 Bump `version.py` to **1.5.0**, `CHANGELOG.md`, run `python tools/sync_version_info.py`
+- [x] T044 Run `python -m unittest discover -s . -p "test_*.py"` and `python verify_all.py`; update `specs/001-baseline-spec/traceability.md` waivers if needed
+- [x] T045 [P] Add operator quickstart cross-link from `specs/003-connection-hub-overhaul/quickstart.md` to OPERATOR_GUIDE
 
 ---
 

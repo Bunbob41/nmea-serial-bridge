@@ -213,9 +213,11 @@ The bridge does not configure routers or VPN — only opens sockets on the Windo
 
 ### Connect (Standard only)
 
+- **Connection hub** — card grid at the top of **Serial & network**: pick a detected GNSS COM port or UDP listen context; selection fills COM/baud or listen host/port for **Start**. Successful starts save **last-known-good** per device.
+- **Manual override** — expand the checkbox group below the hub for full COM, fan-out, TCP sink mirror, and **Advanced network** (TCP/UDP remote). When override is on and you edit fields, hub card defaults are ignored until you collapse override or pick a card again.
 - **Run** — **Start bridge** / **Stop bridge** (always visible at top of tab).
 - **Intent hint** — one-line guidance for preset, UDP listen, or TCP mode (full text on hover).
-- **COM / Baud / Refresh** — serial toward target device or com0com.
+- **COM / Baud / Refresh** — serial toward target device or com0com (under Manual override when hub is shown).
 - **Auto-reconnect COM** — while Running, retry opening COM every 2 s after a disconnect.
 - **Listen host / port** — UDP listen bind on this PC (default path).
 - **Advanced network** — TCP server/client or UDP remote (Standard Connect tab only).

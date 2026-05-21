@@ -1,4 +1,8 @@
-"""Background GNSS/serial device scanner.
+"""Background GNSS/serial device scanner (legacy Qt thread).
+
+Serial matching is delegated to ``discovery_service.scan_serial_ports``.
+For UI card grids use ``discovery_service.build_snapshot`` on a timer
+(see ``BridgeLogicMixin._poll_discovery_snapshot``).
 
 Emits ``device_detected(port_name)`` when a matching USB-serial adapter
 appears and has been stable for *stable_polls* consecutive scans.  This
@@ -22,26 +26,9 @@ from __future__ import annotations
 import time
 from typing import Optional
 
-import serial.tools.list_ports
 from PySide6 import QtCore
 
-# Survey-grade and common GNSS hardware fingerprints.
-# Intentionally omits generic terms like "FTDI", "USB Serial", or "CH340"
-# to avoid false-triggering on printers, Arduinos, and USB hubs.
-DEFAULT_KEYWORDS: tuple[str, ...] = (
-    "Trimble",
-    "GNSS",
-    "U-blox",
-    "ublox",
-    "u-blox",
-    "NovAtel",
-    "Septentrio",
-    "Leica",
-    "Topcon",
-    "Hemisphere",
-    "SiRF",
-    "Garmin",
-)
+from discovery_service import DEFAULT_KEYWORDS, scan_serial_ports
 
 
 class AutoDiscoveryThread(QtCore.QThread):
@@ -73,6 +60,7 @@ class AutoDiscoveryThread(QtCore.QThread):
         self._last_emitted_port: Optional[str] = None
         self._pending_port: Optional[str] = None
         self._stable_count: int = 0
+        self._scan_stable_counts: dict[str, int] = {}
 
     # ------------------------------------------------------------------
     # Internal helpers
@@ -80,12 +68,13 @@ class AutoDiscoveryThread(QtCore.QThread):
 
     def _scan(self) -> Optional[str]:
         """Return the device path of the first matching port, or None."""
-        for port in serial.tools.list_ports.comports():
-            combined = " ".join(
-                filter(None, [port.description, port.manufacturer, port.hwid])
-            ).lower()
-            if any(kw.lower() in combined for kw in self.target_keywords):
-                return port.device
+        devices, self._scan_stable_counts = scan_serial_ports(
+            keywords=self.target_keywords,
+            stable_counts=self._scan_stable_counts,
+            stable_polls_required=self.stable_polls,
+        )
+        if devices:
+            return devices[0].port
         return None
 
     # ------------------------------------------------------------------

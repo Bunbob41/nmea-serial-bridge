@@ -435,6 +435,31 @@ def _connect_splitter_target_height(
     return max(natural, 220)
 
 
+def embed_connection_hub_on_connect_body(
+    win: QtWidgets.QWidget,
+    connect_body: QtWidgets.QWidget,
+    legacy_widgets: list[QtWidgets.QWidget],
+) -> None:
+    """Insert Connection Hub above legacy serial/network controls (manual override)."""
+    from ui.connection_hub import ConnectionHubWidget
+
+    layout = connect_body.layout()
+    if layout is None:
+        return
+    hub = ConnectionHubWidget(connect_body)
+    win.connection_hub = hub
+    legacy_host = QtWidgets.QWidget()
+    legacy_host.setObjectName("manualOverrideLegacyHost")
+    legacy_lay = QtWidgets.QVBoxLayout(legacy_host)
+    legacy_lay.setContentsMargins(0, 0, 0, 0)
+    legacy_lay.setSpacing(6)
+    for widget in legacy_widgets:
+        layout.removeWidget(widget)
+        legacy_lay.addWidget(widget)
+    hub.set_manual_override_panel(legacy_host)
+    layout.insertWidget(2, hub, 1)
+
+
 def configure_connect_tab_scroll(win: QtWidgets.QWidget) -> None:
     """Legacy hook — panel scroll is configured in setup_connect_tab_panels."""
     _ = win

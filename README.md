@@ -33,6 +33,7 @@
 - **UI layouts** — **Standard** (Connect + Presets + tool tabs + log) and **Field** (log-first, survey bar, tools drawer). Launcher remembers choice.
 
 - **Survey workflow** — Survey HUD popout, **GNSS** status (GGA fix / sats / HDOP), product demo teleprompter, preflight menus, themes.
+- **Connection Hub (Standard Connect)** — card grid for detected GNSS COM ports and UDP listen context; **Manual override** for TCP/advanced modes; optional **TCP sink mirror** (parallel egress with fan-out).
 - **Connect tab (Standard)** — collapsible panels, NTRIP corrections (phase 1), quick log/terminal.
 - **Log tab** — full live log (replaces side-only log in Standard).
 

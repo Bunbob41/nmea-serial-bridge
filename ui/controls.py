@@ -160,6 +160,15 @@ def create_connection_controls(parent: QtWidgets.QWidget) -> None:
         "UDP listen port. Bench simulators and INS outputs send datagrams here "
         "(e.g. 127.0.0.1:10110 on one PC)."
     )
+    p.chk_tcp_sink_enable = QtWidgets.QCheckBox("TCP sink mirror (serial→net copy)")
+    p.chk_tcp_sink_enable.setChecked(False)
+    p.chk_tcp_sink_enable.setToolTip(
+        "Optional second egress: TCP server that mirrors the same serial→network bytes "
+        "as UDP fan-out. Independent of UDP listen; does not affect fan-out peers."
+    )
+    p.tcp_sink_port = QtWidgets.QLineEdit("10111")
+    p.tcp_sink_port.setToolTip("TCP port for mirror clients (default 10111).")
+
     p.chk_udp_fanout = QtWidgets.QCheckBox("Fan-out  —  send serial data to all UDP peers")
     p.chk_udp_fanout.setChecked(True)
     p.chk_udp_fanout.setToolTip(
@@ -283,6 +292,7 @@ def create_connection_controls(parent: QtWidgets.QWidget) -> None:
         p.tcp_cli_host,
         p.tcp_cli_port,
         p.tcp_reconnect_spin,
+        p.tcp_sink_port,
     ]
 
 

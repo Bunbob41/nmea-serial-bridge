@@ -3,6 +3,14 @@
 High-level notes for **this fork / branch** (`feature/multi-ui-layouts-v0.5`).  
  Version = `version.py` / Git tag when you run `.\release.ps1` or tag manually.
 
+## v1.5.0
+
+- **Connection Hub (Connect tab)** — card grid for detected GNSS serial ports and UDP listen context; selection drives COM/UDP for Start with per-device **last-known-good** in `ui_prefs.json`. Legacy serial/network fields live under collapsible **Manual override**.
+- **`discovery_service.py`** — Qt-free discovery snapshots (serial stability, UDP port probe, live peer counts); `auto_discovery.py` delegates serial scan to the service.
+- **TCP sink mirror** — optional `TcpSinkConfig` on `SerialNetBridge` mirrors serial→net bytes to a parallel TCP server (independent of UDP fan-out).
+- **Field layout** — compact connection summary line under COM/UDP strip.
+- **Tests** — `test_discovery_service.py`, `test_connection_hub.py`, `test_tcp_sink.py`.
+
 ## v1.4.10
 
 - **Spec Kit baseline delivery** — `specs/001-baseline-spec/`: as-built spec (FR-001–FR-020), plan, tasks, traceability matrix, contracts, quickstart. No bridge logic changes.

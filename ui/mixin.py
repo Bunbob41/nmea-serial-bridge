@@ -1770,7 +1770,216 @@ class BridgeLogicMixin:
         pop.apply_snapshot(merged, serial, network, running=running)
 
     def _on_ui_ready(self) -> None:
-        pass
+        self._wire_connection_hub()
+
+    def _wire_connection_hub(self) -> None:
+        hub = getattr(self, "connection_hub", None)
+        if hub is None:
+            return
+        self._discovery_stable_counts: dict[str, int] = {}
+        self._bridge_stats_cache: dict = {}
+        self._hub_selected_device_id: Optional[str] = None
+        self._manual_override_dirty = False
+        hub.selection_changed.connect(self._on_hub_selection)
+        hub.manual_override_toggled.connect(self._on_manual_override_toggled)
+        for w in (
+            self.com_cb,
+            self.baud_edit,
+            self.udp_host,
+            self.udp_port,
+            getattr(self, "remote_host", None),
+            getattr(self, "remote_port", None),
+        ):
+            if w is None:
+                continue
+            if hasattr(w, "textChanged"):
+                w.textChanged.connect(self._mark_manual_override_dirty)
+            elif hasattr(w, "currentTextChanged"):
+                w.currentTextChanged.connect(self._mark_manual_override_dirty)
+        for rb in (
+            getattr(self, "rb_udp_listen", None),
+            getattr(self, "rb_udp_remote", None),
+            getattr(self, "rb_tcp_server", None),
+            getattr(self, "rb_tcp_client", None),
+        ):
+            if rb is not None:
+                rb.toggled.connect(self._mark_manual_override_dirty)
+        self._start_discovery_poll()
+
+    def _mark_manual_override_dirty(self, *_args: object) -> None:
+        self._manual_override_dirty = True
+
+    def _on_manual_override_toggled(self, enabled: bool) -> None:
+        if not enabled:
+            self._manual_override_dirty = False
+
+    def _start_discovery_poll(self) -> None:
+        if getattr(self, "_discovery_timer", None) is not None:
+            return
+        timer = QtCore.QTimer(self)
+        timer.setInterval(2000)
+        timer.timeout.connect(self._poll_discovery_snapshot)
+        timer.start()
+        self._discovery_timer = timer
+        QtCore.QTimer.singleShot(0, self._poll_discovery_snapshot)
+
+    def _poll_discovery_snapshot(self) -> None:
+        from discovery_service import build_snapshot
+
+        hub = getattr(self, "connection_hub", None)
+        if hub is None:
+            return
+        presets: list[dict] = []
+        try:
+            from bench_config import list_preset_names, load_preset
+
+            for name in list_preset_names()[:12]:
+                try:
+                    presets.append({"name": name, **load_preset(name)})
+                except KeyError:
+                    pass
+        except Exception:
+            presets = []
+        try:
+            udp_port = int(self.udp_port.text().strip())
+        except ValueError:
+            udp_port = 10110
+        snap, self._discovery_stable_counts = build_snapshot(
+            stable_counts=getattr(self, "_discovery_stable_counts", None),
+            presets=presets,
+            active_preset=getattr(self, "_active_preset_name", None),
+            bridge_stats=getattr(self, "_bridge_stats_cache", None),
+            udp_host=self.udp_host.text().strip() or "0.0.0.0",
+            udp_port=udp_port,
+            selected_port=self.com_cb.currentText().strip() or None,
+        )
+        hub.set_snapshot(snap)
+        self._update_field_connect_summary()
+
+    def _update_field_connect_summary(self) -> None:
+        lbl = getattr(self, "_field_connect_summary", None)
+        if lbl is None:
+            return
+        hub = getattr(self, "connection_hub", None)
+        sel = hub.selected_device_id() if hub else None
+        sel_note = f" · hub: {sel}" if sel else ""
+        lbl.setText(
+            f"{self.com_cb.currentText().strip()} @ {self.baud_edit.text().strip()} · "
+            f"UDP {self.udp_host.text().strip()}:{self.udp_port.text().strip()}{sel_note}"
+        )
+
+    def _on_hub_selection(self, device_id: str) -> None:
+        from ui.ui_prefs import load_last_known_good
+
+        self._hub_selected_device_id = device_id
+        hub = getattr(self, "connection_hub", None)
+        lkg = load_last_known_good(device_id)
+        if lkg:
+            self._apply_last_known_good(lkg)
+            return
+        if hub is None:
+            return
+        if device_id.startswith("serial:"):
+            port = hub.find_serial_port(device_id)
+            if port:
+                idx = self.com_cb.findText(port)
+                if idx >= 0:
+                    self.com_cb.setCurrentIndex(idx)
+                else:
+                    self.com_cb.insertItem(0, port)
+                    self.com_cb.setCurrentIndex(0)
+        elif device_id.startswith("net:"):
+            card = hub.find_network_card(device_id)
+            if card:
+                self.rb_udp_listen.setChecked(True)
+                self.udp_host.setText(card.host)
+                self.udp_port.setText(str(card.port))
+        self._mode_toggle()
+        self._refresh_intent_hint()
+
+    def _apply_last_known_good(self, lkg: dict) -> None:
+        com = str(lkg.get("com", "")).strip()
+        if com:
+            idx = self.com_cb.findText(com)
+            if idx >= 0:
+                self.com_cb.setCurrentIndex(idx)
+            else:
+                self.com_cb.insertItem(0, com)
+                self.com_cb.setCurrentIndex(0)
+        if lkg.get("baud") is not None:
+            self.baud_edit.setText(str(lkg["baud"]))
+        if lkg.get("udp_host"):
+            self.udp_host.setText(str(lkg["udp_host"]))
+        if lkg.get("udp_port") is not None:
+            self.udp_port.setText(str(lkg["udp_port"]))
+        fanout = getattr(self, "chk_udp_fanout", None)
+        if fanout is not None and "udp_fanout" in lkg:
+            fanout.setChecked(bool(lkg["udp_fanout"]))
+        sink_chk = getattr(self, "chk_tcp_sink_enable", None)
+        if sink_chk is not None and "tcp_sink_enabled" in lkg:
+            sink_chk.setChecked(bool(lkg["tcp_sink_enabled"]))
+        if getattr(self, "tcp_sink_port", None) is not None and lkg.get("tcp_sink_port"):
+            self.tcp_sink_port.setText(str(lkg["tcp_sink_port"]))
+        mode = str(lkg.get("net_mode", "")).strip()
+        if mode == "udp_remote":
+            self.rb_udp_remote.setChecked(True)
+        elif mode == "tcp_server":
+            self.rb_tcp_server.setChecked(True)
+        elif mode == "tcp_client":
+            self.rb_tcp_client.setChecked(True)
+        else:
+            self.rb_udp_listen.setChecked(True)
+        self._mode_toggle()
+        self._refresh_intent_hint()
+
+    def _should_apply_hub_for_start(self) -> bool:
+        hub = getattr(self, "connection_hub", None)
+        if hub is None:
+            return False
+        if not hub.selected_device_id():
+            return False
+        if hub.manual_override_active() and getattr(self, "_manual_override_dirty", False):
+            return False
+        return True
+
+    def _apply_hub_selection_for_start(self) -> None:
+        hub = getattr(self, "connection_hub", None)
+        if hub is None:
+            return
+        device_id = hub.selected_device_id()
+        if device_id:
+            self._on_hub_selection(device_id)
+
+    def _collect_last_known_good_config(self) -> dict:
+        cfg: dict = {
+            "com": self.com_cb.currentText().strip(),
+            "baud": self.baud_edit.text().strip(),
+            "udp_host": self.udp_host.text().strip(),
+            "udp_port": self.udp_port.text().strip(),
+            "udp_fanout": getattr(self, "chk_udp_fanout", None) is None
+            or self.chk_udp_fanout.isChecked(),
+            "net_mode": "udp_listen",
+        }
+        if self.rb_udp_remote.isChecked():
+            cfg["net_mode"] = "udp_remote"
+        elif self.rb_tcp_server.isChecked():
+            cfg["net_mode"] = "tcp_server"
+        elif self.rb_tcp_client.isChecked():
+            cfg["net_mode"] = "tcp_client"
+        sink_chk = getattr(self, "chk_tcp_sink_enable", None)
+        if sink_chk is not None:
+            cfg["tcp_sink_enabled"] = sink_chk.isChecked()
+            cfg["tcp_sink_port"] = getattr(self, "tcp_sink_port", None) and self.tcp_sink_port.text().strip()
+        return cfg
+
+    def _save_hub_last_known_good(self) -> None:
+        from ui.ui_prefs import save_last_known_good
+
+        hub = getattr(self, "connection_hub", None)
+        device_id = hub.selected_device_id() if hub else getattr(self, "_hub_selected_device_id", None)
+        if not device_id:
+            return
+        save_last_known_good(device_id, self._collect_last_known_good_config())
 
     def _apply_startup_connection_fields(self) -> None:
         """Load last-used named preset (or built-in Desk test)."""
@@ -2123,13 +2332,22 @@ class BridgeLogicMixin:
             udp_port = 0
         fanout_chk = getattr(self, "chk_udp_fanout", None)
         udp_fanout = fanout_chk is None or fanout_chk.isChecked()
-        return {
+        out: dict[str, str | int | bool] = {
             "com": com,
             "baud": baud,
             "udp_host": udp_host,
             "udp_port": udp_port,
             "udp_fanout": udp_fanout,
         }
+        sink_chk = getattr(self, "chk_tcp_sink_enable", None)
+        if sink_chk is not None:
+            out["tcp_sink_enabled"] = sink_chk.isChecked()
+            if getattr(self, "tcp_sink_port", None) is not None:
+                try:
+                    out["tcp_sink_port"] = int(self.tcp_sink_port.text().strip())
+                except ValueError:
+                    out["tcp_sink_port"] = 10111
+        return out
 
     def _validate_connection_preset_fields(self, fields: dict[str, str | int]) -> Optional[str]:
         if not fields["com"]:
@@ -2338,7 +2556,13 @@ class BridgeLogicMixin:
         fanout_chk = getattr(self, "chk_udp_fanout", None)
         if fanout_chk is not None:
             fanout_chk.setChecked(bool(data.get("udp_fanout", True)))
+        sink_chk = getattr(self, "chk_tcp_sink_enable", None)
+        if sink_chk is not None:
+            sink_chk.setChecked(bool(data.get("tcp_sink_enabled", False)))
+        if getattr(self, "tcp_sink_port", None) is not None and data.get("tcp_sink_port"):
+            self.tcp_sink_port.setText(str(data["tcp_sink_port"]))
         self._apply_preset_survey_fields(data)
+        self._update_field_connect_summary()
         if name:
             self._set_active_preset(name)
         if not log:
@@ -2883,6 +3107,13 @@ class BridgeLogicMixin:
         if not self.bridge:
             return
         merged = self._merge_bridge_stats(_d)
+        self._bridge_stats_cache = dict(merged)
+        import time as _time
+
+        hub = getattr(self, "connection_hub", None)
+        if hub is not None and (_time.monotonic() - getattr(self, "_last_hub_poll_mono", 0.0)) >= 2.0:
+            self._last_hub_poll_mono = _time.monotonic()
+            self._poll_discovery_snapshot()
         from ui.controls import elide_status_label
 
         elide_status_label(self.lbl_stats, format_live_stats_line(merged))
@@ -3503,6 +3734,8 @@ class BridgeLogicMixin:
         self._send_raw_manual(where, raw)
 
     def start_bridge(self) -> None:
+        if self._should_apply_hub_for_start():
+            self._apply_hub_selection_for_start()
         err = self._validate_before_start()
         if err:
             self._log_ui(err)
@@ -3575,6 +3808,21 @@ class BridgeLogicMixin:
         _fanout_chk = getattr(self, "chk_udp_fanout", None)
         udp_fanout = _fanout_chk is None or _fanout_chk.isChecked()
 
+        from bridge_core import TcpSinkConfig
+
+        tcp_sink: Optional[TcpSinkConfig] = None
+        sink_chk = getattr(self, "chk_tcp_sink_enable", None)
+        if sink_chk is not None and sink_chk.isChecked():
+            try:
+                sink_port = int(self.tcp_sink_port.text().strip())
+                if sink_port <= 0 or sink_port > 65535:
+                    raise ValueError("TCP sink port must be 1–65535")
+            except ValueError as e:
+                self._log_ui(str(e))
+                QtWidgets.QMessageBox.warning(self, "Cannot start", str(e))
+                return
+            tcp_sink = TcpSinkConfig(enabled=True, bind_port=sink_port)
+
         def build(loop: asyncio.AbstractEventLoop) -> SerialNetBridge:
             common = dict(
                 loop=loop,
@@ -3586,6 +3834,7 @@ class BridgeLogicMixin:
                 file_log=file_log,
                 tcp_reconnect_delay=tcp_reconnect,
                 udp_fanout=udp_fanout,
+                tcp_sink=tcp_sink,
                 nmea_mode=nmea_mode,
                 nmea_filter=nmea_filter,
                 serial_auto_reconnect=getattr(
@@ -3682,6 +3931,7 @@ class BridgeLogicMixin:
 
     def _on_bridge_started(self, b: SerialNetBridge) -> None:
         self._starting = False
+        self._save_hub_last_known_good()
         self._log_tab_auto_timer.start(20_000)
         self._start_ntrip_if_enabled()
         self._reset_ui_log_serial_coalesce()

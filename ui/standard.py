@@ -3,7 +3,11 @@ from __future__ import annotations
 
 from PySide6 import QtCore, QtGui, QtWidgets
 
-from ui.connect_panels import setup_connect_tab_panels, sync_connect_panel_layout
+from ui.connect_panels import (
+    embed_connection_hub_on_connect_body,
+    setup_connect_tab_panels,
+    sync_connect_panel_layout,
+)
 from ui.controls import (
     create_connect_mini_log,
     create_connect_quick_terminal,
@@ -70,7 +74,7 @@ class BridgeWindowStandard(BridgeLogicMixin, QtWidgets.QWidget):
         sf.addRow("COM:", cw)
         sf.addRow("Baud:", self.baud_edit)
         sf.addRow("", self.chk_serial_auto_reconnect)
-        cv.addWidget(ser_box)
+        sf.addRow("", self.chk_auto_discover)
 
         net_box = QtWidgets.QGroupBox("Network (UDP listen)")
         net_box.setObjectName("connectGroupBox")
@@ -86,9 +90,15 @@ class BridgeWindowStandard(BridgeLogicMixin, QtWidgets.QWidget):
         uf.addRow("Listen port:", self.udp_port)
         nv.addLayout(uf)
         nv.addWidget(self.chk_udp_fanout)
+        sink_row = QtWidgets.QHBoxLayout()
+        sink_row.addWidget(self.chk_tcp_sink_enable)
+        sink_row.addWidget(QtWidgets.QLabel("Port:"))
+        sink_row.addWidget(self.tcp_sink_port)
+        sink_row.addStretch(1)
+        nv.addLayout(sink_row)
         nv.addWidget(self.chk_advanced_net)
         nv.addWidget(self._advanced_net)
-        cv.addWidget(net_box)
+        embed_connection_hub_on_connect_body(self, connect_body, [ser_box, net_box])
         cv.addStretch(1)
 
         connect_scroll = QtWidgets.QScrollArea()

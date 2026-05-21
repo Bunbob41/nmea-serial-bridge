@@ -8,10 +8,11 @@ import sys
 import threading
 import time
 from collections import deque
+from dataclasses import dataclass
 from enum import Enum
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
-from typing import Callable, Deque, List, Optional
+from typing import Callable, Deque, List, Optional, Set
 
 import serial
 import serial_asyncio
@@ -226,6 +227,16 @@ class _FileSurveyLog:
         )
 
 
+@dataclass
+class TcpSinkConfig:
+    """Optional TCP mirror of serial→net egress (independent of primary NetMode)."""
+
+    enabled: bool = False
+    bind_host: str = "0.0.0.0"
+    bind_port: int = 10111
+    max_clients: int = 8
+
+
 class UDPRecvProtocol(asyncio.DatagramProtocol):
     def __init__(self, bridge: "SerialNetBridge"):
         self.bridge = bridge
@@ -250,6 +261,7 @@ class SerialNetBridge:
         tcp_client_port: int = 4001,
         tcp_reconnect_delay: float = DEFAULT_TCP_RECONNECT_S,
         udp_fanout: bool = True,
+        tcp_sink: Optional[TcpSinkConfig] = None,
         nmea_mode: NmeaMode = NmeaMode.PASSTHROUGH,
         nmea_filter: Optional[NmeaFilter] = None,
         serial_auto_reconnect: bool = True,
@@ -297,6 +309,10 @@ class SerialNetBridge:
         # Fan-out: every UDP sender that contacts us during a session is remembered
         # and receives the serial→net stream.  Cleared on stop/abort.
         self._udp_fanout: bool = bool(udp_fanout)
+        self._tcp_sink: Optional[TcpSinkConfig] = tcp_sink if tcp_sink and tcp_sink.enabled else None
+        self._tcp_sink_server: Optional[asyncio.Server] = None
+        self._tcp_sink_writers: Set[asyncio.StreamWriter] = set()
+        self._tcp_sink_drops: int = 0
         self._udp_peers: set[tuple] = set()
         self._gps_state: list[Optional[str]] = [None]
         self._nav_quality_state: list[Optional[dict]] = [None]
@@ -447,6 +463,12 @@ class SerialNetBridge:
                 "lines_down": self.lines_remote_to_serial,
                 "lines_up": self.lines_serial_to_net,
                 "udp_peers": self.udp_peer_count,
+                "running": self.running,
+                "udp_listen_host": self.udp_listen[0] if self.udp_listen else "",
+                "udp_listen_port": self.udp_listen[1] if self.udp_listen else 0,
+                "tcp_sink_clients": len(self._tcp_sink_writers),
+                "tcp_sink_drops": self._tcp_sink_drops,
+                "tcp_sink_enabled": bool(self._tcp_sink),
                 **self.navigation_quality_stats(),
             }
         )
@@ -736,7 +758,73 @@ class SerialNetBridge:
             await self.stop()
             return False
 
+        if self._tcp_sink:
+            try:
+                self._tcp_sink_server = await asyncio.start_server(
+                    self._on_tcp_sink_client,
+                    host=self._tcp_sink.bind_host,
+                    port=self._tcp_sink.bind_port,
+                )
+                self._tasks.append(
+                    asyncio.create_task(self._serve_tcp_sink_forever(), name="tcp_sink_serve")
+                )
+                self._ui_log(
+                    f"TCP sink mirror on {self._tcp_sink.bind_host}:{self._tcp_sink.bind_port}"
+                )
+            except Exception as e:
+                self._ui_log(
+                    f"TCP sink disabled: {_friendly_network_error(e, 'TCP sink')}"
+                )
+                self._tcp_sink = None
+
         return True
+
+    async def _serve_tcp_sink_forever(self) -> None:
+        assert self._tcp_sink_server is not None
+        async with self._tcp_sink_server:
+            await self._tcp_sink_server.serve_forever()
+
+    async def _on_tcp_sink_client(
+        self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter
+    ) -> None:
+        cfg = self._tcp_sink
+        if cfg is None:
+            try:
+                writer.close()
+            except Exception:
+                pass
+            return
+        if len(self._tcp_sink_writers) >= cfg.max_clients:
+            try:
+                writer.close()
+            except Exception:
+                pass
+            return
+        self._tcp_sink_writers.add(writer)
+        self._schedule_stats_emit()
+        try:
+            await reader.read()
+        except Exception:
+            pass
+        finally:
+            self._tcp_sink_writers.discard(writer)
+            self._schedule_stats_emit()
+
+    async def _mirror_to_tcp_sink(self, data: bytes) -> None:
+        if not self._tcp_sink_writers:
+            return
+        dead: list[asyncio.StreamWriter] = []
+        for writer in list(self._tcp_sink_writers):
+            try:
+                writer.write(data)
+                await writer.drain()
+            except Exception:
+                dead.append(writer)
+        for writer in dead:
+            self._tcp_sink_writers.discard(writer)
+            self._tcp_sink_drops += 1
+        if dead:
+            self._schedule_stats_emit()
 
     async def _serve_tcp_forever(self) -> None:
         assert self._tcp_server is not None
@@ -984,6 +1072,8 @@ class SerialNetBridge:
                 raise
             except Exception as e:
                 self._ui_log(_friendly_network_error(e, "TCP send"))
+        if self._tcp_sink:
+            await self._mirror_to_tcp_sink(data)
 
     def abort_now(self) -> None:
         """Synchronous teardown — must not block the Qt thread (no wait_closed on serial)."""
@@ -1037,6 +1127,19 @@ class SerialNetBridge:
             except Exception:
                 pass
             self._tcp_server = None
+
+        if self._tcp_sink_server:
+            try:
+                self._tcp_sink_server.close()
+            except Exception:
+                pass
+            self._tcp_sink_server = None
+        for w in list(self._tcp_sink_writers):
+            try:
+                w.close()
+            except Exception:
+                pass
+        self._tcp_sink_writers.clear()
 
         for w in (self.tcp_writer, self.serial_writer):
             if w is not None:

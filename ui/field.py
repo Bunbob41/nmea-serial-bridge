@@ -119,6 +119,10 @@ class BridgeWindowField(BridgeLogicMixin, QtWidgets.QWidget):
         self.udp_port.setToolTip("UDP listen port — senders use this port on the host above.")
         r1.addWidget(self.udp_port)
         sl.addLayout(r1)
+        self._field_connect_summary = QtWidgets.QLabel("")
+        self._field_connect_summary.setObjectName("fieldConnectSummary")
+        self._field_connect_summary.setWordWrap(True)
+        sl.addWidget(self._field_connect_summary)
         sl.addWidget(self.status_line)
         sl.addWidget(self.intent_hint)
 
