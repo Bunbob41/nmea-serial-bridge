@@ -179,8 +179,9 @@ def setup_connect_tab_panels(
     splitter = QtWidgets.QSplitter(QtCore.Qt.Orientation.Vertical)
     splitter.setObjectName("connectPanelSplitter")
     splitter.setChildrenCollapsible(False)
-    splitter.setHandleWidth(8)
+    splitter.setHandleWidth(10)
     splitter.setOpaqueResize(True)
+    splitter.setMinimumHeight(120)
     host_lay.addWidget(splitter, 1)
 
     panel_page = QtWidgets.QWidget()

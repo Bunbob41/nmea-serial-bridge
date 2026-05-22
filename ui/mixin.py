@@ -272,6 +272,7 @@ class BridgeLogicMixin:
         self._restore_auto_discover_pref()
         self._log_startup_self_check()
         self._on_ui_ready()
+        self._init_web_and_facade()
         self._start_auto_discovery_thread()
 
     def _log_startup_self_check(self) -> None:
@@ -1775,11 +1776,26 @@ class BridgeLogicMixin:
 
     def _on_ui_ready(self) -> None:
         self._wire_connection_hub()
+        # Note: facade window attachment and web server start are handled
+        # in _init_web_and_facade(), called from _finalize_ui() after
+        # _on_ui_ready(), so they always run regardless of subclass overrides.
+
+    def _init_web_and_facade(self) -> None:
+        """Always called from _finalize_ui after _on_ui_ready.
+        Guarantees facade.attach_window and web server start even when
+        subclasses override _on_ui_ready without calling super()."""
         facade = getattr(self, "_app_facade", None)
         if facade is not None:
             facade.attach_window(self)
         self._restore_web_ui_prefs()
         self._maybe_start_web_server()
+
+    def _web_token_from_ui(self) -> Optional[str]:
+        edit = getattr(self, "edit_web_token", None)
+        if edit is None:
+            return None
+        text = edit.text().strip()
+        return text or None
 
     def _restore_web_ui_prefs(self) -> None:
         from ui.ui_prefs import load_web_ui_prefs
@@ -1800,6 +1816,41 @@ class BridgeLogicMixin:
             lan.blockSignals(True)
             lan.setChecked(bool(prefs.get("lan_bind")))
             lan.blockSignals(False)
+        edit = getattr(self, "edit_web_token", None)
+        if edit is not None:
+            edit.blockSignals(True)
+            edit.setText(str(prefs.get("token") or ""))
+            edit.blockSignals(False)
+        phone_edit = getattr(self, "edit_web_phone_url", None)
+        if phone_edit is not None:
+            phone_edit.blockSignals(True)
+            phone_edit.setText(str(prefs.get("phone_base_url") or ""))
+            phone_edit.blockSignals(False)
+
+    def _phone_dashboard_base_url(self) -> str:
+        edit = getattr(self, "edit_web_phone_url", None)
+        if edit is not None:
+            text = edit.text().strip()
+            if text:
+                return text
+        from ui.ui_prefs import load_web_ui_prefs
+
+        return str(load_web_ui_prefs().get("phone_base_url") or "").strip()
+
+    def _build_phone_setup_url(self) -> Optional[str]:
+        token = self._web_token_from_ui()
+        if not token:
+            return None
+        base = self._phone_dashboard_base_url()
+        if not base:
+            from ui.ui_prefs import load_web_ui_prefs
+
+            prefs = load_web_ui_prefs()
+            port = int(prefs.get("port", 8765))
+            base = f"http://127.0.0.1:{port}"
+        from web.token_setup import build_setup_url
+
+        return build_setup_url(base, token)
 
     def _persist_web_ui_prefs(self) -> None:
         from ui.ui_prefs import load_web_ui_prefs, save_web_ui_prefs
@@ -1808,12 +1859,126 @@ class BridgeLogicMixin:
         enabled = getattr(self, "chk_web_enabled", None)
         port = getattr(self, "spin_web_port", None)
         lan = getattr(self, "chk_web_lan", None)
+        token_ui = self._web_token_from_ui()
+        phone_edit = getattr(self, "edit_web_phone_url", None)
+        phone_url = phone_edit.text().strip() if phone_edit is not None else None
         save_web_ui_prefs(
             enabled=enabled.isChecked() if enabled is not None else prev["enabled"],
             host=str(prev.get("host", "127.0.0.1")),
             port=port.value() if port is not None else int(prev.get("port", 8765)),
             lan_bind=lan.isChecked() if lan is not None else bool(prev.get("lan_bind")),
-            token=prev.get("token"),
+            token=token_ui if getattr(self, "edit_web_token", None) is not None else prev.get("token"),
+            phone_base_url=phone_url if phone_edit is not None else prev.get("phone_base_url"),
+        )
+
+    def _on_web_lan_toggled(self, checked: bool) -> None:
+        if checked and not self._web_token_from_ui():
+            from ui.ui_prefs import generate_web_api_token
+
+            edit = getattr(self, "edit_web_token", None)
+            if edit is not None:
+                edit.setText(generate_web_api_token())
+                self._log_ui("[Web] Generated API token for LAN access — copy it to your phone dashboard.")
+        self._on_web_ui_prefs_changed()
+
+    def _on_web_generate_token(self) -> None:
+        from ui.ui_prefs import generate_web_api_token
+
+        edit = getattr(self, "edit_web_token", None)
+        if edit is not None:
+            edit.setText(generate_web_api_token())
+        self._log_ui("[Web] New API token generated.")
+        self._on_web_ui_prefs_changed()
+        self._refresh_web_token_qr()
+
+    def _on_web_show_qr_toggled(self, checked: bool) -> None:
+        self._refresh_web_token_qr()
+
+    def _on_web_token_text_changed(self, *_args: object) -> None:
+        chk = getattr(self, "chk_web_show_qr", None)
+        if chk is not None and chk.isChecked():
+            self._refresh_web_token_qr()
+
+    def _refresh_web_token_qr(self) -> None:
+        lbl = getattr(self, "lbl_web_token_qr", None)
+        chk = getattr(self, "chk_web_show_qr", None)
+        if lbl is None or chk is None:
+            return
+        if not chk.isChecked():
+            lbl.setVisible(False)
+            lbl.clear()
+            return
+        token = self._web_token_from_ui()
+        if not token:
+            lbl.setPixmap(QtGui.QPixmap())
+            lbl.setText("Generate\na token\nfirst")
+            lbl.setVisible(True)
+            return
+        from ui.token_qr import make_token_qr_pixmap
+
+        setup_url = self._build_phone_setup_url()
+        pix = make_token_qr_pixmap(token, size=180, setup_url=setup_url)
+        if pix is None or pix.isNull():
+            lbl.setPixmap(QtGui.QPixmap())
+            lbl.setText(
+                "QR unavailable.\n"
+                "Run: pip install\n"
+                "qrcode"
+            )
+            lbl.setWordWrap(True)
+            lbl.setVisible(True)
+            return
+        lbl.setText("")
+        lbl.setPixmap(pix)
+        lbl.setVisible(True)
+
+    def _on_web_copy_token(self) -> None:
+        token = self._web_token_from_ui()
+        if not token:
+            self._log_ui("[Web] No token to copy — click Generate token first.")
+            return
+        app = QtWidgets.QApplication.instance()
+        if app is not None:
+            app.clipboard().setText(token)
+        self._log_ui("[Web] API token copied to clipboard.")
+
+    def _on_web_copy_phone_setup(self) -> None:
+        url = self._build_phone_setup_url()
+        if not url:
+            self._log_ui("[Web] Generate a token first, then set Phone dashboard URL (Tailscale IP).")
+            return
+        if not self._phone_dashboard_base_url():
+            self._log_ui(
+                "[Web] Phone setup link copied (using localhost). "
+                "Set Phone dashboard URL to your Tailscale/LAN address for phones."
+            )
+        app = QtWidgets.QApplication.instance()
+        if app is not None:
+            app.clipboard().setText(url)
+        self._log_ui("[Web] Phone setup link copied — open once on the phone, or Paste setup link there.")
+
+    def _apply_token_from_text(self, text: str) -> bool:
+        from web.token_setup import parse_token_from_text
+
+        parsed = parse_token_from_text(text)
+        if not parsed:
+            return False
+        edit = getattr(self, "edit_web_token", None)
+        if edit is not None:
+            edit.setText(parsed)
+        self._persist_web_ui_prefs()
+        self._refresh_web_token_qr()
+        return True
+
+    def _on_web_paste_setup(self) -> None:
+        app = QtWidgets.QApplication.instance()
+        clip = app.clipboard().text() if app is not None else ""
+        if self._apply_token_from_text(clip):
+            self._log_ui("[Web] Token imported from setup link — same token is now on this PC.")
+            return
+        self._log_ui(
+            "[Web] Clipboard has no setup link. On the phone: Tools → Copy setup link or Share link, "
+            "then copy that text and click Paste setup link again."
         )
 
     def _on_web_ui_prefs_changed(self, *_args: object) -> None:
@@ -1976,6 +2141,9 @@ class BridgeLogicMixin:
             self._discovery_stable_counts = counts if isinstance(counts, dict) else {}
             hub.set_snapshot(snap)
             self._update_field_connect_summary()
+            facade = getattr(self, "_app_facade", None)
+            if facade is not None:
+                facade.update_discovery_snapshot(snap)
         self._cancel_discovery_worker()
 
     def _on_discovery_worker_failed(self, message: str) -> None:
@@ -2042,6 +2210,9 @@ class BridgeLogicMixin:
         )
         hub.set_snapshot(snap)
         self._update_field_connect_summary()
+        facade = getattr(self, "_app_facade", None)
+        if facade is not None:
+            facade.update_discovery_snapshot(snap)
         if self._is_bridge_running():
             self._apply_hub_quality()
 
@@ -2235,9 +2406,12 @@ class BridgeLogicMixin:
         mini = getattr(self, "connect_mini_log", None)
         if mini is None or not lines:
             return
-        mini.appendPlainText("\n".join(lines))
-        sb = mini.verticalScrollBar()
-        sb.setValue(sb.maximum())
+        try:
+            mini.appendPlainText("\n".join(lines))
+            sb = mini.verticalScrollBar()
+            sb.setValue(sb.maximum())
+        except RuntimeError:
+            self.connect_mini_log = None
 
     def _append_connect_terminal(self, text: str) -> None:
         out = getattr(self, "connect_terminal_out", None)
@@ -3060,6 +3234,14 @@ class BridgeLogicMixin:
             return
         n = min(UI_LOG_MAX_LINES_PER_FLUSH, len(self._pending_ui))
         chunk = [self._pending_ui.popleft() for _ in range(n)]
+        facade = getattr(self, "_app_facade", None)
+        if facade is not None:
+            facade.set_log_paused(
+                self._log_pause,
+                dropped=int(getattr(self, "_log_paused_dropped", 0) or 0),
+            )
+            if not self._log_pause:
+                facade.append_log_lines(chunk)
         self.log_view.appendPlainText("\n".join(chunk))
         self._append_connect_mini_log(chunk)
         if self._log_autoscroll:
@@ -3108,6 +3290,12 @@ class BridgeLogicMixin:
     def _set_log_pause(self, paused: bool) -> None:
         prev = self._log_pause
         self._log_pause = bool(paused)
+        facade = getattr(self, "_app_facade", None)
+        if facade is not None:
+            facade.set_log_paused(
+                self._log_pause,
+                dropped=int(getattr(self, "_log_paused_dropped", 0) or 0),
+            )
         if self._log_pause:
             self._log_paused_dropped = 0
             return
@@ -3894,9 +4082,22 @@ class BridgeLogicMixin:
         )
 
     def refresh_ports(self) -> None:
+        prev = self.com_cb.currentText().strip()
         self.com_cb.clear()
-        for p in serial.tools.list_ports.comports():
-            self.com_cb.addItem(p.device)
+        ports = [p.device for p in serial.tools.list_ports.comports()]
+        if not ports:
+            self.com_cb.addItem("(no ports — click Refresh)")
+            self.com_cb.setInsertPolicy(QtWidgets.QComboBox.InsertPolicy.NoInsert)
+            return
+        for device in ports:
+            self.com_cb.addItem(device)
+        self.com_cb.setInsertPolicy(QtWidgets.QComboBox.InsertPolicy.NoInsert)
+        if prev:
+            idx = self.com_cb.findText(prev)
+            if idx >= 0:
+                self.com_cb.setCurrentIndex(idx)
+            else:
+                self.com_cb.setCurrentText(prev)
 
     def _send_raw_manual(self, where: str, raw: str) -> None:
         if not self._is_bridge_running():

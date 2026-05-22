@@ -17,13 +17,11 @@
 
 ### `GET /health`
 
-```json
-{ "ok": true, "version": "1.7.0" }
-```
+Response `200` — `HealthResponse`: `{ "ok": true, "version": "<app>" }`.
 
 ### `GET /status`
 
-Response `200` — `WebSessionState` (see `data-model.md`).
+Response `200` — `StatusResponse` / `WebSessionState` (see `data-model.md`). OpenAPI schema exposed in `/docs`.
 
 ### `GET /config`
 

@@ -485,10 +485,10 @@ bottom status bar. Green text indicates an active connection; red indicates an e
 
 def build_guide_tab(parent: QtWidgets.QWidget) -> QtWidgets.QWidget:
     """Structured connection workflow guide with one tab per method."""
-    host = QtWidgets.QWidget()
-    lay = QtWidgets.QVBoxLayout(host)
+    inner = QtWidgets.QWidget()
+    lay = QtWidgets.QVBoxLayout(inner)
     lay.setContentsMargins(10, 10, 10, 10)
-    lay.setSpacing(6)
+    lay.setSpacing(8)
 
     header = QtWidgets.QLabel("Network ↔ COM Bridge — Connection Workflows")
     header.setObjectName("tabHint")
@@ -496,7 +496,16 @@ def build_guide_tab(parent: QtWidgets.QWidget) -> QtWidgets.QWidget:
 
     web_box = QtWidgets.QGroupBox("Web control (localhost)")
     web_box.setObjectName("connectGroupBox")
-    web_form = QtWidgets.QFormLayout(web_box)
+    web_box.setMinimumHeight(200)
+    web_box.setMinimumWidth(420)
+    web_row = QtWidgets.QHBoxLayout(web_box)
+    web_row.setSpacing(12)
+    web_left = QtWidgets.QWidget()
+    web_form = QtWidgets.QFormLayout(web_left)
+    web_form.setVerticalSpacing(10)
+    web_form.setFieldGrowthPolicy(
+        QtWidgets.QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow
+    )
     parent.chk_web_enabled = QtWidgets.QCheckBox("Enable Web API on this PC")
     parent.chk_web_enabled.setToolTip(
         "Starts a local HTTP server (default 127.0.0.1:8765) for /status, /config, and start/stop. "
@@ -505,17 +514,102 @@ def build_guide_tab(parent: QtWidgets.QWidget) -> QtWidgets.QWidget:
     parent.spin_web_port = QtWidgets.QSpinBox()
     parent.spin_web_port.setRange(1024, 65535)
     parent.spin_web_port.setValue(8765)
-    parent.chk_web_lan = QtWidgets.QCheckBox("Allow LAN access (use firewall + token in ui_prefs)")
+    parent.chk_web_lan = QtWidgets.QCheckBox("Allow LAN / Tailscale access (binds 0.0.0.0)")
     parent.chk_web_lan.setToolTip(
-        "Binds 0.0.0.0 when enabled. Prefer localhost on field laptops."
+        "Exposes the web API on all interfaces. Use Windows firewall and the API token below. "
+        "Localhost-only is safer on bench PCs."
     )
+    parent.edit_web_token = QtWidgets.QLineEdit()
+    parent.edit_web_token.setPlaceholderText("Generate or paste token — required for LAN/phone control")
+    parent.edit_web_token.setToolTip(
+        "Sent as X-Bridge-Token on Start/Stop and other POST requests. "
+        "Copy the same value into the web dashboard Tools panel on your phone."
+    )
+    parent.edit_web_token.setClearButtonEnabled(True)
+    parent.chk_web_show_qr = QtWidgets.QCheckBox("Show QR")
+    parent.chk_web_show_qr.setToolTip(
+        "Display a scannable QR code for the API token (for phones without copy/paste from this PC)."
+    )
+    token_btn_row = QtWidgets.QHBoxLayout()
+    parent.btn_web_token_generate = QtWidgets.QPushButton("Generate token")
+    parent.btn_web_token_generate.setToolTip("Create a new random API token and save it")
+    parent.btn_web_token_copy = QtWidgets.QPushButton("Copy token")
+    parent.btn_web_token_copy.setToolTip("Copy API token to clipboard")
+    parent.btn_web_copy_setup = QtWidgets.QPushButton("Copy phone setup link")
+    parent.btn_web_copy_setup.setToolTip(
+        "Copy a one-tap URL for the phone dashboard (opens in mobile browser and saves the token)."
+    )
+    parent.btn_web_paste_setup = QtWidgets.QPushButton("Paste setup link")
+    parent.btn_web_paste_setup.setToolTip(
+        "Import token from clipboard — paste a setup link copied on your phone or another device."
+    )
+    parent.edit_web_phone_url = QtWidgets.QLineEdit()
+    parent.edit_web_phone_url.setPlaceholderText("http://100.x.x.x:8765 — Tailscale/LAN URL for phone")
+    parent.edit_web_phone_url.setToolTip(
+        "Base URL your phone uses for the dashboard (same as the browser address bar on the phone). "
+        "Used for QR and setup links."
+    )
+    token_btn_row.addWidget(parent.chk_web_show_qr)
+    token_btn_row.addWidget(parent.btn_web_token_generate)
+    token_btn_row.addWidget(parent.btn_web_token_copy)
+    token_btn_row.addWidget(parent.btn_web_copy_setup)
+    token_btn_row.addWidget(parent.btn_web_paste_setup)
+    token_btn_row.addStretch(1)
+    token_btn_host = QtWidgets.QWidget()
+    token_btn_host.setLayout(token_btn_row)
+    token_hint = QtWidgets.QLabel(
+        "Both ways: Copy phone setup link → open on phone, or copy from phone → Paste setup link here. "
+        "QR on this PC screen is for the phone camera only. Saved in ui_prefs.json."
+    )
+    token_hint.setObjectName("tabHint")
+    token_hint.setWordWrap(True)
+
+    parent.lbl_web_token_qr = QtWidgets.QLabel()
+    parent.lbl_web_token_qr.setObjectName("webTokenQr")
+    parent.lbl_web_token_qr.setFixedSize(188, 188)
+    parent.lbl_web_token_qr.setAlignment(
+        QtCore.Qt.AlignmentFlag.AlignCenter
+    )
+    parent.lbl_web_token_qr.setFrameShape(QtWidgets.QFrame.Shape.Box)
+    parent.lbl_web_token_qr.setVisible(False)
+    parent.lbl_web_token_qr.setToolTip(
+        "QR encodes a phone setup link — scan from the phone camera while viewing this PC screen."
+    )
+    qr_side = QtWidgets.QWidget()
+    qr_lay = QtWidgets.QVBoxLayout(qr_side)
+    qr_lay.setContentsMargins(0, 28, 0, 0)
+    qr_lay.addWidget(parent.lbl_web_token_qr, 0, QtCore.Qt.AlignmentFlag.AlignHCenter)
+    qr_lay.addStretch(1)
+
     web_form.addRow("", parent.chk_web_enabled)
     web_form.addRow("Port:", parent.spin_web_port)
     web_form.addRow("", parent.chk_web_lan)
+    web_form.addRow("Phone dashboard URL:", parent.edit_web_phone_url)
+    web_form.addRow("API token:", parent.edit_web_token)
+    web_form.addRow("", token_btn_host)
+    web_form.addRow("", token_hint)
+    web_row.addWidget(web_left, 1)
+    web_row.addWidget(qr_side, 0)
     if hasattr(parent, "_on_web_ui_prefs_changed"):
         parent.chk_web_enabled.toggled.connect(parent._on_web_ui_prefs_changed)
         parent.spin_web_port.valueChanged.connect(parent._on_web_ui_prefs_changed)
+        parent.edit_web_token.editingFinished.connect(parent._on_web_ui_prefs_changed)
+        parent.edit_web_phone_url.editingFinished.connect(parent._on_web_ui_prefs_changed)
+    if hasattr(parent, "_on_web_lan_toggled"):
+        parent.chk_web_lan.toggled.connect(parent._on_web_lan_toggled)
+    elif hasattr(parent, "_on_web_ui_prefs_changed"):
         parent.chk_web_lan.toggled.connect(parent._on_web_ui_prefs_changed)
+    if hasattr(parent, "_on_web_generate_token"):
+        parent.btn_web_token_generate.clicked.connect(parent._on_web_generate_token)
+    if hasattr(parent, "_on_web_copy_token"):
+        parent.btn_web_token_copy.clicked.connect(parent._on_web_copy_token)
+    if hasattr(parent, "_on_web_copy_phone_setup"):
+        parent.btn_web_copy_setup.clicked.connect(parent._on_web_copy_phone_setup)
+    if hasattr(parent, "_on_web_paste_setup"):
+        parent.btn_web_paste_setup.clicked.connect(parent._on_web_paste_setup)
+    if hasattr(parent, "_on_web_show_qr_toggled"):
+        parent.chk_web_show_qr.toggled.connect(parent._on_web_show_qr_toggled)
+        parent.edit_web_token.textChanged.connect(parent._on_web_token_text_changed)
     lay.addWidget(web_box)
 
     tabs = QtWidgets.QTabWidget()
@@ -537,7 +631,15 @@ def build_guide_tab(parent: QtWidgets.QWidget) -> QtWidgets.QWidget:
         tabs.addTab(browser, tab_title)
 
     lay.addWidget(tabs, 1)
-    return host
+
+    scroll = QtWidgets.QScrollArea()
+    scroll.setObjectName("guideTabScroll")
+    scroll.setWidgetResizable(True)
+    scroll.setFrameShape(QtWidgets.QFrame.Shape.NoFrame)
+    scroll.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+    scroll.setVerticalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+    scroll.setWidget(inner)
+    return scroll
 
 
 def build_send_tab(parent: QtWidgets.QWidget) -> QtWidgets.QWidget:

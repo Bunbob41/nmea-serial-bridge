@@ -3,6 +3,73 @@
 High-level notes for **this fork / branch** (`feature/multi-ui-layouts-v0.5`).  
  Version = `version.py` / Git tag when you run `.\release.ps1` or tag manually.
 
+## v1.9.4
+
+- **Web dashboard — Live Log** — `GET /logs` mirrors the desktop live log; new **Live Log** card with three trial layouts (**Terminal**, **Cards**, **Table**), filter, auto-scroll, pause view, and clear. Layout choice persists in browser localStorage.
+- **Release gate** — `verify_all` / `run_unittests` treat Windows Qt `0xC0000409` shutdown and uvicorn bind noise correctly after tests pass.
+
+## v1.9.3
+
+- **Symmetric token handoff (all devices)** — **Paste setup link** on web dashboard and PC Tools → Guide imports a link/token from clipboard (phone → PC without typing). **Share link** on phones (system share sheet). Bidirectional hints on dashboard and Guide.
+
+## v1.9.2
+
+- **Phone token onboarding (no self-scan QR)** — Setup links use `#bridge-token=…` so opening the link on the phone saves the token automatically. Mobile dashboard hides the QR block, adds **Copy token** / **Copy setup link** / **Show** token, and shows PC-first instructions. Desktop Guide: **Phone dashboard URL** (Tailscale/LAN), **Copy phone setup link**, QR encodes the setup URL (scan from PC screen with phone camera).
+- **`GET /token-qr?setup=1&base_url=…`** — QR payload is a one-tap dashboard URL, not raw token text.
+
+## v1.9.1
+
+- **Guide tab — desktop QR for API token** — **Show QR** checkbox beside Generate token; scannable QR appears on the right side of Web control (uses `qrcode` package). Fixes gap where QR existed only on the browser dashboard, not on Tools → Guide.
+
+## v1.9.0
+
+- **Web dashboard — editable configuration** — COM, baud, network mode (UDP listen/remote, TCP client/server), listen/remote host/port; Save via `PATCH /config`; locked while bridge is running.
+- **API token QR** — `GET /token-qr` (SVG); dashboard checkbox **Show QR for API token** for phone scan from PC screen (`qrcode` in `requirements-web.txt`).
+- **Façade** — `network_mode`, `remote_host`, `remote_port` applied on main thread; config readback includes remote fields.
+- **Field layout** — Guide tab in scroll area; Web control group minimum height; drawer min height 320px (fixes clipped token/port rows).
+- **Standard Connect** — COM `refresh_ports` preserves selection + empty-state placeholder; Connect splitter handle 10px + minimum height.
+
+## v1.8.4
+
+- **Guide → Web control: API token field** — LAN checkbox no longer says "token in ui_prefs" with no UI. Added **API token** line edit, **Generate token**, and **Copy** on Tools → Guide. Token is saved to `ui_prefs.json` and used for `X-Bridge-Token`. Enabling LAN auto-generates a token if missing. Phone dashboard: paste the same token in Tools → API token field.
+
+## v1.8.3
+
+- **Fix: commands still fail with "Application window not available"** — `_window()` only consulted a weakref set by `attach_window()`, which never ran on Standard/Field/Minimal layouts. The façade is always constructed as `BridgeAppFacade(main_window)`, so `_window()` now falls back to `self.parent()`. `publish_from_window()` also re-attaches if the ref was missing. `GET /meta` adds `commands_ready` for dashboard diagnostics.
+- **Dashboard (LAN / phone)** — clear message when `token_required` but no token in `localStorage` (POST needs `X-Bridge-Token` over Tailscale/cellular).
+
+## v1.8.2
+
+- **Fix: Start/Stop/Unlock/Discovery commands never worked** — `BridgeAppFacade.attach_window()` was placed in `mixin._on_ui_ready()`, but every UI subclass (`standard.py`, `field.py`, `minimal.py`) overrides `_on_ui_ready` without calling `super()`, so that method never ran. `_window_ref` stayed `None` and every command returned "Application window not available". Also: `_maybe_start_web_server` suffered the same bypass, meaning the web server only started if the user manually toggled the web settings after launch. Fix: extracted both into a new `_init_web_and_facade()` method called unconditionally from `_finalize_ui()` after `_on_ui_ready()`, bypassing the override gap entirely.
+
+## v1.8.1
+
+- **Dashboard CSS `[hidden]` fix** — CSS `display: flex/inline-block/grid` rules were overriding the HTML `hidden` attribute. Added `[hidden] { display: none !important; }` reset at top of `dashboard.css`. Fixes: offline banner always showing alongside live data; "⟳ Scanning…" spinner always animating; token field always visible even when not required; status grid not hiding on backend-offline.
+- **Clear stale window-error alerts on reconnect** — "Application window not available" alerts left over from early startup clicks are automatically dismissed the first time the status poll comes back online.
+- **`extractApiError()` helper** — API error detail can be a plain string (401) or an object with `.message` (our command results). Centralised parsing replaces all inline patterns so error messages display cleanly in all cases.
+
+## v1.8.0
+
+- **Phase B Operator Dashboard** — static HTML/CSS/JS dashboard served at `GET /` by the FastAPI web server (no CDN, fully offline-capable).
+  - **US1 Telemetry**: live Hz, drops/rejects, bridge state refreshed every second; offline banner on backend loss.
+  - **US2 Start/Stop**: large tap-friendly buttons map to `POST /bridge/start` and `POST /bridge/stop` with in-flight disable and inline error messages.
+  - **US3 Unlock Ports**: Unlock button → `POST /ports/unlock`; `smart_release_com` result shown inline (no QMessageBox on API path).
+  - **US4 Discovery + COM picker**: Refresh Scan → `POST /discovery/refresh`; polls `GET /discovery` every 500 ms (≤ 15 s); click any serial/network row → `PATCH /config` with 409 running-guard message.
+- **New API routes**: `GET /meta` (version, lan_bind, token_required), `GET /discovery`, `POST /discovery/refresh`, `POST /ports/unlock`, `GET /api` (JSON index, old `GET /`).
+- **`BridgeAppFacade` extensions**: `SerialDeviceDto`, `NetworkCardDto`, `WebDiscoveryPayload`, `WebMeta` dataclasses; thread-safe discovery cache; `request_refresh_discovery()` and `request_unlock_ports()` via Qt signal dispatch.
+- **`ui/mixin.py`**: wires `facade.update_discovery_snapshot(snap)` after hub `set_snapshot()` (both worker and fallback paths).
+- **Token support**: token field appears only when `meta.token_required`; persisted in `localStorage` (`nmea-bridge-web-token`).
+- **PyInstaller**: `web/static` folder added to `datas` in `nmea_serial_bridge.spec`.
+- **Tests**: expanded `test_web_api.py` (10+ new cases) and `test_app_facade.py` (discovery cache, unlock, refresh with Qt event-loop harness).
+
+## v1.7.2
+
+- **Web API config + OpenAPI** — `GET /config` reads Qt fields on the main thread (fixes empty/wrong `com_port` vs `/status`); Swagger shows real response schemas (`StatusResponse`, `ConfigResponse`, `CommandResponse`) instead of generic placeholders.
+
+## v1.7.1
+
+- **Web API start/stop** — Commands from the HTTP thread now queue to the Qt main thread via a signal; `QTimer.singleShot` from uvicorn never ran, so Swagger/curl start/stop could time out or appear dead.
+
 ## v1.7.0
 
 - **Hybrid UI Layer 1** — Standard Connect and Field control strip load from Qt Designer `.ui` files at runtime (`ui/ui_loader.py`, `ui/resources/`); programmatic fallback if assets are missing.

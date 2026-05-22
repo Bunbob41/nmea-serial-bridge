@@ -110,7 +110,7 @@ class BridgeWindowField(BridgeLogicMixin, QtWidgets.QWidget):
         drawer_tabs.addTab(create_diagnostics_controls(self), "Diagnostics")
         self._setup_reorderable_tabs(drawer_tabs, "tools_tabs")
         drawer_tabs.setVisible(False)
-        drawer_tabs.setMinimumHeight(280)
+        drawer_tabs.setMinimumHeight(320)
 
         def _toggle(on: bool) -> None:
             drawer_tabs.setVisible(on)

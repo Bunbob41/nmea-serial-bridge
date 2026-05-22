@@ -1,15 +1,20 @@
-"""FastAPI REST surface for bridge status/config/commands."""
+"""FastAPI REST surface for bridge status/config/commands and static dashboard."""
 from __future__ import annotations
 
-from typing import Any, Optional
+import sys
+from pathlib import Path
+from typing import Any, List, Optional
 
 from app_facade import BridgeAppFacade, WebCommandResult
 
 try:
     from fastapi import FastAPI, Header, HTTPException, Request
+    from fastapi.responses import FileResponse, Response
+    from fastapi.staticfiles import StaticFiles
     from pydantic import BaseModel
 except ImportError:  # pragma: no cover - optional dependency
     FastAPI = None  # type: ignore[misc, assignment]
+    BaseModel = object  # type: ignore[misc, assignment]
 
 
 class ConfigPatch(BaseModel):
@@ -17,10 +22,123 @@ class ConfigPatch(BaseModel):
     baud: Optional[int] = None
     udp_listen_host: Optional[str] = None
     udp_listen_port: Optional[int] = None
+    remote_host: Optional[str] = None
+    remote_port: Optional[int] = None
     nmea_mode: Optional[str] = None
     hub_device_id: Optional[str] = None
     manual_override: Optional[bool] = None
     network_mode: Optional[str] = None
+
+
+class HealthResponse(BaseModel):
+    ok: bool
+    version: str
+
+
+class ApiIndexResponse(BaseModel):
+    service: str
+    docs: str
+    status: str
+    config: str
+    discovery: str
+    meta: str
+    logs: str = "/logs"
+
+
+class LogLineResponse(BaseModel):
+    seq: int
+    text: str
+    kind: str
+    mono: float
+
+
+class LogsResponse(BaseModel):
+    lines: List[LogLineResponse]
+    latest_seq: int
+    paused: bool
+    paused_dropped: int = 0
+
+
+class MetaResponse(BaseModel):
+    version: str
+    lan_bind: bool
+    token_required: bool
+    commands_ready: bool = True
+
+
+class StatusResponse(BaseModel):
+    running: bool
+    com_port: str
+    baud: int
+    udp_listen_host: str
+    udp_listen_port: int
+    nmea_mode: str
+    hz_net_to_com: Optional[float] = None
+    hz_com_to_net: Optional[float] = None
+    drops: int
+    rejects: int
+    last_error: Optional[str] = None
+    updated_mono: float
+
+
+class ConfigResponse(BaseModel):
+    com_port: str
+    baud: int
+    udp_listen_host: str
+    udp_listen_port: int
+    nmea_mode: str
+    hub_device_id: Optional[str] = None
+    manual_override: bool
+    network_mode: str
+    remote_host: str = ""
+    remote_port: int = 10110
+
+
+class SerialDeviceResponse(BaseModel):
+    device_id: str
+    port: str
+    description: str
+    manufacturer: str
+    match_keyword: str
+    status: str
+
+
+class NetworkCardResponse(BaseModel):
+    device_id: str
+    label: str
+    mode_hint: str
+    host: str
+    port: int
+    port_available: bool
+    peer_count: int
+    status: str
+    discovery_source: str
+
+
+class DiscoveryResponse(BaseModel):
+    updated_mono: float
+    scan_note: str
+    scan_busy: bool
+    serial_devices: List[SerialDeviceResponse]
+    network_cards: List[NetworkCardResponse]
+    errors: List[str]
+
+
+class CommandResponse(BaseModel):
+    ok: bool
+    message: str
+    error_code: Optional[str] = None
+    state: str = "stopped"
+    config: Optional[ConfigResponse] = None
+
+
+def _static_dir() -> Optional[Path]:
+    if getattr(sys, "frozen", False):
+        base = Path(sys._MEIPASS)  # type: ignore[attr-defined]
+    else:
+        base = Path(__file__).parent
+    p = base / "web" / "static"
+    return p if p.is_dir() else None
 
 
 def _auth_ok(request: Request, token: Optional[str]) -> bool:
@@ -41,58 +159,181 @@ def create_app(
 
     app = FastAPI(title="NMEA Serial Bridge Web Control", version=version)
 
-    @app.get("/health")
-    def health() -> dict[str, Any]:
-        return {"ok": True, "version": version}
+    # ------------------------------------------------------------------ health
+    @app.get("/health", response_model=HealthResponse)
+    def health() -> HealthResponse:
+        return HealthResponse(ok=True, version=version)
 
-    @app.get("/")
-    def root() -> dict[str, Any]:
-        return {
-            "service": "nmea-serial-bridge",
-            "docs": "/docs",
-            "status": "/status",
-            "config": "/config",
-        }
+    # ------------------------------------------------------------------ meta
+    @app.get("/meta", response_model=MetaResponse)
+    def meta() -> MetaResponse:
+        try:
+            from ui.ui_prefs import load_web_ui_prefs
 
-    @app.get("/status")
-    def status() -> dict[str, Any]:
-        return facade.get_status().to_dict()
+            prefs = load_web_ui_prefs()
+            lan = bool(prefs.get("lan_bind"))
+            token_req = lan and bool(prefs.get("token"))
+        except Exception:
+            lan = False
+            token_req = False
+        return MetaResponse(
+            version=version,
+            lan_bind=lan,
+            token_required=token_req,
+            commands_ready=facade.commands_ready(),
+        )
 
-    @app.get("/config")
-    def get_config() -> dict[str, Any]:
-        return facade.get_config().to_dict()
+    # ------------------------------------------------------------------ api index (old /)
+    @app.get("/token-qr", include_in_schema=False)
+    def token_qr(request: Request) -> Response:
+        try:
+            from ui.ui_prefs import load_web_ui_prefs
 
-    @app.patch("/config")
+            prefs = load_web_ui_prefs()
+            token = prefs.get("token")
+        except Exception:
+            token = None
+        if not token:
+            raise HTTPException(status_code=404, detail="No API token configured")
+        qp = request.query_params
+        use_setup = qp.get("setup") in ("1", "true", "yes")
+        if use_setup:
+            from web.token_setup import build_setup_url
+
+            base = (qp.get("base_url") or "").strip()
+            if not base:
+                host = request.headers.get("host", "127.0.0.1:8765")
+                base = f"http://{host}"
+            payload = build_setup_url(base, str(token))
+        else:
+            payload = str(token)
+        try:
+            import io
+
+            import qrcode
+            import qrcode.image.svg
+
+            factory = qrcode.image.svg.SvgPathImage
+            img = qrcode.make(payload, image_factory=factory)
+            buf = io.BytesIO()
+            img.save(buf)
+            svg = buf.getvalue().decode("utf-8")
+        except Exception:
+            from web.qr_svg import token_to_svg
+
+            svg = token_to_svg(str(token))
+        return Response(content=svg, media_type="image/svg+xml")
+
+    @app.get("/api", response_model=ApiIndexResponse)
+    def api_index() -> ApiIndexResponse:
+        return ApiIndexResponse(
+            service="nmea-serial-bridge",
+            docs="/docs",
+            status="/status",
+            config="/config",
+            discovery="/discovery",
+            meta="/meta",
+        )
+
+    # ------------------------------------------------------------------ status / config
+    @app.get("/status", response_model=StatusResponse)
+    def status() -> StatusResponse:
+        return StatusResponse(**facade.get_status().to_dict())
+
+    @app.get("/logs", response_model=LogsResponse)
+    def logs(after: int = 0, limit: int = 150) -> LogsResponse:
+        payload = facade.get_logs(after_seq=max(0, after), limit=limit)
+        return LogsResponse(**payload.to_dict())
+
+    @app.get("/config", response_model=ConfigResponse)
+    def get_config() -> ConfigResponse:
+        return ConfigResponse(**facade.get_config().to_dict())
+
+    @app.patch("/config", response_model=CommandResponse)
     def patch_config(
         body: ConfigPatch,
         request: Request,
         x_bridge_token: Optional[str] = Header(default=None),
-    ) -> dict[str, Any]:
+    ) -> CommandResponse:
         if not _auth_ok(request, lan_token):
             raise HTTPException(status_code=401, detail="Invalid or missing X-Bridge-Token")
         patch = {k: v for k, v in body.model_dump(exclude_none=True).items()}
         if not patch:
-            return {"ok": True, "message": "No changes", "config": facade.get_config().to_dict()}
+            cfg = facade.get_config().to_dict()
+            return CommandResponse(ok=True, message="No changes", config=ConfigResponse(**cfg))
         result = facade.apply_config(patch)
-        return _as_http_payload(result, facade, include_config=True)
+        return _as_command_response(result, facade, include_config=True)
 
-    @app.post("/bridge/start")
+    # ------------------------------------------------------------------ bridge commands
+    @app.post("/bridge/start", response_model=CommandResponse)
     def bridge_start(
         request: Request,
         x_bridge_token: Optional[str] = Header(default=None),
-    ) -> dict[str, Any]:
+    ) -> CommandResponse:
         if not _auth_ok(request, lan_token):
             raise HTTPException(status_code=401, detail="Invalid or missing X-Bridge-Token")
-        return _as_http_payload(facade.request_start(), facade)
+        return _as_command_response(facade.request_start(), facade)
 
-    @app.post("/bridge/stop")
+    @app.post("/bridge/stop", response_model=CommandResponse)
     def bridge_stop(
         request: Request,
         x_bridge_token: Optional[str] = Header(default=None),
-    ) -> dict[str, Any]:
+    ) -> CommandResponse:
         if not _auth_ok(request, lan_token):
             raise HTTPException(status_code=401, detail="Invalid or missing X-Bridge-Token")
-        return _as_http_payload(facade.request_stop(), facade)
+        return _as_command_response(facade.request_stop(), facade)
+
+    # ------------------------------------------------------------------ discovery
+    @app.get("/discovery", response_model=DiscoveryResponse)
+    def get_discovery() -> DiscoveryResponse:
+        d = facade.get_discovery()
+        return DiscoveryResponse(
+            updated_mono=d.updated_mono,
+            scan_note=d.scan_note,
+            scan_busy=d.scan_busy,
+            serial_devices=[SerialDeviceResponse(**s.to_dict()) for s in d.serial_devices],
+            network_cards=[NetworkCardResponse(**c.to_dict()) for c in d.network_cards],
+            errors=list(d.errors),
+        )
+
+    @app.post("/discovery/refresh", response_model=CommandResponse)
+    def discovery_refresh(
+        request: Request,
+        x_bridge_token: Optional[str] = Header(default=None),
+    ) -> CommandResponse:
+        if not _auth_ok(request, lan_token):
+            raise HTTPException(status_code=401, detail="Invalid or missing X-Bridge-Token")
+        return _as_command_response(facade.request_refresh_discovery(), facade)
+
+    # ------------------------------------------------------------------ ports
+    @app.post("/ports/unlock", response_model=CommandResponse)
+    def ports_unlock(
+        request: Request,
+        x_bridge_token: Optional[str] = Header(default=None),
+    ) -> CommandResponse:
+        if not _auth_ok(request, lan_token):
+            raise HTTPException(status_code=401, detail="Invalid or missing X-Bridge-Token")
+        return _as_command_response(facade.request_unlock_ports(), facade)
+
+    # ------------------------------------------------------------------ static dashboard
+    static = _static_dir()
+    if static is not None:
+        app.mount("/static", StaticFiles(directory=str(static)), name="static")
+
+        @app.get("/", include_in_schema=False)
+        def dashboard() -> FileResponse:
+            return FileResponse(str(static / "index.html"), media_type="text/html")
+    else:
+        @app.get("/", response_model=ApiIndexResponse)
+        def root() -> ApiIndexResponse:
+            return ApiIndexResponse(
+                service="nmea-serial-bridge",
+                docs="/docs",
+                status="/status",
+                config="/config",
+                discovery="/discovery",
+                meta="/meta",
+            )
 
     return app
 
@@ -112,15 +353,22 @@ def _http_status_for(result: WebCommandResult) -> int:
     return 400
 
 
-def _as_http_payload(
+def _as_command_response(
     result: WebCommandResult,
     facade: BridgeAppFacade,
     *,
     include_config: bool = False,
-) -> dict[str, Any]:
-    body: dict[str, Any] = result.to_dict()
+) -> CommandResponse:
+    cfg: Optional[ConfigResponse] = None
     if include_config and result.ok:
-        body["config"] = facade.get_config().to_dict()
+        cfg = ConfigResponse(**facade.get_config().to_dict())
+    body = CommandResponse(
+        ok=result.ok,
+        message=result.message,
+        error_code=result.error_code,
+        state=result.state,
+        config=cfg,
+    )
     if not result.ok:
-        raise HTTPException(status_code=_http_status_for(result), detail=body)
+        raise HTTPException(status_code=_http_status_for(result), detail=body.model_dump())
     return body

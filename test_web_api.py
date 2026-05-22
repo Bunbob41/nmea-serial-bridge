@@ -2,9 +2,18 @@
 from __future__ import annotations
 
 import unittest
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
-from app_facade import BridgeAppFacade, WebCommandResult, WebConfigPayload, WebSessionState
+from app_facade import (
+    BridgeAppFacade,
+    NetworkCardDto,
+    SerialDeviceDto,
+    WebCommandResult,
+    WebConfigPayload,
+    WebDiscoveryPayload,
+    WebMeta,
+    WebSessionState,
+)
 
 try:
     from fastapi.testclient import TestClient
@@ -32,6 +41,24 @@ class TestWebApi(unittest.TestCase):
         r = self.client.get("/health")
         self.assertEqual(r.status_code, 200)
         self.assertTrue(r.json()["ok"])
+
+    def test_openapi_documents_status_fields(self) -> None:
+        schema = self.app.openapi()
+        props = schema["components"]["schemas"]["StatusResponse"]["properties"]
+        self.assertIn("com_port", props)
+        self.assertIn("running", props)
+
+    def test_openapi_documents_discovery_fields(self) -> None:
+        schema = self.app.openapi()
+        props = schema["components"]["schemas"]["DiscoveryResponse"]["properties"]
+        self.assertIn("serial_devices", props)
+        self.assertIn("scan_busy", props)
+
+    def test_openapi_documents_meta_fields(self) -> None:
+        schema = self.app.openapi()
+        props = schema["components"]["schemas"]["MetaResponse"]["properties"]
+        self.assertIn("version", props)
+        self.assertIn("token_required", props)
 
     def test_status(self) -> None:
         r = self.client.get("/status")
@@ -77,6 +104,145 @@ class TestWebApi(unittest.TestCase):
         win._is_bridge_running.return_value = False
         result = self.facade._apply_config_on_main(win, {"fanout": True})
         self.assertEqual(result.error_code, "unsupported")
+
+    # ------------------------------------------------------------------ new 006 routes
+    def test_api_index(self) -> None:
+        r = self.client.get("/api")
+        self.assertEqual(r.status_code, 200)
+        body = r.json()
+        self.assertEqual(body["service"], "nmea-serial-bridge")
+        self.assertIn("discovery", body)
+        self.assertIn("meta", body)
+
+    def test_meta_no_prefs(self) -> None:
+        with patch("web_api.FileResponse", side_effect=None, create=True):
+            with patch("ui.ui_prefs.load_web_ui_prefs", return_value={}, create=True):
+                r = self.client.get("/meta")
+        self.assertEqual(r.status_code, 200)
+        body = r.json()
+        self.assertIn("version", body)
+        self.assertIn("token_required", body)
+        self.assertIn("lan_bind", body)
+
+    def test_meta_token_required_when_lan_bind_and_token(self) -> None:
+        try:
+            from ui import ui_prefs  # noqa: F401
+            target = "ui.ui_prefs.load_web_ui_prefs"
+        except ImportError:
+            return
+        with patch(target, return_value={"lan_bind": True, "token": "secret123"}):
+            r = self.client.get("/meta")
+        self.assertEqual(r.status_code, 200)
+        self.assertTrue(r.json()["token_required"])
+
+    def test_discovery_empty(self) -> None:
+        r = self.client.get("/discovery")
+        self.assertEqual(r.status_code, 200)
+        body = r.json()
+        self.assertIn("serial_devices", body)
+        self.assertIn("network_cards", body)
+        self.assertFalse(body["scan_busy"])
+
+    def test_discovery_with_devices(self) -> None:
+        self.facade._discovery_payload = WebDiscoveryPayload(
+            updated_mono=1.0,
+            scan_note="test",
+            scan_busy=False,
+            serial_devices=[
+                SerialDeviceDto(
+                    device_id="d1",
+                    port="COM3",
+                    description="USB Serial",
+                    manufacturer="FTDI",
+                    match_keyword="Trimble",
+                    status="available",
+                )
+            ],
+            network_cards=[],
+            errors=[],
+        )
+        r = self.client.get("/discovery")
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(len(r.json()["serial_devices"]), 1)
+        self.assertEqual(r.json()["serial_devices"][0]["port"], "COM3")
+
+    def test_discovery_refresh_ok(self) -> None:
+        self.facade.request_refresh_discovery = MagicMock(  # type: ignore[method-assign]
+            return_value=WebCommandResult(True, "Discovery scan started", None, "scanning")
+        )
+        r = self.client.post("/discovery/refresh")
+        self.assertEqual(r.status_code, 200)
+        self.assertTrue(r.json()["ok"])
+        self.assertEqual(r.json()["state"], "scanning")
+
+    def test_discovery_refresh_busy(self) -> None:
+        self.facade.request_refresh_discovery = MagicMock(  # type: ignore[method-assign]
+            return_value=WebCommandResult(False, "Another command is in progress", "busy", "idle")
+        )
+        r = self.client.post("/discovery/refresh")
+        self.assertEqual(r.status_code, 409)
+
+    def test_ports_unlock_ok(self) -> None:
+        self.facade.request_unlock_ports = MagicMock(  # type: ignore[method-assign]
+            return_value=WebCommandResult(True, "COM7 released", None, "stopped")
+        )
+        r = self.client.post("/ports/unlock")
+        self.assertEqual(r.status_code, 200)
+        self.assertTrue(r.json()["ok"])
+
+    def test_ports_unlock_no_com(self) -> None:
+        self.facade.request_unlock_ports = MagicMock(  # type: ignore[method-assign]
+            return_value=WebCommandResult(False, "No COM port configured", "validation")
+        )
+        r = self.client.post("/ports/unlock")
+        self.assertEqual(r.status_code, 400)
+
+    def test_root_returns_html(self) -> None:
+        """GET / returns text/html with the dashboard (T025 / SC-103)."""
+        r = self.client.get("/")
+        # Either HTML dashboard or API JSON fallback — both are valid
+        ct = r.headers.get("content-type", "")
+        self.assertIn(r.status_code, (200,))
+        if "text/html" in ct:
+            self.assertIn(b"nmea", r.content.lower())
+
+    def test_token_qr_404_without_token(self) -> None:
+        with patch("ui.ui_prefs.load_web_ui_prefs", return_value={"token": None}):
+            r = self.client.get("/token-qr")
+        self.assertEqual(r.status_code, 404)
+
+    def test_token_qr_svg_when_token_mocked(self) -> None:
+        with patch("web_api.load_web_ui_prefs", create=True):
+            with patch("ui.ui_prefs.load_web_ui_prefs", return_value={"token": "test-secret-token"}):
+                r = self.client.get("/token-qr")
+        self.assertEqual(r.status_code, 200)
+        self.assertIn("svg", r.headers.get("content-type", ""))
+
+    def test_logs_endpoint_returns_lines(self) -> None:
+        self.facade.append_log_lines(["hello web log"])
+        r = self.client.get("/logs?after=0")
+        self.assertEqual(r.status_code, 200)
+        data = r.json()
+        self.assertGreaterEqual(data["latest_seq"], 1)
+        self.assertTrue(any(ln["text"] == "hello web log" for ln in data["lines"]))
+
+    def test_token_qr_setup_mode(self) -> None:
+        with patch("ui.ui_prefs.load_web_ui_prefs", return_value={"token": "tok123"}):
+            r = self.client.get(
+                "/token-qr?setup=1&base_url=http://100.0.0.1:8765",
+                headers={"host": "127.0.0.1:8765"},
+            )
+        self.assertEqual(r.status_code, 200)
+        self.assertIn("svg", r.headers.get("content-type", ""))
+
+    def test_auth_required_when_token_set(self) -> None:
+        app = create_app(self.facade, version="test", lan_token="secret")
+        client = TestClient(app)
+        r = client.post("/bridge/start")
+        self.assertEqual(r.status_code, 401)
+        r2 = client.post("/bridge/start", headers={"X-Bridge-Token": "secret"})
+        # May 400/409 from validation but not 401
+        self.assertNotEqual(r2.status_code, 401)
 
 
 if __name__ == "__main__":

@@ -81,6 +81,11 @@ a = Analysis(
         [(str(root / "ui" / "resources"), "ui/resources")]
         if (root / "ui" / "resources").is_dir()
         else []
+    )
+    + (
+        [(str(root / "web" / "static"), "web/static")]
+        if (root / "web" / "static").is_dir()
+        else []
     ),
     hiddenimports=[
         *APP_HIDDEN,

@@ -40,7 +40,11 @@ def exit_after_qt_work(code: int) -> None:
 
 
 def is_windows_qt_shutdown_exit(exit_code: int | None) -> bool:
-    return sys.platform == "win32" and exit_code == WINDOWS_QT_SHUTDOWN_EXIT
+    if sys.platform != "win32" or exit_code is None:
+        return False
+    # subprocess may report 0xC0000409 as unsigned (3221226505) or signed (-1073740791).
+    code_u = exit_code & 0xFFFFFFFF
+    return code_u == (WINDOWS_QT_SHUTDOWN_EXIT & 0xFFFFFFFF)
 
 
 def unittest_output_indicates_ok(stdout: str, stderr: str) -> bool:
@@ -49,8 +53,14 @@ def unittest_output_indicates_ok(stdout: str, stderr: str) -> bool:
     combined = (stdout or "") + (stderr or "")
     if not combined.strip():
         return False
-    if re.search(r"\b(FAIL:|ERROR:|FAILED \()", combined):
+    if "Traceback (most recent call last):" in combined:
         return False
     if re.search(r"^FAILED\b", combined, re.MULTILINE):
         return False
-    return bool(re.search(r"Ran \d+ tests\b", combined)) and "OK" in combined
+    if re.search(r"^FAIL:", combined, re.MULTILINE):
+        return False
+    if re.search(r"FAILED \(", combined):
+        return False
+    return bool(re.search(r"Ran \d+ tests\b", combined)) and re.search(
+        r"^OK\s*$", combined, re.MULTILINE
+    )

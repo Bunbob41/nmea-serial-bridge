@@ -766,6 +766,7 @@ _WEB_UI_DEFAULTS = {
     "port": 8765,
     "lan_bind": False,
     "token": None,
+    "phone_base_url": None,
 }
 
 
@@ -780,13 +781,23 @@ def load_web_ui_prefs() -> dict[str, Any]:
     except (TypeError, ValueError):
         port_i = 8765
     token = raw.get("token")
+    phone_base = raw.get("phone_base_url")
+    phone_s = str(phone_base).strip() if phone_base else None
     return {
         "enabled": bool(raw.get("enabled", False)),
         "host": str(raw.get("host", "127.0.0.1")).strip() or "127.0.0.1",
         "port": max(1024, min(65535, port_i)),
         "lan_bind": bool(raw.get("lan_bind", False)),
         "token": str(token).strip() if token else None,
+        "phone_base_url": phone_s or None,
     }
+
+
+def generate_web_api_token() -> str:
+    """URL-safe random token for X-Bridge-Token when LAN bind is enabled."""
+    import secrets
+
+    return secrets.token_urlsafe(24)
 
 
 def save_web_ui_prefs(
@@ -796,7 +807,11 @@ def save_web_ui_prefs(
     port: int,
     lan_bind: bool,
     token: Optional[str],
+    phone_base_url: Optional[str] = None,
 ) -> None:
+    prev = load_web_ui_prefs()
+    phone = phone_base_url if phone_base_url is not None else prev.get("phone_base_url")
+    phone_s = (phone or "").strip() or None
     data = _read_json()
     data["web_ui"] = {
         "enabled": bool(enabled),
@@ -804,6 +819,7 @@ def save_web_ui_prefs(
         "port": max(1024, min(65535, int(port))),
         "lan_bind": bool(lan_bind),
         "token": (token or "").strip() or None,
+        "phone_base_url": phone_s,
     }
     _write_json(data)
 

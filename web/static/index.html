@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>NMEA Bridge Dashboard</title>
+  <link rel="stylesheet" href="/static/dashboard.css" />
+</head>
+<body>
+  <!-- ═══════════════════════════════════════ HEADER ══════════════════════════════════════ -->
+  <header class="app-header">
+    <div class="header-brand">
+      <span class="brand-name">NMEA Bridge</span>
+      <span class="version-tag" id="ver-tag">…</span>
+    </div>
+    <div class="header-status">
+      <span class="conn-dot" id="conn-dot" title="Connection status"></span>
+      <span class="conn-label" id="conn-label">Connecting…</span>
+    </div>
+  </header>
+
+  <main class="dashboard">
+
+    <!-- ══════════════════════════════════ STATUS CARD ══════════════════════════════════ -->
+    <section class="card status-card" id="status-card">
+      <h2 class="card-title">Bridge Status</h2>
+      <div class="offline-banner" id="offline-banner" hidden>
+        <span class="offline-icon">⚡</span> Backend offline — cannot reach bridge
+      </div>
+
+      <div class="status-grid" id="status-grid">
+        <div class="stat-item">
+          <span class="stat-label">State</span>
+          <span class="stat-value state-badge" id="stat-state">—</span>
+        </div>
+        <div class="stat-item">
+          <span class="stat-label">COM Port</span>
+          <span class="stat-value mono" id="stat-com">—</span>
+        </div>
+        <div class="stat-item">
+          <span class="stat-label">Baud</span>
+          <span class="stat-value mono" id="stat-baud">—</span>
+        </div>
+        <div class="stat-item">
+          <span class="stat-label">UDP Bind</span>
+          <span class="stat-value mono" id="stat-udp">—</span>
+        </div>
+        <div class="stat-item">
+          <span class="stat-label">NMEA Mode</span>
+          <span class="stat-value" id="stat-nmea">—</span>
+        </div>
+        <div class="stat-item">
+          <span class="stat-label">Hz Net→COM</span>
+          <span class="stat-value hz-val" id="stat-hz-down">—</span>
+        </div>
+        <div class="stat-item">
+          <span class="stat-label">Hz COM→Net</span>
+          <span class="stat-value hz-val" id="stat-hz-up">—</span>
+        </div>
+        <div class="stat-item">
+          <span class="stat-label">Drops</span>
+          <span class="stat-value warn-val" id="stat-drops">—</span>
+        </div>
+        <div class="stat-item">
+          <span class="stat-label">Rejects</span>
+          <span class="stat-value warn-val" id="stat-rejects">—</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══════════════════════════════════ RUN CONTROLS ════════════════════════════════ -->
+    <section class="card run-card" id="run-card">
+      <h2 class="card-title">Control</h2>
+      <div class="run-controls">
+        <button class="btn btn-start" id="btn-start" onclick="startBridge()">Start</button>
+        <button class="btn btn-stop"  id="btn-stop"  onclick="stopBridge()">Stop</button>
+      </div>
+      <div class="inline-alert" id="run-alert" hidden></div>
+    </section>
+
+    <!-- ════════════════════════════════ CONFIGURATION ═════════════════════════════════ -->
+    <section class="card config-card" id="config-card">
+      <h2 class="card-title">Configuration</h2>
+      <div class="config-lock-banner" id="config-lock-banner" hidden>
+        Bridge is running — stop before changing COM or network bind.
+      </div>
+      <form class="config-form" id="config-form" onsubmit="return false;">
+        <div class="config-form-grid">
+          <label class="cfg-label" for="cfg-com-select">COM Port</label>
+          <select class="cfg-input mono" id="cfg-com-select"></select>
+
+          <label class="cfg-label" for="cfg-baud-input">Baud</label>
+          <input class="cfg-input mono" id="cfg-baud-input" type="number" min="300" max="921600" step="1" />
+
+          <label class="cfg-label" for="cfg-netmode-select">Network mode</label>
+          <select class="cfg-input" id="cfg-netmode-select">
+            <option value="udp_listen">UDP listen</option>
+            <option value="udp_remote">UDP remote</option>
+            <option value="tcp_client">TCP client</option>
+            <option value="tcp_server">TCP server</option>
+          </select>
+
+          <label class="cfg-label cfg-listen-only" for="cfg-udp-host">Listen host</label>
+          <input class="cfg-input mono cfg-listen-only" id="cfg-udp-host" type="text" />
+
+          <label class="cfg-label cfg-listen-only" for="cfg-udp-port">Listen port</label>
+          <input class="cfg-input mono cfg-listen-only" id="cfg-udp-port" type="number" min="1" max="65535" />
+
+          <label class="cfg-label cfg-remote-only" for="cfg-remote-host">Remote host</label>
+          <input class="cfg-input mono cfg-remote-only" id="cfg-remote-host" type="text" />
+
+          <label class="cfg-label cfg-remote-only" for="cfg-remote-port">Remote port</label>
+          <input class="cfg-input mono cfg-remote-only" id="cfg-remote-port" type="number" min="1" max="65535" />
+
+          <label class="cfg-label">NMEA mode</label>
+          <span class="cfg-readonly" id="cfg-nmea-readonly">—</span>
+        </div>
+        <div class="config-form-actions">
+          <button type="button" class="btn btn-start" id="btn-save-config" onclick="saveConfig()">Save configuration</button>
+        </div>
+      </form>
+      <div class="inline-alert" id="config-alert" hidden></div>
+    </section>
+
+    <!-- ════════════════════════════════ TOOLS / UNLOCK ══════════════════════════════════ -->
+    <section class="card tools-card" id="tools-card">
+      <h2 class="card-title">Tools</h2>
+      <div class="tools-row">
+        <button class="btn btn-tool" id="btn-unlock" onclick="unlockPorts()">Unlock Ports</button>
+      </div>
+      <div class="inline-alert" id="unlock-alert" hidden></div>
+
+      <!-- Token settings — only shown when meta.token_required -->
+      <div class="token-section" id="token-section" hidden>
+        <label class="token-label" for="token-input">API Token (X-Bridge-Token)</label>
+        <div class="token-row">
+          <input class="token-input" id="token-input" type="password"
+                 placeholder="Paste token here…"
+                 oninput="saveToken(this.value)" />
+          <button class="btn btn-secondary btn-sm" id="btn-token-reveal" type="button"
+                  onclick="toggleTokenReveal()">Show</button>
+          <button class="btn btn-secondary btn-sm" type="button" onclick="clearToken()">Clear</button>
+        </div>
+        <div class="token-actions">
+          <button class="btn btn-secondary btn-sm" type="button" onclick="copyTokenToClipboard()">Copy token</button>
+          <button class="btn btn-secondary btn-sm" type="button" onclick="copySetupLink()">Copy setup link</button>
+          <button class="btn btn-secondary btn-sm" type="button" onclick="pasteSetupLink()">Paste setup link</button>
+          <button class="btn btn-secondary btn-sm" id="btn-share-setup" type="button" onclick="shareSetupLink()">Share link</button>
+        </div>
+        <span class="token-hint">Works both ways: copy a setup link on one device, paste or open it on the other — no typing.</span>
+        <div class="token-transfer-hint" id="token-transfer-hint">
+          <p class="mobile-hint-title">Move token between devices</p>
+          <p class="mobile-hint-body" id="token-transfer-body"></p>
+        </div>
+        <div class="token-mobile-hint" id="token-mobile-qr-hint" hidden>
+          <p class="mobile-hint-title">QR on this screen</p>
+          <p class="mobile-hint-body">Use <strong>Copy setup link</strong> or <strong>Share link</strong> to send to the PC (Tools → Guide → <strong>Paste setup link</strong>). Scanning a QR on this same phone does not work.</p>
+        </div>
+        <div id="qr-desktop-only">
+          <label class="qr-toggle">
+            <input type="checkbox" id="chk-show-qr" onchange="onShowQrToggle(this.checked)" />
+            Show QR (scan from another device)
+          </label>
+          <div class="qr-block" id="qr-block" hidden>
+            <img class="qr-image" id="qr-image" src="" alt="Phone setup link QR code" width="180" height="180" />
+            <p class="qr-caption">Scan with your phone camera from the survey PC screen — opens the dashboard and saves the token automatically.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═════════════════════════════════════ LIVE LOG ═══════════════════════════════════ -->
+    <section class="card log-card" id="log-card">
+      <div class="log-card-header">
+        <h2 class="card-title">Live Log</h2>
+        <span class="log-meta mono" id="log-meta">Waiting…</span>
+      </div>
+      <p class="log-trial-note">Try three layouts — pick the one you like; saved in this browser.</p>
+      <div class="log-toolbar">
+        <div class="log-view-tabs" role="tablist" aria-label="Log layout">
+          <button type="button" class="log-view-tab is-active" data-view="stream" aria-pressed="true">Terminal</button>
+          <button type="button" class="log-view-tab" data-view="feed" aria-pressed="false">Cards</button>
+          <button type="button" class="log-view-tab" data-view="table" aria-pressed="false">Table</button>
+        </div>
+        <div class="log-toolbar-actions">
+          <label class="log-filter-label">
+            <span class="sr-only">Filter</span>
+            <select class="log-filter-select" id="log-filter" onchange="onLogFilterChange(this.value)">
+              <option value="all">All</option>
+              <option value="traffic">Traffic</option>
+              <option value="warn">Warnings</option>
+              <option value="event">Events</option>
+            </select>
+          </label>
+          <label class="log-chk">
+            <input type="checkbox" id="log-autoscroll" checked onchange="onLogAutoscrollChange(this.checked)" />
+            Auto-scroll
+          </label>
+          <label class="log-chk">
+            <input type="checkbox" id="log-pause-ui" onchange="onLogUiPauseChange(this.checked)" />
+            Pause view
+          </label>
+          <button type="button" class="btn btn-secondary btn-sm" onclick="clearWebLogView()">Clear</button>
+        </div>
+      </div>
+      <div class="log-panel-wrap">
+        <div class="log-panel log-view-stream" id="log-panel" data-view="stream" aria-live="polite"></div>
+      </div>
+      <p class="log-footnote" id="log-footnote">Mirrors the desktop live log (same filters as the app).</p>
+    </section>
+
+    <!-- ═══════════════════════════════════ DISCOVERY ═══════════════════════════════════ -->
+    <section class="card discovery-card" id="discovery-card">
+      <h2 class="card-title">
+        Discovery
+        <span class="scan-spinner" id="scan-spinner" hidden>⟳ Scanning…</span>
+      </h2>
+
+      <div class="discovery-controls">
+        <button class="btn btn-tool" id="btn-refresh" onclick="refreshDiscovery()">Refresh Scan</button>
+      </div>
+      <div class="inline-alert" id="discovery-alert" hidden></div>
+
+      <div class="device-section">
+        <h3 class="device-section-title">Serial Ports</h3>
+        <div class="device-list" id="serial-list">
+          <div class="device-empty">No devices found. Press Refresh Scan.</div>
+        </div>
+      </div>
+
+      <div class="device-section">
+        <h3 class="device-section-title">Network Adapters</h3>
+        <div class="device-list" id="network-list">
+          <div class="device-empty">No adapters found.</div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <footer class="app-footer">
+    <span id="footer-note">NMEA Serial Bridge — Web Dashboard</span>
+  </footer>
+
+  <script src="/static/dashboard.js"></script>
+</body>
+</html>
