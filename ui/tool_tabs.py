@@ -13,23 +13,23 @@ _WIDGET_SIZE_MAX = 16777215
 _DIAG_COLLAPSED_STRIP_MIN = 40
 
 _DEFAULT_DIAG_CARD_ORDER = [
+    "automated_checks",
     "file_log",
     "screen_log",
     "traffic_quality",
-    "automated_checks",
 ]
 
 _DEFAULT_DIAG_CARD_HEIGHTS: dict[str, int] = {
     "file_log": 200,
     "screen_log": 64,
-    "traffic_quality": 200,
+    "traffic_quality": 120,
     "automated_checks": 280,
 }
 
 _DIAG_CARD_EXPANDED_CAP: dict[str, int] = {
     "file_log": 360,
     "screen_log": 120,
-    "traffic_quality": 480,
+    "traffic_quality": 200,
     "automated_checks": 520,
 }
 
@@ -371,8 +371,8 @@ _GUIDE_UDP = """
 <hr/>
 <h3>How to Configure</h3>
 <ol>
-  <li>Open the <b>Tools</b> drawer and navigate to the <b>Presets</b> tab.</li>
-  <li>Click <b>Add New Preset</b>.</li>
+  <li>Open the main <b>Tools</b> tab (Standard) or <b>Tools</b> drawer (Field) and select <b>Presets</b>.</li>
+  <li>Click <b>Save as…</b> to create a new named preset (or edit fields and <b>Save</b>).</li>
   <li>Name your preset (e.g. <em>"Bench UDP Test"</em>).</li>
   <li><b>Serial Configuration:</b>
     <ul>
@@ -389,9 +389,9 @@ _GUIDE_UDP = """
           (e.g. <code>10110</code>).</li>
     </ul>
   </li>
-  <li>Click <b>Save Preset</b>.</li>
-  <li>Return to the <b>Connect</b> tab, open the <b>Run bridge</b> panel,
-      select your preset, and click <b>Start bridge</b>.</li>
+  <li>Click <b>Save</b> or <b>Save as…</b>.</li>
+  <li>Return to the <b>Connect</b> tab: confirm <b>Serial &amp; network</b> (connection hub or manual fields),
+      then <b>Start bridge</b> in the <b>Run bridge</b> panel.</li>
 </ol>
 <p class="note">UDP Listen mode tracks every sender that transmits to your port and can
 fan-out replies to all of them (toggle the <em>Fan-out to all UDP peers</em> checkbox).</p>
@@ -403,8 +403,8 @@ _GUIDE_TCP_CLIENT = """
 <hr/>
 <h3>How to Configure</h3>
 <ol>
-  <li>Open the <b>Tools</b> drawer and navigate to the <b>Presets</b> tab.</li>
-  <li>Click <b>Add New Preset</b>.</li>
+  <li>Open the main <b>Tools</b> tab (Standard) or <b>Tools</b> drawer (Field) and select <b>Presets</b>.</li>
+  <li>Click <b>Save as…</b> to create a new named preset (or edit fields and <b>Save</b>).</li>
   <li>Name your preset (e.g. <em>"Remote Server Link"</em>).</li>
   <li><b>Serial Configuration:</b>
     <ul>
@@ -419,8 +419,8 @@ _GUIDE_TCP_CLIENT = """
       <li>Set <b>Server Port:</b> the port the remote server has opened for you.</li>
     </ul>
   </li>
-  <li>Click <b>Save Preset</b>.</li>
-  <li>Return to the <b>Connect</b> tab, select the preset, and click <b>Start bridge</b>.
+  <li>Click <b>Save</b> or <b>Save as…</b>.</li>
+  <li>Return to <b>Connect</b> and click <b>Start bridge</b>.
       The app will actively attempt to connect to the remote server.</li>
 </ol>
 <p class="note">The bridge retries the connection automatically if the server drops.
@@ -434,8 +434,8 @@ serial hardware.</em></p>
 <hr/>
 <h3>How to Configure</h3>
 <ol>
-  <li>Open the <b>Tools</b> drawer and navigate to the <b>Presets</b> tab.</li>
-  <li>Click <b>Add New Preset</b>.</li>
+  <li>Open the main <b>Tools</b> tab (Standard) or <b>Tools</b> drawer (Field) and select <b>Presets</b>.</li>
+  <li>Click <b>Save as…</b> to create a new named preset (or edit fields and <b>Save</b>).</li>
   <li>Name your preset (e.g. <em>"Local Host Access"</em>).</li>
   <li><b>Serial Configuration:</b>
     <ul>
@@ -452,8 +452,8 @@ serial hardware.</em></p>
           Ensure this port is not blocked by your firewall.</li>
     </ul>
   </li>
-  <li>Click <b>Save Preset</b>.</li>
-  <li>Return to the <b>Connect</b> tab, select the preset, and click <b>Start bridge</b>.
+  <li>Click <b>Save</b> or <b>Save as…</b>.</li>
+  <li>Return to <b>Connect</b> and click <b>Start bridge</b>.
       The app will listen and wait for a client to connect.</li>
 </ol>
 <p class="note">Only one TCP client can connect at a time in server mode. The status bar
@@ -483,21 +483,61 @@ bottom status bar. Green text indicates an active connection; red indicates an e
 """
 
 
-def build_guide_tab(parent: QtWidgets.QWidget) -> QtWidgets.QWidget:
-    """Structured connection workflow guide with one tab per method."""
+def _wire_web_control_widgets(parent: QtWidgets.QWidget) -> None:
+    """Connect web API / phone dashboard controls (shared by Phone tab only)."""
+    if hasattr(parent, "_on_web_ui_prefs_changed"):
+        parent.chk_web_enabled.toggled.connect(parent._on_web_ui_prefs_changed)
+    if hasattr(parent, "_on_web_port_spin_changed"):
+        parent.spin_web_port.valueChanged.connect(parent._on_web_port_spin_changed)
+    if hasattr(parent, "_on_web_port_unlock_toggled"):
+        parent.chk_web_port_unlock.toggled.connect(parent._on_web_port_unlock_toggled)
+    if hasattr(parent, "_on_web_ui_prefs_changed"):
+        parent.edit_web_token.editingFinished.connect(parent._on_web_ui_prefs_changed)
+        parent.edit_web_phone_url.editingFinished.connect(parent._normalize_phone_url_field)
+        parent.edit_web_phone_url.editingFinished.connect(parent._on_web_ui_prefs_changed)
+    if hasattr(parent, "_on_web_lan_toggled"):
+        parent.chk_web_lan.toggled.connect(parent._on_web_lan_toggled)
+    elif hasattr(parent, "_on_web_ui_prefs_changed"):
+        parent.chk_web_lan.toggled.connect(parent._on_web_ui_prefs_changed)
+    if hasattr(parent, "_on_web_generate_token"):
+        parent.btn_web_token_generate.clicked.connect(parent._on_web_generate_token)
+    if hasattr(parent, "_on_web_copy_token"):
+        parent.btn_web_token_copy.clicked.connect(parent._on_web_copy_token)
+    if hasattr(parent, "_on_web_copy_phone_setup"):
+        parent.btn_web_copy_setup.clicked.connect(parent._on_web_copy_phone_setup)
+    if hasattr(parent, "_on_web_paste_setup"):
+        parent.btn_web_paste_setup.clicked.connect(parent._on_web_paste_setup)
+    if hasattr(parent, "_on_web_detect_phone_url"):
+        parent.btn_web_detect_phone_url.clicked.connect(parent._on_web_detect_phone_url)
+    if hasattr(parent, "_on_web_show_qr_toggled"):
+        parent.chk_web_show_qr.toggled.connect(parent._on_web_show_qr_toggled)
+        parent.edit_web_token.textChanged.connect(parent._on_web_token_text_changed)
+
+
+def build_phone_dashboard_tab(parent: QtWidgets.QWidget) -> QtWidgets.QWidget:
+    """Web API, Tailscale URL, token, and QR — dedicated Tools page (not buried in Guide)."""
     inner = QtWidgets.QWidget()
     lay = QtWidgets.QVBoxLayout(inner)
-    lay.setContentsMargins(10, 10, 10, 10)
-    lay.setSpacing(8)
+    lay.setContentsMargins(12, 12, 12, 12)
+    lay.setSpacing(10)
 
-    header = QtWidgets.QLabel("Network ↔ COM Bridge — Connection Workflows")
+    header = QtWidgets.QLabel("Phone dashboard — Web API & QR")
     header.setObjectName("tabHint")
     lay.addWidget(header)
 
-    web_box = QtWidgets.QGroupBox("Web control (localhost)")
+    intro = QtWidgets.QLabel(
+        "Control the bridge from a phone browser on Tailscale or survey LAN. "
+        "Enable the API, set this PC's reachable URL (not 127.0.0.1 on iPhone), "
+        "then scan the QR or copy the setup link."
+    )
+    intro.setWordWrap(True)
+    intro.setObjectName("tabNote")
+    lay.addWidget(intro)
+
+    web_box = QtWidgets.QGroupBox("Web control — phone dashboard & API token")
     web_box.setObjectName("connectGroupBox")
-    web_box.setMinimumHeight(200)
-    web_box.setMinimumWidth(420)
+    web_box.setMinimumHeight(280)
+    web_box.setMinimumWidth(480)
     web_row = QtWidgets.QHBoxLayout(web_box)
     web_row.setSpacing(12)
     web_left = QtWidgets.QWidget()
@@ -511,24 +551,51 @@ def build_guide_tab(parent: QtWidgets.QWidget) -> QtWidgets.QWidget:
         "Starts a local HTTP server (default 127.0.0.1:8765) for /status, /config, and start/stop. "
         "See specs/005-hybrid-ui-webui/quickstart.md."
     )
-    parent.spin_web_port = QtWidgets.QSpinBox()
+    from ui.controls import WebPortSpinBox
+
+    parent.spin_web_port = WebPortSpinBox()
     parent.spin_web_port.setRange(1024, 65535)
     parent.spin_web_port.setValue(8765)
+    parent.spin_web_port.setAccelerated(True)
+    parent.spin_web_port.setToolTip(
+        "TCP port for the phone dashboard (/status, /config). "
+        "Locked by default — check Unlock port for 10 seconds to change. "
+        "Mouse wheel never changes this value (avoids accidental scroll)."
+    )
+    parent.chk_web_port_unlock = QtWidgets.QCheckBox("Unlock port (10 s)")
+    parent.chk_web_port_unlock.setToolTip(
+        "Enable the port field for ten seconds so you can type or use the step buttons. "
+        "Unchecks automatically; port stays locked otherwise."
+    )
+    port_row = QtWidgets.QHBoxLayout()
+    port_row.setSpacing(8)
+    port_row.addWidget(
+        parent.spin_web_port,
+        0,
+        QtCore.Qt.AlignmentFlag.AlignLeft | QtCore.Qt.AlignmentFlag.AlignVCenter,
+    )
+    port_row.addWidget(parent.chk_web_port_unlock, 1)
+    port_host = QtWidgets.QWidget()
+    port_host.setLayout(port_row)
+    parent.lbl_web_listen = QtWidgets.QLabel()
+    parent.lbl_web_listen.setObjectName("tabNote")
+    parent.lbl_web_listen.setWordWrap(True)
     parent.chk_web_lan = QtWidgets.QCheckBox("Allow LAN / Tailscale access (binds 0.0.0.0)")
     parent.chk_web_lan.setToolTip(
         "Exposes the web API on all interfaces. Use Windows firewall and the API token below. "
         "Localhost-only is safer on bench PCs."
     )
     parent.edit_web_token = QtWidgets.QLineEdit()
-    parent.edit_web_token.setPlaceholderText("Generate or paste token — required for LAN/phone control")
+    parent.edit_web_token.setPlaceholderText("Remote control token — generate for LAN/phone")
     parent.edit_web_token.setToolTip(
-        "Sent as X-Bridge-Token on Start/Stop and other POST requests. "
-        "Copy the same value into the web dashboard Tools panel on your phone."
+        "Remote control token (X-Bridge-Token) for Start/Stop and COM changes from your phone. "
+        "Copy the setup link (not 127.0.0.1) to the phone dashboard."
     )
     parent.edit_web_token.setClearButtonEnabled(True)
     parent.chk_web_show_qr = QtWidgets.QCheckBox("Show QR")
+    parent.chk_web_show_qr.setChecked(True)
     parent.chk_web_show_qr.setToolTip(
-        "Display a scannable QR code for the API token (for phones without copy/paste from this PC)."
+        "Display a scannable QR code for the phone setup link (recommended on boat PCs)."
     )
     token_btn_row = QtWidgets.QHBoxLayout()
     parent.btn_web_token_generate = QtWidgets.QPushButton("Generate token")
@@ -544,10 +611,16 @@ def build_guide_tab(parent: QtWidgets.QWidget) -> QtWidgets.QWidget:
         "Import token from clipboard — paste a setup link copied on your phone or another device."
     )
     parent.edit_web_phone_url = QtWidgets.QLineEdit()
-    parent.edit_web_phone_url.setPlaceholderText("http://100.x.x.x:8765 — Tailscale/LAN URL for phone")
+    parent.edit_web_phone_url.setPlaceholderText(
+        "http://100.x.x.x:8765 — Tailscale IP (NOT 127.0.0.1)"
+    )
     parent.edit_web_phone_url.setToolTip(
-        "Base URL your phone uses for the dashboard (same as the browser address bar on the phone). "
-        "Used for QR and setup links."
+        "Base URL your phone uses in Safari — must be this PC's Tailscale or LAN IP, "
+        "not 127.0.0.1. Run tailscale ip -4 on this PC if unsure. Used for QR and setup links."
+    )
+    parent.btn_web_detect_phone_url = QtWidgets.QPushButton("Detect Tailscale IP")
+    parent.btn_web_detect_phone_url.setToolTip(
+        "Fill Phone dashboard URL from tailscale ip -4 or local network addresses."
     )
     token_btn_row.addWidget(parent.chk_web_show_qr)
     token_btn_row.addWidget(parent.btn_web_token_generate)
@@ -558,20 +631,20 @@ def build_guide_tab(parent: QtWidgets.QWidget) -> QtWidgets.QWidget:
     token_btn_host = QtWidgets.QWidget()
     token_btn_host.setLayout(token_btn_row)
     token_hint = QtWidgets.QLabel(
-        "Both ways: Copy phone setup link → open on phone, or copy from phone → Paste setup link here. "
-        "QR on this PC screen is for the phone camera only. Saved in ui_prefs.json."
+        "Phone must use this PC's Tailscale IP (100.x.x.x:8765) — 127.0.0.1 will not work on iPhone. "
+        "Detect Tailscale IP, then Copy phone setup link or scan QR. Saved in ui_prefs.json."
     )
     token_hint.setObjectName("tabHint")
     token_hint.setWordWrap(True)
 
     parent.lbl_web_token_qr = QtWidgets.QLabel()
     parent.lbl_web_token_qr.setObjectName("webTokenQr")
-    parent.lbl_web_token_qr.setFixedSize(188, 188)
+    parent.lbl_web_token_qr.setFixedSize(220, 220)
     parent.lbl_web_token_qr.setAlignment(
         QtCore.Qt.AlignmentFlag.AlignCenter
     )
     parent.lbl_web_token_qr.setFrameShape(QtWidgets.QFrame.Shape.Box)
-    parent.lbl_web_token_qr.setVisible(False)
+    parent.lbl_web_token_qr.setVisible(parent.chk_web_show_qr.isChecked())
     parent.lbl_web_token_qr.setToolTip(
         "QR encodes a phone setup link — scan from the phone camera while viewing this PC screen."
     )
@@ -582,35 +655,101 @@ def build_guide_tab(parent: QtWidgets.QWidget) -> QtWidgets.QWidget:
     qr_lay.addStretch(1)
 
     web_form.addRow("", parent.chk_web_enabled)
-    web_form.addRow("Port:", parent.spin_web_port)
+    web_form.addRow("Port:", port_host)
+    web_form.addRow("", parent.lbl_web_listen)
     web_form.addRow("", parent.chk_web_lan)
-    web_form.addRow("Phone dashboard URL:", parent.edit_web_phone_url)
-    web_form.addRow("API token:", parent.edit_web_token)
+    phone_url_row = QtWidgets.QHBoxLayout()
+    phone_url_row.addWidget(parent.edit_web_phone_url, 1)
+    phone_url_row.addWidget(parent.btn_web_detect_phone_url)
+    phone_url_host = QtWidgets.QWidget()
+    phone_url_host.setLayout(phone_url_row)
+    web_form.addRow("Phone dashboard URL:", phone_url_host)
+    web_form.addRow("Remote control token:", parent.edit_web_token)
     web_form.addRow("", token_btn_host)
     web_form.addRow("", token_hint)
     web_row.addWidget(web_left, 1)
     web_row.addWidget(qr_side, 0)
-    if hasattr(parent, "_on_web_ui_prefs_changed"):
-        parent.chk_web_enabled.toggled.connect(parent._on_web_ui_prefs_changed)
-        parent.spin_web_port.valueChanged.connect(parent._on_web_ui_prefs_changed)
-        parent.edit_web_token.editingFinished.connect(parent._on_web_ui_prefs_changed)
-        parent.edit_web_phone_url.editingFinished.connect(parent._on_web_ui_prefs_changed)
-    if hasattr(parent, "_on_web_lan_toggled"):
-        parent.chk_web_lan.toggled.connect(parent._on_web_lan_toggled)
-    elif hasattr(parent, "_on_web_ui_prefs_changed"):
-        parent.chk_web_lan.toggled.connect(parent._on_web_ui_prefs_changed)
-    if hasattr(parent, "_on_web_generate_token"):
-        parent.btn_web_token_generate.clicked.connect(parent._on_web_generate_token)
-    if hasattr(parent, "_on_web_copy_token"):
-        parent.btn_web_token_copy.clicked.connect(parent._on_web_copy_token)
-    if hasattr(parent, "_on_web_copy_phone_setup"):
-        parent.btn_web_copy_setup.clicked.connect(parent._on_web_copy_phone_setup)
-    if hasattr(parent, "_on_web_paste_setup"):
-        parent.btn_web_paste_setup.clicked.connect(parent._on_web_paste_setup)
+    lay.addWidget(web_box, 0)
+    _wire_web_control_widgets(parent)
+    if hasattr(parent, "_sync_web_port_spin_locked"):
+        parent._sync_web_port_spin_locked()
     if hasattr(parent, "_on_web_show_qr_toggled"):
-        parent.chk_web_show_qr.toggled.connect(parent._on_web_show_qr_toggled)
-        parent.edit_web_token.textChanged.connect(parent._on_web_token_text_changed)
-    lay.addWidget(web_box)
+        parent._on_web_show_qr_toggled(parent.chk_web_show_qr.isChecked())
+
+    open_row = QtWidgets.QHBoxLayout()
+    parent.btn_web_open_dashboard = QtWidgets.QPushButton("Open dashboard in browser")
+    parent.btn_web_open_dashboard.setToolTip(
+        "Open the phone dashboard URL in your default browser (uses Phone dashboard URL field)."
+    )
+    if hasattr(parent, "_on_web_open_dashboard"):
+        parent.btn_web_open_dashboard.clicked.connect(parent._on_web_open_dashboard)
+    open_row.addWidget(parent.btn_web_open_dashboard)
+    open_row.addStretch(1)
+    lay.addLayout(open_row)
+    lay.addStretch(1)
+
+    scroll = QtWidgets.QScrollArea()
+    scroll.setObjectName("phoneDashboardScroll")
+    scroll.setWidgetResizable(True)
+    scroll.setFrameShape(QtWidgets.QFrame.Shape.NoFrame)
+    scroll.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+    scroll.setVerticalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+    scroll.setWidget(inner)
+    return scroll
+
+
+def build_guide_tab(parent: QtWidgets.QWidget) -> QtWidgets.QWidget:
+    """Connection workflow reference (UDP/TCP/checklists) — no web controls here."""
+    inner = QtWidgets.QWidget()
+    lay = QtWidgets.QVBoxLayout(inner)
+    lay.setContentsMargins(10, 10, 10, 10)
+    lay.setSpacing(8)
+
+    header = QtWidgets.QLabel("Network ↔ COM Bridge — Connection Workflows")
+    header.setObjectName("tabHint")
+    lay.addWidget(header)
+
+    repo_root = Path(__file__).resolve().parent.parent
+    doc_note = QtWidgets.QLabel(
+        "Full walkthrough: docs/GETTING_STARTED.md · Operator manual: docs/OPERATOR_GUIDE.md"
+    )
+    doc_note.setObjectName("tabNote")
+    doc_note.setWordWrap(True)
+    lay.addWidget(doc_note)
+    doc_row = QtWidgets.QHBoxLayout()
+    doc_row.setSpacing(8)
+
+    def _open_doc(rel: str, title: str) -> None:
+        path = repo_root / rel
+        if not path.is_file():
+            QtWidgets.QMessageBox.information(
+                parent,
+                title,
+                f"Document not found:\n{path}\n\nSee docs/ in the install or repo folder.",
+            )
+            return
+        QtGui.QDesktopServices.openUrl(
+            QtCore.QUrl.fromLocalFile(str(path.resolve()))
+        )
+
+    for label, rel in (
+        ("Getting started…", "docs/GETTING_STARTED.md"),
+        ("Operator guide…", "docs/OPERATOR_GUIDE.md"),
+        ("NORBIT DCT…", "docs/NORBIT_DCT.md"),
+    ):
+        btn = QtWidgets.QPushButton(label)
+        btn.setToolTip(f"Open {rel}")
+        btn.clicked.connect(lambda _checked=False, r=rel, t=label: _open_doc(r, t))
+        doc_row.addWidget(btn)
+    doc_row.addStretch(1)
+    lay.addLayout(doc_row)
+
+    phone_ptr = QtWidgets.QLabel(
+        "Phone dashboard, Web API, token, and QR: open Tools → Phone (not this Guide tab)."
+    )
+    phone_ptr.setWordWrap(True)
+    phone_ptr.setObjectName("tabNote")
+    lay.addWidget(phone_ptr)
 
     tabs = QtWidgets.QTabWidget()
     tabs.setObjectName("guideTabWidget")
@@ -741,6 +880,10 @@ def build_diagnostics_tab(parent: QtWidgets.QWidget) -> QtWidgets.QWidget:
     hint_row.addWidget(parent.btn_diag_reorder_cards, 0)
     lay.addLayout(hint_row)
 
+    from ui.connect_panels import mount_connection_hub_on_diagnostics
+
+    mount_connection_hub_on_diagnostics(parent, lay)
+
     splitter = QtWidgets.QSplitter(QtCore.Qt.Orientation.Vertical)
     splitter.setObjectName("diagCardsSplitter")
     splitter.setChildrenCollapsible(False)
@@ -833,7 +976,17 @@ def build_diagnostics_tab(parent: QtWidgets.QWidget) -> QtWidgets.QWidget:
     qa.setWordWrap(True)
     qa.setObjectName("tabNote")
     qa.setTextInteractionFlags(QtCore.Qt.TextInteractionFlag.TextSelectableByMouse)
-    qv.addWidget(qa)
+    qa.setMaximumWidth(560)
+    qa_wrap = QtWidgets.QWidget()
+    qa_wrap_lay = QtWidgets.QVBoxLayout(qa_wrap)
+    qa_wrap_lay.setContentsMargins(0, 0, 0, 0)
+    qa_wrap_lay.addWidget(qa)
+    qa_wrap_lay.addStretch(1)
+    qv.addWidget(
+        qa_wrap,
+        0,
+        QtCore.Qt.AlignmentFlag.AlignTop | QtCore.Qt.AlignmentFlag.AlignLeft,
+    )
 
     bv = _add_collapsible_card(
         splitter,

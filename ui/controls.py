@@ -10,10 +10,14 @@ from bridge_core import (
     UI_VIEW_MAX_BLOCK_COUNT,
 )
 from nmea_codec import NMEA_SENTENCE_TYPES
+from ui.connection_fields import BAUD_PRESETS, DEFAULT_BAUD
+from ui.connect_row_style import CONNECT_ROW_LABELS, CONNECT_ROW_STYLES
 from ui.styles import THEME_LABELS
 from ui.theme_choice import (
+    THEME_ARCTIC,
     THEME_FOREST,
     THEME_MAROON,
+    THEME_MIDNIGHT,
     THEME_OCEAN,
     THEME_RANDOM_CURRENT,
     THEME_RANDOM_FAVORITE,
@@ -23,8 +27,88 @@ from ui.theme_choice import (
     load_theme_zone_order,
 )
 
-_STATUS_CHIP_MAX_H = 26
-_STATUS_BAR_H = 28
+_STATUS_CHIP_MAX_H = 32
+_CONNECT_COMBO_MIN_H = 30
+
+
+def _style_connect_serial_combo(combo: QtWidgets.QComboBox) -> None:
+    """Enough vertical room for the drop-down arrow (apple-round QSS clips otherwise)."""
+    combo.setFocusPolicy(QtCore.Qt.FocusPolicy.ClickFocus)
+    combo.setMinimumHeight(_CONNECT_COMBO_MIN_H)
+    combo.setSizePolicy(
+        QtWidgets.QSizePolicy.Policy.Expanding,
+        QtWidgets.QSizePolicy.Policy.Fixed,
+    )
+
+
+class NoWheelComboBox(QtWidgets.QComboBox):
+    """Block mouse-wheel value changes (scroll the page instead)."""
+
+    def __init__(self, parent: QtWidgets.QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setFocusPolicy(QtCore.Qt.FocusPolicy.ClickFocus)
+
+    def wheelEvent(self, event: QtGui.QWheelEvent) -> None:
+        event.ignore()  # never change value; let the scroll area handle it
+
+
+class NoWheelDoubleSpinBox(QtWidgets.QDoubleSpinBox):
+    """Block mouse-wheel value changes."""
+
+    def __init__(self, parent: QtWidgets.QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setFocusPolicy(QtCore.Qt.FocusPolicy.ClickFocus)
+
+    def wheelEvent(self, event: QtGui.QWheelEvent) -> None:
+        event.ignore()  # never change value; let the scroll area handle it
+
+
+class NoWheelSpinBox(QtWidgets.QSpinBox):
+    """Block mouse-wheel value changes (scroll the Tools page instead)."""
+
+    def __init__(self, parent: QtWidgets.QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setFocusPolicy(QtCore.Qt.FocusPolicy.ClickFocus)
+
+    def wheelEvent(self, event: QtGui.QWheelEvent) -> None:
+        event.ignore()
+
+
+class WebPortSpinBox(QtWidgets.QSpinBox):
+    """Phone dashboard Web API port — compact, no wheel, step buttons honor unlock checkbox."""
+
+    def __init__(self, parent: QtWidgets.QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setObjectName("webPortSpin")
+        self.setFocusPolicy(QtCore.Qt.FocusPolicy.ClickFocus)
+        self.setButtonSymbols(QtWidgets.QAbstractSpinBox.ButtonSymbols.UpDownArrows)
+        self.setAlignment(
+            QtCore.Qt.AlignmentFlag.AlignRight | QtCore.Qt.AlignmentFlag.AlignVCenter
+        )
+        self.setSizePolicy(
+            QtWidgets.QSizePolicy.Policy.Fixed,
+            QtWidgets.QSizePolicy.Policy.Fixed,
+        )
+        self.setFixedWidth(118)
+
+    def _unlock_checked(self) -> bool:
+        win = self.window()
+        chk = getattr(win, "chk_web_port_unlock", None)
+        return chk is not None and chk.isChecked()
+
+    def wheelEvent(self, event: QtGui.QWheelEvent) -> None:
+        event.ignore()
+
+    def stepEnabled(self) -> QtWidgets.QAbstractSpinBox.StepEnabled:
+        if not self._unlock_checked():
+            return QtWidgets.QAbstractSpinBox.StepEnabled.StepNone
+        return super().stepEnabled()
+
+    def stepBy(self, steps: int) -> None:
+        if not self._unlock_checked():
+            return
+        super().stepBy(steps)
+_STATUS_BAR_H = 32
 
 
 def _status_bar_for_label(lbl: QtWidgets.QLabel) -> QtWidgets.QStatusBar | None:
@@ -55,6 +139,22 @@ def wire_status_bar(win: QtWidgets.QWidget) -> None:
             QtWidgets.QSizePolicy.Policy.Expanding,
             QtWidgets.QSizePolicy.Policy.Fixed,
         )
+    stats = getattr(win, "lbl_stats", None)
+    if stats is not None:
+        stats.setObjectName("lblStats")
+        stats.setMinimumWidth(200)
+
+
+def refresh_status_bar_labels(win: QtWidgets.QWidget) -> None:
+    """Re-apply elision after resize (stats line uses remaining bar width)."""
+    for name in ("status_serial", "status_network", "status_nmea", "status_gnss", "lbl_stats"):
+        lbl = getattr(win, name, None)
+        if lbl is None:
+            continue
+        tip = lbl.toolTip()
+        text = tip if tip else lbl.text()
+        if text:
+            elide_status_label(lbl, text)
 
 
 def apply_compact_intent_hint(lbl: QtWidgets.QLabel, full_text: str) -> None:
@@ -72,14 +172,28 @@ def apply_compact_intent_hint(lbl: QtWidgets.QLabel, full_text: str) -> None:
     lbl.setText(elided)
 
 
+def _status_label_slot_width(lbl: QtWidgets.QLabel) -> int:
+    """Pixels available for one status-bar label (stats uses the remainder)."""
+    bar = _status_bar_for_label(lbl)
+    if bar is None or bar.width() <= 80:
+        return max(120, lbl.width() - 6)
+    stats = lbl
+    if lbl.objectName() != "lblStats":
+        stats = bar.findChild(QtWidgets.QLabel, "lblStats")
+    if stats is not None and lbl is stats:
+        used = 0
+        for child in bar.findChildren(QtWidgets.QLabel):
+            if child is stats or not child.isVisible():
+                continue
+            used += child.sizeHint().width() + 8
+        return max(200, bar.width() - used - 16)
+    return max(88, (bar.width() - 24) // 4)
+
+
 def elide_status_label(lbl: QtWidgets.QLabel, text: str) -> None:
     """Show one line in the status bar; keep full string in the tooltip."""
     full = (text or "").strip()
-    bar = _status_bar_for_label(lbl)
-    if bar is not None and bar.width() > 80:
-        slot_w = max(100, (bar.width() - 20) // 4)
-    else:
-        slot_w = max(100, lbl.width() - 6)
+    slot_w = _status_label_slot_width(lbl)
     elided = lbl.fontMetrics().elidedText(full, QtCore.Qt.TextElideMode.ElideRight, slot_w)
     if lbl.toolTip() == full and lbl.text() == elided:
         return
@@ -129,9 +243,20 @@ def create_connection_controls(parent: QtWidgets.QWidget) -> None:
     """Attach serial + network + path widgets to parent (stored on parent window)."""
     p = parent
 
-    p.com_cb = QtWidgets.QComboBox()
+    p.com_cb = NoWheelComboBox()
+    p.com_cb.setObjectName("connectComCombo")
+    _style_connect_serial_combo(p.com_cb)
     p.refresh_btn = QtWidgets.QPushButton("Refresh")
-    p.baud_edit = QtWidgets.QLineEdit("115200")
+    p.baud_edit = NoWheelComboBox()
+    p.baud_edit.setObjectName("connectBaudCombo")
+    _style_connect_serial_combo(p.baud_edit)
+    p.baud_edit.setEditable(False)
+    p.baud_edit.setToolTip(
+        "Serial baud — must match the GNSS/INS port. Standard survey rates only."
+    )
+    for rate in BAUD_PRESETS:
+        p.baud_edit.addItem(str(rate))
+    p.baud_edit.setCurrentText(str(DEFAULT_BAUD))
 
     p.chk_serial_auto_reconnect = QtWidgets.QCheckBox("Auto-reconnect COM if link drops")
     p.chk_serial_auto_reconnect.setChecked(True)
@@ -243,7 +368,7 @@ def create_connection_controls(parent: QtWidgets.QWidget) -> None:
     tcf.addRow("Port:", p.tcp_cli_port)
     adv.addWidget(p._tcp_cli_box)
 
-    p.tcp_reconnect_spin = QtWidgets.QDoubleSpinBox()
+    p.tcp_reconnect_spin = NoWheelDoubleSpinBox()
     p.tcp_reconnect_spin.setRange(TCP_RECONNECT_MIN_S, TCP_RECONNECT_MAX_S)
     p.tcp_reconnect_spin.setSingleStep(0.5)
     p.tcp_reconnect_spin.setDecimals(1)
@@ -332,6 +457,13 @@ def create_nmea_controls(parent: QtWidgets.QWidget) -> QtWidgets.QWidget:
     w.setObjectName("toolTabScrollHost")
     v = QtWidgets.QVBoxLayout(w)
     v.setContentsMargins(14, 14, 14, 14)
+    hint = QtWidgets.QLabel(
+        "Mode is stored in Tools → Presets when you Save or Save as…. "
+        "Loading a preset restores these radios (and strict sentence types)."
+    )
+    hint.setWordWrap(True)
+    hint.setObjectName("tabHint")
+    v.addWidget(hint)
     parent.nmea_mode_group = QtWidgets.QButtonGroup(parent)
     parent.rb_nmea_passthrough = QtWidgets.QRadioButton("Passthrough (recommended)")
     parent.rb_nmea_strict = QtWidgets.QRadioButton("Strict + sentence filter")
@@ -401,6 +533,8 @@ def create_theme_controls(parent: QtWidgets.QWidget) -> QtWidgets.QWidget:
         THEME_SLATE,
         THEME_FOREST,
         THEME_SUNSET,
+        THEME_MIDNIGHT,
+        THEME_ARCTIC,
         THEME_RANDOM_CURRENT,
         THEME_RANDOM_FAVORITE,
     )
@@ -408,6 +542,27 @@ def create_theme_controls(parent: QtWidgets.QWidget) -> QtWidgets.QWidget:
         parent.cmb_theme_choice.addItem(THEME_LABELS.get(tid, tid), tid)
     parent.cmb_theme_choice.currentIndexChanged.connect(parent._on_theme_choice_changed)
     gf.addRow("Theme:", parent.cmb_theme_choice)
+
+    connect_grp = QtWidgets.QGroupBox("Connect sections (Standard)")
+    connect_grp.setObjectName("themeStudioCard")
+    connect_gf = QtWidgets.QFormLayout(connect_grp)
+    parent.cmb_connect_row_style = QtWidgets.QComboBox()
+    parent.cmb_connect_row_style.setObjectName("themeStudioCombo")
+    parent.cmb_connect_row_style.setToolTip(
+        "How Run / Serial & network headers look on the Connect tab. "
+        "Pill = rounded cards; Seamless = flat list."
+    )
+    for style_id in CONNECT_ROW_STYLES:
+        parent.cmb_connect_row_style.addItem(
+            CONNECT_ROW_LABELS.get(style_id, style_id),
+            style_id,
+        )
+    if hasattr(parent, "_on_connect_row_style_changed"):
+        parent.cmb_connect_row_style.currentIndexChanged.connect(
+            parent._on_connect_row_style_changed
+        )
+    connect_gf.addRow("Section style:", parent.cmb_connect_row_style)
+    lay.addWidget(connect_grp)
 
     parent.chk_theme_seed_lock = QtWidgets.QCheckBox("Lock random seed (same vibe)")
     parent.chk_theme_seed_lock.setObjectName("themeStudioSeedLock")
@@ -551,6 +706,12 @@ def create_guide_tab(parent: QtWidgets.QWidget) -> QtWidgets.QWidget:
     from ui.tool_tabs import build_guide_tab
 
     return build_guide_tab(parent)
+
+
+def create_phone_dashboard_tab(parent: QtWidgets.QWidget) -> QtWidgets.QWidget:
+    from ui.tool_tabs import build_phone_dashboard_tab
+
+    return build_phone_dashboard_tab(parent)
 
 
 def create_log_panel(

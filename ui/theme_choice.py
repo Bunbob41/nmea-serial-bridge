@@ -15,6 +15,8 @@ THEME_OCEAN = "ocean_survey"
 THEME_SLATE = "field_slate"
 THEME_FOREST = "forest_night"
 THEME_SUNSET = "sunset_copper"
+THEME_MIDNIGHT = "midnight_teal"
+THEME_ARCTIC = "arctic_day"
 THEME_RANDOM_CURRENT = "random_current"
 THEME_RANDOM_FAVORITE = "random_favorite"
 
@@ -26,6 +28,8 @@ THEME_IDS: tuple[str, ...] = (
     THEME_SLATE,
     THEME_FOREST,
     THEME_SUNSET,
+    THEME_MIDNIGHT,
+    THEME_ARCTIC,
     THEME_RANDOM_CURRENT,
     THEME_RANDOM_FAVORITE,
 )

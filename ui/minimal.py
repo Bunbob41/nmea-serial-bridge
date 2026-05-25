@@ -7,6 +7,7 @@ from ui.controls import (
     create_connection_controls,
     create_diagnostics_controls,
     create_guide_tab,
+    create_phone_dashboard_tab,
     create_log_panel,
     create_nmea_controls,
     create_presets_tab,
@@ -81,6 +82,8 @@ class BridgeWindowMinimal(BridgeLogicMixin, QtWidgets.QWidget):
         self._drawer_tabs = drawer_tabs
         drawer_tabs.setUsesScrollButtons(True)
         drawer_tabs.addTab(create_presets_tab(self), "Presets")
+        drawer_tabs.addTab(create_phone_dashboard_tab(self), "Phone")
+        drawer_tabs.setTabToolTip(1, "Phone dashboard — Web API, token, QR (Tailscale/LAN)")
         drawer_tabs.addTab(create_nmea_controls(self), "NMEA")
         drawer_tabs.addTab(create_theme_controls(self), "Theme")
         drawer_tabs.addTab(create_guide_tab(self), "Guide")
@@ -145,6 +148,12 @@ class BridgeWindowMinimal(BridgeLogicMixin, QtWidgets.QWidget):
 
     def _save_minimal_ui_prefs(self) -> None:
         save_minimal_prefs({"tools_open": self._drawer_btn.isChecked()})
+
+    def showEvent(self, event: QtGui.QShowEvent) -> None:  # noqa: N802
+        super().showEvent(event)
+        from ui.connect_qr_overlay import schedule_qr_on_window_show
+
+        schedule_qr_on_window_show(self)
 
     def resizeEvent(self, event: QtGui.QResizeEvent) -> None:
         super().resizeEvent(event)

@@ -551,18 +551,13 @@ def save_file_log_prefs(max_mb: int, backups: int) -> None:
 
 
 def load_ntrip_prefs() -> dict[str, str | bool]:
+    """NTRIP UI removed — always disabled (Applanix/INS workflows use internal RTK)."""
     data = _read_json()
     raw = data.get("ntrip")
     if not isinstance(raw, dict):
-        return {
-            "enabled": False,
-            "caster": "",
-            "mountpoint": "",
-            "username": "",
-            "password": "",
-        }
+        raw = {}
     return {
-        "enabled": bool(raw.get("enabled", False)),
+        "enabled": False,
         "caster": str(raw.get("caster", "")).strip(),
         "mountpoint": str(raw.get("mountpoint", "")).strip(),
         "username": str(raw.get("username", "")).strip(),
@@ -572,18 +567,25 @@ def load_ntrip_prefs() -> dict[str, str | bool]:
 
 _CONNECT_PANEL_DEFAULT_ORDER = [
     "run",
+    "connection",
+    "hint",
+    "quick_log",
+    "quick_terminal",
+]
+# Pre-1.9.27 factory order (Serial & network last).
+_LEGACY_CONNECT_PANEL_ORDER = [
+    "run",
     "hint",
     "quick_log",
     "quick_terminal",
     "connection",
-    "ntrip",
 ]
 _CONNECT_TOOLBAR_DEFAULT_ORDER = [
     "ui_editor",
     "expand_all",
     "collapse_all",
-    "reset_sizes",
 ]
+_CONNECT_TOOLBAR_VALID_KEYS = frozenset(_CONNECT_TOOLBAR_DEFAULT_ORDER)
 
 
 def load_connect_panel_prefs(ui_mode: str) -> dict[str, Any]:
@@ -596,6 +598,9 @@ def load_connect_panel_prefs(ui_mode: str) -> dict[str, Any]:
             "sizes": {},
             "hidden": [],
             "toolbar_order": list(_CONNECT_TOOLBAR_DEFAULT_ORDER),
+            "qr_lane_width": 228,
+            "connect_row_style": "pill",
+            "hub_split_sizes": [320, 200],
         }
     raw = raw_all.get(ui_mode)
     if not isinstance(raw, dict):
@@ -605,11 +610,20 @@ def load_connect_panel_prefs(ui_mode: str) -> dict[str, Any]:
             "sizes": {},
             "hidden": [],
             "toolbar_order": list(_CONNECT_TOOLBAR_DEFAULT_ORDER),
+            "qr_lane_width": 228,
+            "connect_row_style": "pill",
+            "hub_split_sizes": [320, 200],
         }
     order_raw = raw.get("order")
     order = [str(x).strip() for x in order_raw] if isinstance(order_raw, list) else []
     if not order:
         order = list(_CONNECT_PANEL_DEFAULT_ORDER)
+    order = [k for k in order if k in _CONNECT_PANEL_DEFAULT_ORDER and k != "ntrip"]
+    if order == _LEGACY_CONNECT_PANEL_ORDER:
+        order = list(_CONNECT_PANEL_DEFAULT_ORDER)
+    for k in _CONNECT_PANEL_DEFAULT_ORDER:
+        if k not in order:
+            order.append(k)
     collapsed_raw = raw.get("collapsed")
     collapsed: dict[str, bool] = {}
     if isinstance(collapsed_raw, dict):
@@ -629,7 +643,11 @@ def load_connect_panel_prefs(ui_mode: str) -> dict[str, Any]:
     hidden_raw = raw.get("hidden")
     hidden: list[str] = []
     if isinstance(hidden_raw, list):
-        hidden = [str(x).strip() for x in hidden_raw if str(x).strip()]
+        hidden = [
+            str(x).strip()
+            for x in hidden_raw
+            if str(x).strip() and str(x).strip() != "ntrip"
+        ]
     toolbar_raw = raw.get("toolbar_order")
     toolbar_order = (
         [str(x).strip() for x in toolbar_raw if str(x).strip()]
@@ -638,12 +656,45 @@ def load_connect_panel_prefs(ui_mode: str) -> dict[str, Any]:
     )
     if not toolbar_order:
         toolbar_order = list(_CONNECT_TOOLBAR_DEFAULT_ORDER)
+    toolbar_order = [k for k in toolbar_order if k in _CONNECT_TOOLBAR_VALID_KEYS]
+    for k in _CONNECT_TOOLBAR_DEFAULT_ORDER:
+        if k not in toolbar_order:
+            toolbar_order.append(k)
+    qr_lane_width = 228
+    try:
+        qr_lane_width = max(120, min(480, int(raw.get("qr_lane_width", 228))))
+    except (TypeError, ValueError):
+        pass
+    qr_float_pos: list[int] | None = None
+    raw_pos = raw.get("qr_float_pos")
+    if isinstance(raw_pos, (list, tuple)) and len(raw_pos) >= 2:
+        try:
+            qr_float_pos = [max(0, int(raw_pos[0])), max(0, int(raw_pos[1]))]
+        except (TypeError, ValueError):
+            qr_float_pos = None
+    from ui.connect_row_style import normalize_connect_row_style
+
+    connect_row_style = normalize_connect_row_style(str(raw.get("connect_row_style", "pill")))
+    hub_split_sizes: list[int] = [320, 200]
+    raw_hub = raw.get("hub_split_sizes")
+    if isinstance(raw_hub, (list, tuple)) and len(raw_hub) >= 2:
+        try:
+            hub_split_sizes = [
+                max(120, int(raw_hub[0])),
+                max(100, int(raw_hub[1])),
+            ]
+        except (TypeError, ValueError):
+            pass
     return {
         "order": order,
         "collapsed": collapsed,
         "sizes": sizes,
         "hidden": hidden,
         "toolbar_order": toolbar_order,
+        "qr_lane_width": qr_lane_width,
+        "qr_float_pos": qr_float_pos,
+        "connect_row_style": connect_row_style,
+        "hub_split_sizes": hub_split_sizes,
     }
 
 
@@ -655,6 +706,10 @@ def save_connect_panel_prefs(
     sizes: dict[str, int] | None = None,
     hidden: list[str] | None = None,
     toolbar_order: list[str] | None = None,
+    qr_lane_width: int | None = None,
+    qr_float_pos: list[int] | None = None,
+    connect_row_style: str | None = None,
+    hub_split_sizes: list[int] | None = None,
 ) -> None:
     data = _read_json()
     raw_all = data.get("connect_panels")
@@ -687,12 +742,56 @@ def save_connect_panel_prefs(
         toolbar_out = [str(x).strip() for x in prev["toolbar_order"] if str(x).strip()]
     if not toolbar_out:
         toolbar_out = list(_CONNECT_TOOLBAR_DEFAULT_ORDER)
+    toolbar_out = [k for k in toolbar_out if k in _CONNECT_TOOLBAR_VALID_KEYS]
+    for k in _CONNECT_TOOLBAR_DEFAULT_ORDER:
+        if k not in toolbar_out:
+            toolbar_out.append(k)
+    qr_w = 228
+    if qr_lane_width is not None:
+        qr_w = max(120, min(480, int(qr_lane_width)))
+    elif isinstance(prev, dict):
+        try:
+            qr_w = max(120, min(480, int(prev.get("qr_lane_width", 228))))
+        except (TypeError, ValueError):
+            pass
+    from ui.connect_row_style import normalize_connect_row_style
+
+    row_style = normalize_connect_row_style(
+        str(connect_row_style or (prev.get("connect_row_style") if isinstance(prev, dict) else "") or "pill")
+    )
+    hub_out = [320, 200]
+    if hub_split_sizes is not None and len(hub_split_sizes) >= 2:
+        hub_out = [max(120, int(hub_split_sizes[0])), max(100, int(hub_split_sizes[1]))]
+    elif isinstance(prev, dict):
+        raw_hub = prev.get("hub_split_sizes")
+        if isinstance(raw_hub, (list, tuple)) and len(raw_hub) >= 2:
+            try:
+                hub_out = [max(120, int(raw_hub[0])), max(100, int(raw_hub[1]))]
+            except (TypeError, ValueError):
+                pass
+    float_pos_out = None
+    if qr_float_pos is not None and len(qr_float_pos) >= 2:
+        try:
+            float_pos_out = [max(0, int(qr_float_pos[0])), max(0, int(qr_float_pos[1]))]
+        except (TypeError, ValueError):
+            float_pos_out = None
+    elif isinstance(prev, dict):
+        raw_fp = prev.get("qr_float_pos")
+        if isinstance(raw_fp, (list, tuple)) and len(raw_fp) >= 2:
+            try:
+                float_pos_out = [max(0, int(raw_fp[0])), max(0, int(raw_fp[1]))]
+            except (TypeError, ValueError):
+                float_pos_out = None
     raw_all[ui_mode] = {
         "order": [str(x).strip() for x in order if str(x).strip()],
         "collapsed": {str(k).strip(): bool(v) for k, v in collapsed.items() if str(k).strip()},
         "sizes": size_out,
         "hidden": hidden_out,
         "toolbar_order": toolbar_out,
+        "qr_lane_width": qr_w,
+        "qr_float_pos": float_pos_out,
+        "connect_row_style": row_style,
+        "hub_split_sizes": hub_out,
     }
     data["connect_panels"] = raw_all
     _write_json(data)
@@ -840,10 +939,111 @@ def save_last_known_good(device_id: str, config: dict) -> None:
 def save_ntrip_prefs(prefs: dict[str, str | bool]) -> None:
     data = _read_json()
     data["ntrip"] = {
-        "enabled": bool(prefs.get("enabled", False)),
+        "enabled": False,
         "caster": str(prefs.get("caster", "")).strip(),
         "mountpoint": str(prefs.get("mountpoint", "")).strip(),
         "username": str(prefs.get("username", "")).strip(),
         "password": str(prefs.get("password", "")),
     }
+    _write_json(data)
+
+
+_QR_OVERLAY_MODES = ("field", "standard", "minimal", "logfirst")
+
+
+def _migrate_qr_overlay_from_connect_panels(data: dict[str, Any]) -> dict[str, Any] | None:
+    """One-time import of per-layout pixel QR position into global qr_overlay."""
+    raw_all = data.get("connect_panels")
+    if not isinstance(raw_all, dict):
+        return None
+    for mode in _QR_OVERLAY_MODES:
+        raw = raw_all.get(mode)
+        if not isinstance(raw, dict):
+            continue
+        pos = raw.get("qr_float_pos")
+        if isinstance(pos, (list, tuple)) and len(pos) >= 2:
+            try:
+                return {
+                    "float_pos_pixels": [int(pos[0]), int(pos[1])],
+                    "user_positioned": True,
+                }
+            except (TypeError, ValueError):
+                continue
+    return None
+
+
+def load_qr_overlay_prefs() -> dict[str, Any]:
+    data = _read_json()
+    raw = data.get("qr_overlay")
+    out: dict[str, Any] = {
+        "float_pos_norm": None,
+        "float_pos_pixels": None,
+        "user_positioned": False,
+    }
+    if isinstance(raw, dict):
+        norm = raw.get("float_pos_norm")
+        if isinstance(norm, (list, tuple)) and len(norm) >= 2:
+            try:
+                nx = max(0.0, min(1.0, float(norm[0])))
+                ny = max(0.0, min(1.0, float(norm[1])))
+                out["float_pos_norm"] = (nx, ny)
+                out["user_positioned"] = bool(raw.get("user_positioned", True))
+            except (TypeError, ValueError):
+                pass
+        pix = raw.get("float_pos_pixels")
+        if isinstance(pix, (list, tuple)) and len(pix) >= 2:
+            try:
+                out["float_pos_pixels"] = [int(pix[0]), int(pix[1])]
+            except (TypeError, ValueError):
+                pass
+        if raw.get("user_positioned") is not None:
+            out["user_positioned"] = bool(raw.get("user_positioned"))
+    if out["float_pos_norm"] is None and out["float_pos_pixels"] is None:
+        migrated = _migrate_qr_overlay_from_connect_panels(data)
+        if migrated:
+            out.update(migrated)
+            payload: dict[str, Any] = {
+                "user_positioned": bool(out.get("user_positioned")),
+            }
+            pix = out.get("float_pos_pixels")
+            if isinstance(pix, (list, tuple)) and len(pix) >= 2:
+                payload["float_pos_pixels"] = [int(pix[0]), int(pix[1])]
+            data["qr_overlay"] = payload
+            _write_json(data)
+    return out
+
+
+def save_qr_overlay_prefs(
+    *,
+    float_pos_norm: tuple[float, float] | list[float] | None = None,
+    float_pos_pixels: list[int] | None = None,
+    user_positioned: bool | None = None,
+) -> None:
+    prev = load_qr_overlay_prefs()
+    norm_out = prev.get("float_pos_norm")
+    if float_pos_norm is not None:
+        try:
+            nx = max(0.0, min(1.0, float(float_pos_norm[0])))
+            ny = max(0.0, min(1.0, float(float_pos_norm[1])))
+            norm_out = (nx, ny)
+        except (TypeError, ValueError, IndexError):
+            pass
+    pix_out = prev.get("float_pos_pixels")
+    if float_pos_pixels is not None and len(float_pos_pixels) >= 2:
+        try:
+            pix_out = [max(0, int(float_pos_pixels[0])), max(0, int(float_pos_pixels[1]))]
+        except (TypeError, ValueError):
+            pix_out = None
+    positioned = (
+        bool(user_positioned)
+        if user_positioned is not None
+        else bool(prev.get("user_positioned"))
+    )
+    data = _read_json()
+    payload: dict[str, Any] = {"user_positioned": positioned}
+    if norm_out is not None:
+        payload["float_pos_norm"] = [norm_out[0], norm_out[1]]
+    if pix_out is not None:
+        payload["float_pos_pixels"] = pix_out
+    data["qr_overlay"] = payload
     _write_json(data)

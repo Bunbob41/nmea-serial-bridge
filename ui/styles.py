@@ -36,37 +36,7 @@ QLabel#intentHint[intentCompact="true"] {
 }
 """
 
-_ROUND_CONNECT_ROWS_DARK = """
-QWidget#connectPanelRow {
-    border: 1px solid #7f9a73;
-    border-radius: 14px;
-    background-color: rgba(24, 34, 26, 0.52);
-    margin: 5px 6px;
-    padding: 2px;
-}
-QToolButton#connectPanelDisclosure {
-    border: 1px solid #6f8d63;
-    border-radius: 12px;
-    background-color: qlineargradient(
-        x1:0, y1:0, x2:0, y2:1,
-        stop:0 rgba(62, 88, 64, 0.92),
-        stop:1 rgba(48, 68, 50, 0.9)
-    );
-    color: #f2f6ed;
-    font-weight: 600;
-    text-align: left;
-    padding: 8px 13px;
-    margin: 4px 7px;
-}
-QToolButton#connectPanelDisclosure:hover {
-    border-color: #9fc092;
-    background-color: rgba(70, 100, 74, 0.95);
-}
-QToolButton#connectPanelDisclosure:checked {
-    border-color: #b8d4ae;
-    background-color: rgba(96, 139, 102, 0.95);
-    color: #f7fbf4;
-}
+_CONNECT_SHARED_DARK = """
 QWidget#connectPanelHost,
 QWidget#connectSectionBody {
     background: transparent;
@@ -75,6 +45,9 @@ QWidget#connectSectionBody {
 QScrollArea#connectSectionScroll,
 QWidget#connectSectionScrollViewport {
     background: transparent;
+}
+QWidget#connectSerialNetRow QGroupBox#connectGroupBox {
+    margin-top: 8px;
 }
 QGroupBox#connectGroupBox {
     background-color: rgba(36, 26, 31, 0.55);
@@ -88,39 +61,210 @@ QGroupBox#connectGroupBox::title {
     color: #d8e8d0;
     font-weight: 600;
 }
+QSpinBox#webPortSpin {
+    min-height: 32px;
+    max-width: 118px;
+    padding: 4px 22px 4px 8px;
+    background-color: #2a1d22;
+    border: 1px solid #c9a227;
+    border-radius: 8px;
+}
+QSpinBox#webPortSpin[portLocked="true"] {
+    color: #b8b0a8;
+}
+QSpinBox#webPortSpin::up-button {
+    subcontrol-origin: border;
+    subcontrol-position: top right;
+    width: 20px;
+    height: 15px;
+    background-color: #4d3f48;
+    border-left: 1px solid #c9a227;
+    border-bottom: 1px solid #6a5a40;
+    border-top-right-radius: 6px;
+}
+QSpinBox#webPortSpin::down-button {
+    subcontrol-origin: border;
+    subcontrol-position: bottom right;
+    width: 20px;
+    height: 15px;
+    background-color: #4d3f48;
+    border-left: 1px solid #c9a227;
+    border-bottom-right-radius: 6px;
+}
+QSpinBox#webPortSpin::up-button:hover,
+QSpinBox#webPortSpin::down-button:hover {
+    background-color: #6b5560;
+}
+QSpinBox#webPortSpin::up-arrow {
+    image: none;
+    width: 0px;
+    height: 0px;
+    border-left: 5px solid transparent;
+    border-right: 5px solid transparent;
+    border-bottom: 6px solid #f6eee0;
+}
+QSpinBox#webPortSpin::down-arrow {
+    image: none;
+    width: 0px;
+    height: 0px;
+    border-left: 5px solid transparent;
+    border-right: 5px solid transparent;
+    border-top: 6px solid #f6eee0;
+}
+QSpinBox#webPortSpin[portLocked="true"]::up-button,
+QSpinBox#webPortSpin[portLocked="true"]::down-button {
+    background-color: #322830;
+}
+QSpinBox#webPortSpin[portLocked="true"]::up-arrow {
+    border-bottom-color: #7a7268;
+}
+QSpinBox#webPortSpin[portLocked="true"]::down-arrow {
+    border-top-color: #7a7268;
+}
+QComboBox#connectComCombo,
+QComboBox#connectBaudCombo {
+    min-height: 30px;
+    padding: 4px 28px 4px 10px;
+}
+QComboBox#connectComCombo::drop-down,
+QComboBox#connectBaudCombo::drop-down {
+    subcontrol-origin: padding;
+    subcontrol-position: top right;
+    width: 24px;
+    border: none;
+}
 """
-
-_ROUND_CONNECT_ROWS_LIGHT = """
-QWidget#connectPanelRow {
-    border: 1px solid #a7b59c;
+_CONNECT_ROW_VARIANTS_DARK = """
+/* Default (pill) when connectRowStyle is not yet set on first paint */
+QWidget#connectPanelHost QWidget#connectPanelRow {
+    border: 1px solid #7f9a73;
     border-radius: 14px;
-    background-color: rgba(238, 245, 234, 0.95);
+    background-color: rgba(24, 34, 26, 0.52);
     margin: 5px 6px;
     padding: 2px;
 }
-QToolButton#connectPanelDisclosure {
-    border: 1px solid #96aa86;
+QWidget#connectPanelHost QToolButton#connectPanelDisclosure {
+    border: 1px solid #6f8d63;
     border-radius: 12px;
-    background-color: qlineargradient(
-        x1:0, y1:0, x2:0, y2:1,
-        stop:0 rgba(228, 238, 220, 0.98),
-        stop:1 rgba(214, 228, 204, 0.98)
-    );
-    color: #253025;
+    background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 rgba(62, 88, 64, 0.92), stop:1 rgba(48, 68, 50, 0.9));
+    color: #f2f6ed;
     font-weight: 600;
     text-align: left;
     padding: 8px 13px;
     margin: 4px 7px;
 }
-QToolButton#connectPanelDisclosure:hover {
-    border-color: #7f9a70;
-    background-color: rgba(206, 224, 196, 0.99);
+QWidget#connectPanelHost QToolButton#connectPanelDisclosure:hover {
+    border-color: #9fc092;
+    background-color: rgba(70, 100, 74, 0.95);
 }
-QToolButton#connectPanelDisclosure:checked {
-    border-color: #67865a;
-    background-color: rgba(190, 214, 178, 0.99);
-    color: #1d281d;
+QWidget#connectPanelHost QToolButton#connectPanelDisclosure:checked {
+    border-color: #b8d4ae;
+    background-color: rgba(96, 139, 102, 0.95);
+    color: #f7fbf4;
 }
+QWidget#connectPanelHost[connectRowStyle="pill"] QWidget#connectPanelRow {
+    border: 1px solid #7f9a73;
+    border-radius: 14px;
+    background-color: rgba(24, 34, 26, 0.52);
+    margin: 5px 6px;
+    padding: 2px;
+}
+QWidget#connectPanelHost[connectRowStyle="pill"] QToolButton#connectPanelDisclosure {
+    border: 1px solid #6f8d63;
+    border-radius: 12px;
+    background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 rgba(62, 88, 64, 0.92), stop:1 rgba(48, 68, 50, 0.9));
+    color: #f2f6ed;
+    font-weight: 600;
+    text-align: left;
+    padding: 8px 13px;
+    margin: 4px 7px;
+}
+QWidget#connectPanelHost[connectRowStyle="pill"] QToolButton#connectPanelDisclosure:hover {
+    border-color: #9fc092;
+    background-color: rgba(70, 100, 74, 0.95);
+}
+QWidget#connectPanelHost[connectRowStyle="pill"] QToolButton#connectPanelDisclosure:checked {
+    border-color: #b8d4ae;
+    background-color: rgba(96, 139, 102, 0.95);
+    color: #f7fbf4;
+}
+QWidget#connectPanelHost[connectRowStyle="seamless"] QWidget#connectPanelRow {
+    border: none;
+    border-radius: 0;
+    background: transparent;
+    margin: 0;
+    padding: 0;
+}
+QWidget#connectPanelHost[connectRowStyle="seamless"] QToolButton#connectPanelDisclosure {
+    border: none;
+    border-bottom: 1px solid rgba(127, 154, 115, 0.38);
+    border-radius: 0;
+    background-color: rgba(48, 68, 50, 0.55);
+    color: #f2f6ed;
+    font-weight: 600;
+    text-align: left;
+    padding: 10px 10px;
+    margin: 0;
+}
+QWidget#connectPanelHost[connectRowStyle="seamless"] QToolButton#connectPanelDisclosure:hover {
+    background-color: rgba(70, 100, 74, 0.72);
+}
+QWidget#connectPanelHost[connectRowStyle="seamless"] QToolButton#connectPanelDisclosure:checked {
+    background-color: rgba(62, 88, 64, 0.85);
+    color: #f7fbf4;
+}
+QWidget#connectPanelHost[connectRowStyle="outline"] QWidget#connectPanelRow {
+    border: none;
+    background: transparent;
+    margin: 2px 0;
+    padding: 0;
+}
+QWidget#connectPanelHost[connectRowStyle="outline"] QToolButton#connectPanelDisclosure {
+    border: 1px solid rgba(127, 154, 115, 0.45);
+    border-radius: 8px;
+    background-color: transparent;
+    color: #f2f6ed;
+    font-weight: 600;
+    text-align: left;
+    padding: 9px 12px;
+    margin: 3px 5px;
+}
+QWidget#connectPanelHost[connectRowStyle="outline"] QToolButton#connectPanelDisclosure:hover {
+    background-color: rgba(48, 68, 50, 0.45);
+}
+QWidget#connectPanelHost[connectRowStyle="outline"] QToolButton#connectPanelDisclosure:checked {
+    border-color: rgba(184, 212, 174, 0.75);
+    background-color: rgba(62, 88, 64, 0.55);
+}
+QWidget#connectPanelHost[connectRowStyle="accent"] QWidget#connectPanelRow {
+    border: none;
+    background: transparent;
+    margin: 1px 0;
+    padding: 0;
+}
+QWidget#connectPanelHost[connectRowStyle="accent"] QToolButton#connectPanelDisclosure {
+    border: none;
+    border-left: 4px solid #6f8d63;
+    border-radius: 0;
+    background-color: rgba(48, 68, 50, 0.42);
+    color: #f2f6ed;
+    font-weight: 600;
+    text-align: left;
+    padding: 10px 10px 10px 12px;
+    margin: 2px 4px;
+}
+QWidget#connectPanelHost[connectRowStyle="accent"] QToolButton#connectPanelDisclosure:hover {
+    background-color: rgba(70, 100, 74, 0.62);
+    border-left-color: #9fc092;
+}
+QWidget#connectPanelHost[connectRowStyle="accent"] QToolButton#connectPanelDisclosure:checked {
+    background-color: rgba(62, 88, 64, 0.78);
+    border-left-color: #b8d4ae;
+    color: #f7fbf4;
+}
+"""
+
+_CONNECT_SHARED_LIGHT = """
 QWidget#connectPanelHost,
 QWidget#connectSectionBody {
     background: transparent;
@@ -129,6 +273,9 @@ QWidget#connectSectionBody {
 QScrollArea#connectSectionScroll,
 QWidget#connectSectionScrollViewport {
     background: transparent;
+}
+QWidget#connectSerialNetRow QGroupBox#connectGroupBox {
+    margin-top: 8px;
 }
 QGroupBox#connectGroupBox {
     background-color: rgba(238, 245, 234, 0.95);
@@ -141,6 +288,206 @@ QGroupBox#connectGroupBox {
 QGroupBox#connectGroupBox::title {
     color: #253025;
     font-weight: 600;
+}
+QSpinBox#webPortSpin {
+    min-height: 32px;
+    max-width: 118px;
+    padding: 4px 22px 4px 8px;
+    background-color: #f8faf6;
+    border: 1px solid #6a5a40;
+    border-radius: 8px;
+}
+QSpinBox#webPortSpin[portLocked="true"] {
+    color: #6a6560;
+}
+QSpinBox#webPortSpin::up-button {
+    subcontrol-origin: border;
+    subcontrol-position: top right;
+    width: 20px;
+    height: 15px;
+    background-color: #e8efe4;
+    border-left: 1px solid #96aa86;
+    border-bottom: 1px solid #b0c0a4;
+    border-top-right-radius: 6px;
+}
+QSpinBox#webPortSpin::down-button {
+    subcontrol-origin: border;
+    subcontrol-position: bottom right;
+    width: 20px;
+    height: 15px;
+    background-color: #e8efe4;
+    border-left: 1px solid #96aa86;
+    border-bottom-right-radius: 6px;
+}
+QSpinBox#webPortSpin::up-button:hover,
+QSpinBox#webPortSpin::down-button:hover {
+    background-color: #d4e0cc;
+}
+QSpinBox#webPortSpin::up-arrow {
+    image: none;
+    width: 0px;
+    height: 0px;
+    border-left: 5px solid transparent;
+    border-right: 5px solid transparent;
+    border-bottom: 6px solid #253025;
+}
+QSpinBox#webPortSpin::down-arrow {
+    image: none;
+    width: 0px;
+    height: 0px;
+    border-left: 5px solid transparent;
+    border-right: 5px solid transparent;
+    border-top: 6px solid #253025;
+}
+QSpinBox#webPortSpin[portLocked="true"]::up-button,
+QSpinBox#webPortSpin[portLocked="true"]::down-button {
+    background-color: #dce4d6;
+}
+QSpinBox#webPortSpin[portLocked="true"]::up-arrow {
+    border-bottom-color: #9a9488;
+}
+QSpinBox#webPortSpin[portLocked="true"]::down-arrow {
+    border-top-color: #9a9488;
+}
+QComboBox#connectComCombo,
+QComboBox#connectBaudCombo {
+    min-height: 30px;
+    padding: 4px 28px 4px 10px;
+}
+QComboBox#connectComCombo::drop-down,
+QComboBox#connectBaudCombo::drop-down {
+    subcontrol-origin: padding;
+    subcontrol-position: top right;
+    width: 24px;
+    border: none;
+}
+"""
+_CONNECT_ROW_VARIANTS_LIGHT = """
+QWidget#connectPanelHost QWidget#connectPanelRow {
+    border: 1px solid #a7b59c;
+    border-radius: 14px;
+    background-color: rgba(238, 245, 234, 0.95);
+    margin: 5px 6px;
+    padding: 2px;
+}
+QWidget#connectPanelHost QToolButton#connectPanelDisclosure {
+    border: 1px solid #96aa86;
+    border-radius: 12px;
+    background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 rgba(228, 238, 220, 0.98), stop:1 rgba(214, 228, 204, 0.98));
+    color: #253025;
+    font-weight: 600;
+    text-align: left;
+    padding: 8px 13px;
+    margin: 4px 7px;
+}
+QWidget#connectPanelHost QToolButton#connectPanelDisclosure:hover {
+    background-color: rgba(214, 228, 204, 0.98);
+    border-color: #7f9a73;
+}
+QWidget#connectPanelHost QToolButton#connectPanelDisclosure:checked {
+    background-color: rgba(198, 218, 188, 0.98);
+    border-color: #6f8d63;
+    color: #1d281d;
+}
+QWidget#connectPanelHost[connectRowStyle="pill"] QWidget#connectPanelRow {
+    border: 1px solid #a7b59c;
+    border-radius: 14px;
+    background-color: rgba(238, 245, 234, 0.95);
+    margin: 5px 6px;
+    padding: 2px;
+}
+QWidget#connectPanelHost[connectRowStyle="pill"] QToolButton#connectPanelDisclosure {
+    border: 1px solid #96aa86;
+    border-radius: 12px;
+    background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 rgba(228, 238, 220, 0.98), stop:1 rgba(214, 228, 204, 0.98));
+    color: #253025;
+    font-weight: 600;
+    text-align: left;
+    padding: 8px 13px;
+    margin: 4px 7px;
+}
+QWidget#connectPanelHost[connectRowStyle="pill"] QToolButton#connectPanelDisclosure:hover {
+    border-color: #7f9a70;
+    background-color: rgba(206, 224, 196, 0.99);
+}
+QWidget#connectPanelHost[connectRowStyle="pill"] QToolButton#connectPanelDisclosure:checked {
+    border-color: #67865a;
+    background-color: rgba(190, 214, 178, 0.99);
+    color: #1d281d;
+}
+QWidget#connectPanelHost[connectRowStyle="seamless"] QWidget#connectPanelRow {
+    border: none;
+    border-radius: 0;
+    background: transparent;
+    margin: 0;
+    padding: 0;
+}
+QWidget#connectPanelHost[connectRowStyle="seamless"] QToolButton#connectPanelDisclosure {
+    border: none;
+    border-bottom: 1px solid rgba(151, 170, 134, 0.55);
+    border-radius: 0;
+    background-color: rgba(220, 232, 210, 0.85);
+    color: #253025;
+    font-weight: 600;
+    text-align: left;
+    padding: 10px 10px;
+    margin: 0;
+}
+QWidget#connectPanelHost[connectRowStyle="seamless"] QToolButton#connectPanelDisclosure:hover {
+    background-color: rgba(206, 224, 196, 0.95);
+}
+QWidget#connectPanelHost[connectRowStyle="seamless"] QToolButton#connectPanelDisclosure:checked {
+    background-color: rgba(190, 214, 178, 0.98);
+    color: #1d281d;
+}
+QWidget#connectPanelHost[connectRowStyle="outline"] QWidget#connectPanelRow {
+    border: none;
+    background: transparent;
+    margin: 2px 0;
+    padding: 0;
+}
+QWidget#connectPanelHost[connectRowStyle="outline"] QToolButton#connectPanelDisclosure {
+    border: 1px solid rgba(151, 170, 134, 0.65);
+    border-radius: 8px;
+    background-color: transparent;
+    color: #253025;
+    font-weight: 600;
+    text-align: left;
+    padding: 9px 12px;
+    margin: 3px 5px;
+}
+QWidget#connectPanelHost[connectRowStyle="outline"] QToolButton#connectPanelDisclosure:hover {
+    background-color: rgba(220, 232, 210, 0.75);
+}
+QWidget#connectPanelHost[connectRowStyle="outline"] QToolButton#connectPanelDisclosure:checked {
+    border-color: #67865a;
+    background-color: rgba(190, 214, 178, 0.65);
+}
+QWidget#connectPanelHost[connectRowStyle="accent"] QWidget#connectPanelRow {
+    border: none;
+    background: transparent;
+    margin: 1px 0;
+    padding: 0;
+}
+QWidget#connectPanelHost[connectRowStyle="accent"] QToolButton#connectPanelDisclosure {
+    border: none;
+    border-left: 4px solid #96aa86;
+    border-radius: 0;
+    background-color: rgba(220, 232, 210, 0.65);
+    color: #253025;
+    font-weight: 600;
+    text-align: left;
+    padding: 10px 10px 10px 12px;
+    margin: 2px 4px;
+}
+QWidget#connectPanelHost[connectRowStyle="accent"] QToolButton#connectPanelDisclosure:hover {
+    background-color: rgba(206, 224, 196, 0.9);
+    border-left-color: #7f9a70;
+}
+QWidget#connectPanelHost[connectRowStyle="accent"] QToolButton#connectPanelDisclosure:checked {
+    background-color: rgba(190, 214, 178, 0.95);
+    border-left-color: #67865a;
+    color: #1d281d;
 }
 """
 
@@ -200,9 +547,34 @@ QTabBar::tab:selected {
 QTabBar::tab:hover:!selected { background-color: #5a3543; }
 QScrollArea#toolTabScroll,
 QWidget#toolTabScrollViewport,
-QWidget#toolTabScrollHost {
+QWidget#toolTabScrollHost,
+QScrollArea#connectMainScroll,
+QWidget#connectMainScrollViewport,
+QWidget#connectMainScrollHost {
     background-color: #2f2329;
     color: #f6eee0;
+}
+QSplitter#connectPageSplitter::handle:horizontal {
+    width: 6px;
+    margin: 4px 0;
+    background-color: rgba(127, 154, 115, 0.35);
+}
+QSplitter#connectPageSplitter::handle:horizontal:hover {
+    background-color: rgba(201, 162, 39, 0.65);
+}
+QFrame#connectQrFloat {
+    background-color: rgba(32, 40, 36, 0.92);
+    border: 1px solid rgba(127, 154, 115, 0.45);
+    border-radius: 8px;
+}
+QLabel#connectQrImage {
+    background-color: #ffffff;
+    padding: 4px;
+    border: none;
+}
+QLabel#connectQrCaption {
+    color: #d8e8d0;
+    font-size: 9pt;
 }
 QWidget#toolTabScrollHost[themeStudio="true"] {
     background-color: #2a1d22;
@@ -289,32 +661,25 @@ QListWidget#presetList::item:selected {
 QListWidget#presetList::item:hover:!selected {
     background-color: #4a3540;
 }
-QDialog#UiEditorDialog QListWidget#uiEditorList {
+QDialog#UiEditorDialog QScrollArea#uiEditorScroll {
     background-color: #1e181c;
     border: 1px solid #7a5a2d;
     border-radius: 6px;
+}
+QDialog#UiEditorDialog QWidget#uiEditorListHost {
+    background-color: #1e181c;
+}
+QDialog#UiEditorDialog QFrame#uiEditorRow {
+    background-color: rgba(36, 28, 32, 0.55);
+    border: 1px solid #57333f;
+    border-radius: 6px;
+}
+QDialog#UiEditorDialog QLabel#uiEditorRowTitle {
     color: #f0ebe4;
-    font-size: 10pt;
-    outline: none;
+    font-weight: 600;
 }
-QDialog#UiEditorDialog QListWidget#uiEditorList::item {
-    padding: 6px 10px;
-    border-radius: 4px;
-    min-height: 28px;
-}
-QDialog#UiEditorDialog QListWidget#uiEditorList::item:selected {
-    background-color: #6b3a4a;
-    color: #fff8ec;
-}
-QDialog#UiEditorDialog QListWidget#uiEditorList::item:hover:!selected {
-    background-color: #4a3540;
-}
-QDialog#UiEditorDialog QListWidget#uiEditorList::item:alternate {
-    background-color: rgba(36, 28, 32, 0.45);
-}
-QDialog#UiEditorDialog QListWidget#uiEditorList::item:focus {
-    outline: none;
-    border: none;
+QDialog#UiEditorDialog QToolButton {
+    min-width: 28px;
 }
 QCheckBox { color: #f0ebe4; }
 QRadioButton { color: #f0ebe4; }
@@ -400,9 +765,34 @@ QTabBar::tab {
 QTabBar::tab:selected { background-color: #f0ece6; color: #1a1a1a; font-weight: 600; }
 QScrollArea#toolTabScroll,
 QWidget#toolTabScrollViewport,
-QWidget#toolTabScrollHost {
+QWidget#toolTabScrollHost,
+QScrollArea#connectMainScroll,
+QWidget#connectMainScrollViewport,
+QWidget#connectMainScrollHost {
     background-color: #f0ece6;
     color: #1a1a1a;
+}
+QSplitter#connectPageSplitter::handle:horizontal {
+    width: 6px;
+    margin: 4px 0;
+    background-color: rgba(151, 170, 134, 0.45);
+}
+QSplitter#connectPageSplitter::handle:horizontal:hover {
+    background-color: rgba(200, 166, 104, 0.75);
+}
+QFrame#connectQrFloat {
+    background-color: rgba(236, 228, 214, 0.95);
+    border: 1px solid rgba(151, 170, 134, 0.55);
+    border-radius: 8px;
+}
+QLabel#connectQrImage {
+    background-color: #ffffff;
+    padding: 4px;
+    border: none;
+}
+QLabel#connectQrCaption {
+    color: #3a1f13;
+    font-size: 9pt;
 }
 QWidget#toolTabScrollHost[themeStudio="true"] {
     background-color: #ece4d6;
@@ -489,33 +879,25 @@ QListWidget#presetList::item:selected {
 QListWidget#presetList::item:hover:!selected {
     background-color: #e8e0d4;
 }
-QDialog#UiEditorDialog QListWidget#uiEditorList {
+QDialog#UiEditorDialog QScrollArea#uiEditorScroll {
     background-color: #f5f2ec;
     border: 1px solid #a09888;
     border-radius: 6px;
+}
+QDialog#UiEditorDialog QWidget#uiEditorListHost {
+    background-color: #f5f2ec;
+}
+QDialog#UiEditorDialog QFrame#uiEditorRow {
+    background-color: rgba(255, 252, 246, 0.95);
+    border: 1px solid #c8a668;
+    border-radius: 6px;
+}
+QDialog#UiEditorDialog QLabel#uiEditorRowTitle {
     color: #1a1a1a;
-    font-size: 10pt;
-    outline: none;
-}
-QDialog#UiEditorDialog QListWidget#uiEditorList::item {
-    padding: 6px 10px;
-    border-radius: 4px;
-    min-height: 28px;
-}
-QDialog#UiEditorDialog QListWidget#uiEditorList::item:selected {
-    background-color: #d4af37;
-    color: #3a1f13;
     font-weight: 600;
 }
-QDialog#UiEditorDialog QListWidget#uiEditorList::item:hover:!selected {
-    background-color: #e8e0d4;
-}
-QDialog#UiEditorDialog QListWidget#uiEditorList::item:alternate {
-    background-color: #ece8e2;
-}
-QDialog#UiEditorDialog QListWidget#uiEditorList::item:focus {
-    outline: none;
-    border: none;
+QDialog#UiEditorDialog QToolButton {
+    min-width: 28px;
 }
 QCheckBox { color: #1a1a1a; }
 QRadioButton { color: #1a1a1a; }
@@ -596,15 +978,21 @@ QLabel { color: #f4f0ea; }
 QSplitter::handle { background-color: #57333f; }
 QSplitter::handle:hover { background-color: #7a4a58; }
 QSplitter#connectPanelSplitter::handle:vertical,
+QSplitter#connectionHubSplitter::handle:vertical,
 QSplitter#diagCardsSplitter::handle:vertical,
 QSplitter#fieldMainSplitter::handle:vertical {
     height: 10px;
     margin: 3px 12px;
 }
 QSplitter#connectPanelSplitter::handle:vertical:hover,
+QSplitter#connectionHubSplitter::handle:vertical:hover,
 QSplitter#diagCardsSplitter::handle:vertical:hover,
 QSplitter#fieldMainSplitter::handle:vertical:hover {
     background-color: #c9a227;
+}
+QSplitter#connectPageSplitter::handle:horizontal {
+    width: 6px;
+    margin: 4px 0;
 }
 QWidget#surveyMenuBar {
     background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #3a2a31, stop:1 #2a1d22);
@@ -679,13 +1067,17 @@ QMenu { background-color: #3a2a31; color: #f4f0ea; border: 1px solid #7a5a2d; }
 QMenu::item:selected { background-color: #5f3643; color: #f8f4ec; }
 QLabel#appTitle { font-size: 15pt; font-weight: 600; color: #f8f4ec; }
 QFrame#statusBanner {
-    border-radius: 8px; padding: 10px 12px;
+    border-radius: 4px; padding: 4px 8px;
+    max-height: 56px;
     border: 1px solid #7a5a2d; background-color: #3a2a31;
 }
 QFrame#statusBanner[state="running"] { background-color: #4c2d37; border-color: #d4af37; }
 QFrame#statusBanner[state="starting"] { background-color: #4a3a24; border-color: #d4af37; }
 QFrame#statusBanner[state="failed"] { background-color: #4a3038; border-color: #d08080; }
-QLabel#statusBannerText { font-size: 12pt; font-weight: 600; color: #faf6f0; }
+QLabel#statusBannerText {
+    font-size: 9pt; font-weight: 600; color: #faf6f0;
+    padding: 0; margin: 0;
+}
 QPushButton#pathBench, QPushButton#pathProduction {
     text-align: left; padding: 12px 14px; border-radius: 8px;
     border: 2px solid #7a5a2d; background-color: #4a2f39; font-weight: 600; color: #f5ead8;
@@ -743,7 +1135,8 @@ QComboBox:focus, QLineEdit:focus, QSpinBox:focus { border: 1px solid #c9a227; }
 """
     + _CALLOUT_DARK
     + _TAB_PAGE_DARK
-    + _ROUND_CONNECT_ROWS_DARK
+    + _CONNECT_SHARED_DARK
+    + _CONNECT_ROW_VARIANTS_DARK
     + _APPLE_ROUND_DARK
 )
 
@@ -857,7 +1250,8 @@ QComboBox:focus, QLineEdit:focus, QSpinBox:focus { border: 1px solid #6a5a40; }
 """
     + _CALLOUT_LIGHT
     + _TAB_PAGE_LIGHT
-    + _ROUND_CONNECT_ROWS_LIGHT
+    + _CONNECT_SHARED_LIGHT
+    + _CONNECT_ROW_VARIANTS_LIGHT
     + _APPLE_ROUND_LIGHT
 )
 
@@ -873,15 +1267,21 @@ QLabel { color: #f4f0ea; }
 QSplitter::handle { background-color: #57333f; }
 QSplitter::handle:hover { background-color: #7a4a58; }
 QSplitter#connectPanelSplitter::handle:vertical,
+QSplitter#connectionHubSplitter::handle:vertical,
 QSplitter#diagCardsSplitter::handle:vertical,
 QSplitter#fieldMainSplitter::handle:vertical {
     height: 10px;
     margin: 3px 12px;
 }
 QSplitter#connectPanelSplitter::handle:vertical:hover,
+QSplitter#connectionHubSplitter::handle:vertical:hover,
 QSplitter#diagCardsSplitter::handle:vertical:hover,
 QSplitter#fieldMainSplitter::handle:vertical:hover {
     background-color: #c9a227;
+}
+QSplitter#connectPageSplitter::handle:horizontal {
+    width: 6px;
+    margin: 4px 0;
 }
 QWidget#surveyMenuBar {
     background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #3a2a31, stop:1 #2a1d22);
@@ -998,7 +1398,8 @@ QCheckBox { color: #f0ebe4; }
 """
     + _CALLOUT_DARK
     + _TAB_PAGE_DARK
-    + _ROUND_CONNECT_ROWS_DARK
+    + _CONNECT_SHARED_DARK
+    + _CONNECT_ROW_VARIANTS_DARK
     + _APPLE_ROUND_DARK
 )
 
@@ -1392,6 +1793,8 @@ THEME_LABELS = {
     "field_slate": "Field Slate",
     "forest_night": "Forest Night",
     "sunset_copper": "Sunset Copper",
+    "midnight_teal": "Midnight Teal",
+    "arctic_day": "Arctic Day",
     "random_current": "Randomized (current)",
     "random_favorite": "Favorite random",
 }

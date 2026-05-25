@@ -1738,26 +1738,42 @@ class SurveyStatsPopout(QtWidgets.QWidget):
         nav_stale = bool(d.get("nav_stale"))
         nav_level = str(d.get("level", ""))
         nav_alert = nav_stale or nav_level in ("warn", "bad")
+        stream_idle = bool(d.get("stream_idle")) or str(d.get("summary") or "") == "No Data Stream"
+        from survey_quality import gnss_status_badge_quality, gnss_status_badge_stylesheet
+
+        badge_q = gnss_status_badge_quality(d, running=True, raw_mode=False)
+        gnss_badge_ss = gnss_status_badge_stylesheet(badge_q)
         if self._m_gnss_q.isVisible():
-            if nav_stale or not d.get("summary"):
+            if stream_idle:
+                self._m_gnss_q.set_value("No Data Stream", alert=True)
+                self._m_gnss_q.setToolTip(str(d.get("detail") or _TT_GNSS_Q))
+            elif nav_stale or not d.get("summary"):
                 self._m_gnss_q.set_value("Stale", alert=True)
+                self._m_gnss_q.setToolTip("No GGA in the last ~2 seconds.")
             else:
                 short = str(d.get("fix_label", "—"))
                 self._m_gnss_q.set_value(short, alert=nav_alert)
                 self._m_gnss_q.setToolTip(str(d.get("detail") or _TT_GNSS_Q))
+            self._m_gnss_q._val.setStyleSheet(gnss_badge_ss)
         if self._m_gnss_sats.isVisible():
-            sats = d.get("num_sats")
-            self._m_gnss_sats.set_value(str(sats) if sats is not None else "—", alert=nav_alert)
-        if self._m_gnss_hdop.isVisible():
-            hdop = d.get("hdop")
-            if hdop is None:
-                self._m_gnss_hdop.set_value("—", alert=False)
+            if stream_idle:
+                self._m_gnss_sats.set_value("0", alert=True)
             else:
-                try:
-                    hv = float(hdop)
-                except (TypeError, ValueError):
-                    hv = 0.0
-                self._m_gnss_hdop.set_value(f"{hv:.1f}", alert=hv >= 4.0 or hv >= 2.5)
+                sats = d.get("num_sats")
+                self._m_gnss_sats.set_value(str(sats) if sats is not None else "—", alert=nav_alert)
+        if self._m_gnss_hdop.isVisible():
+            if stream_idle:
+                self._m_gnss_hdop.set_value("0.0", alert=False)
+            else:
+                hdop = d.get("hdop")
+                if hdop is None:
+                    self._m_gnss_hdop.set_value("—", alert=False)
+                else:
+                    try:
+                        hv = float(hdop)
+                    except (TypeError, ValueError):
+                        hv = 0.0
+                    self._m_gnss_hdop.set_value(f"{hv:.1f}", alert=hv >= 4.0 or hv >= 2.5)
 
         if self._m_dr_ns.isVisible():
             self._m_dr_ns.set_value(str(d_ns), alert=bool(d_ns))

@@ -1,8 +1,9 @@
 """Shared connection field validation for hub, override, and Field strip."""
 from __future__ import annotations
 
-from typing import Optional
+from typing import Any, Optional
 
+# Survey / GNSS serial: common NMEA defaults through high-rate INS logging.
 BAUD_PRESETS: tuple[int, ...] = (
     4800,
     9600,
@@ -13,6 +14,9 @@ BAUD_PRESETS: tuple[int, ...] = (
     230400,
     460800,
 )
+
+BAUD_PRESET_LABELS: tuple[str, ...] = tuple(str(b) for b in BAUD_PRESETS)
+DEFAULT_BAUD = 115200
 
 
 def parse_baud(text: str) -> Optional[int]:
@@ -28,9 +32,58 @@ def parse_baud(text: str) -> Optional[int]:
     return baud
 
 
+def is_allowed_baud(baud: int) -> bool:
+    return baud in BAUD_PRESETS
+
+
+def coerce_baud(baud: Optional[int], *, default: int = DEFAULT_BAUD) -> int:
+    """Map saved/typed baud to a standard preset (nearest if legacy value)."""
+    if baud is None:
+        return default
+    try:
+        b = int(baud)
+    except (TypeError, ValueError):
+        return default
+    if b in BAUD_PRESETS:
+        return b
+    if b <= 0:
+        return default
+    return min(BAUD_PRESETS, key=lambda p: abs(p - b))
+
+
+def read_baud_widget(widget: Any) -> str:
+    """Text from baud QComboBox (or legacy QLineEdit)."""
+    current = getattr(widget, "currentText", None)
+    if callable(current):
+        return (current() or "").strip()
+    text_fn = getattr(widget, "text", None)
+    if callable(text_fn):
+        return (text_fn() or "").strip()
+    return ""
+
+
+def write_baud_widget(widget: Any, baud: int | str | None) -> None:
+    """Set baud on QComboBox or legacy QLineEdit."""
+    try:
+        raw = int(baud) if baud is not None else DEFAULT_BAUD
+    except (TypeError, ValueError):
+        raw = DEFAULT_BAUD
+    label = str(coerce_baud(raw))
+    setter = getattr(widget, "setCurrentText", None)
+    if callable(setter):
+        setter(label)
+        return
+    text_setter = getattr(widget, "setText", None)
+    if callable(text_setter):
+        text_setter(label)
+
+
 def validate_baud(text: str) -> Optional[str]:
-    if parse_baud(text) is None:
-        return "Enter a valid baud rate (positive integer, e.g. 115200)."
+    baud = parse_baud(text)
+    if baud is None:
+        return "Choose a baud rate from the list."
+    if not is_allowed_baud(baud):
+        return f"Baud must be one of: {', '.join(BAUD_PRESET_LABELS)}."
     return None
 
 

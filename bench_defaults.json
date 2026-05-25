@@ -8,9 +8,23 @@
     "baud": 115200,
     "udp_host": "0.0.0.0",
     "udp_port": 10110,
-    "pc_ip": "192.168.1.10",
+    "pc_ip": "192.168.1.4",
     "subnet_mask": "255.255.255.0",
-    "ins_ip": "192.168.1.20",
-    "notes": "Edit com to your Cube UART COM. Set survey Ethernet on the PC to pc_ip. Configure INS to send NMEA UDP to pc_ip:udp_port."
+    "ins_ip": "192.168.1.150",
+    "notes": "Survey PC 192.168.1.4. Applanix (WebUI) ~192.168.1.150 → UDP NMEA to pc_ip:udp_port. Set com to DCT positioning COM (Device Manager). Trimble 192.168.142.1 is usually GNSS into Applanix, not the bridge UDP source."
+  },
+  "norbit_dct": {
+    "com": "COM3",
+    "baud": 115200,
+    "udp_host": "0.0.0.0",
+    "udp_port": 40810,
+    "pc_ip": "192.168.1.4",
+    "boat_wireless_ip": "192.168.1.8",
+    "subnet_mask": "255.255.255.0",
+    "ins_ip": "192.168.1.150",
+    "trimble_gnss_ip": "192.168.142.1",
+    "sonar": "iWBMSe",
+    "dct_on_boat_host": "127.0.0.1",
+    "notes": "Bridge on boat PC: UDP listen 40810. DCT target depends where DCT runs: on boat PC 127.0.0.1:40810; on operator laptop (MikroTik PTP) 192.168.1.8:40810; Tailscale/ZeroTier boat StaticIp:40810. Applanix→boat:40810. COM=serial leg if used."
   }
 }

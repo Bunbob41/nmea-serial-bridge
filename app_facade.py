@@ -17,14 +17,36 @@ from PySide6 import QtCore
 class WebSessionState:
     running: bool = False
     com_port: str = ""
+    configured_com_port: str = ""
     baud: int = 115200
     udp_listen_host: str = "0.0.0.0"
     udp_listen_port: int = 10110
     nmea_mode: str = "passthrough"
     hz_net_to_com: Optional[float] = None
     hz_com_to_net: Optional[float] = None
+    hz_inject: Optional[float] = None
     drops: int = 0
     rejects: int = 0
+    drops_net_to_com: int = 0
+    drops_com_to_net: int = 0
+    rejects_net_to_com: int = 0
+    rejects_com_to_net: int = 0
+    queue_net_to_com: int = 0
+    queue_com_to_net: int = 0
+    lines_net_to_com: int = 0
+    lines_com_to_net: int = 0
+    transport_ok: bool = True
+    gnss_summary: str = ""
+    gnss_fix: str = ""
+    gnss_sats: Optional[int] = None
+    gnss_hdop: Optional[float] = None
+    gnss_stale: bool = False
+    gnss_quality: Optional[int] = None
+    gnss_stream_idle: bool = False
+    position_lat: Optional[float] = None
+    position_lon: Optional[float] = None
+    position_source: str = ""
+    position_stale: bool = True
     last_error: Optional[str] = None
     updated_mono: float = 0.0
 
@@ -233,12 +255,12 @@ class BridgeAppFacade(QtCore.QObject):
         return self._invoke_read_on_main(self._read_config_from_window)
 
     def _read_config_from_window(self, win: Any) -> WebConfigPayload:
-        from ui.connection_fields import parse_baud
+        from ui.connection_fields import parse_baud, read_baud_widget
 
         hub = getattr(win, "connection_hub", None)
         hub_id = hub.selected_device_id() if hub is not None else None
-        manual = hub.manual_override_active() if hub is not None else False
-        baud = parse_baud(win.baud_edit.text()) or 115200
+        manual = bool(getattr(win, "_manual_override_dirty", False))
+        baud = parse_baud(read_baud_widget(win.baud_edit)) or 115200
         mode = "udp_listen"
         if getattr(win, "chk_advanced_net", None) and win.chk_advanced_net.isChecked():
             if win.rb_tcp_server.isChecked():
@@ -400,19 +422,6 @@ class BridgeAppFacade(QtCore.QObject):
             if err:
                 return WebCommandResult(False, err, "validation")
 
-        if "com_port" in patch:
-            text = str(patch["com_port"]).strip()
-            idx = win.com_cb.findText(text)
-            if idx >= 0:
-                win.com_cb.setCurrentIndex(idx)
-            else:
-                win.com_cb.setCurrentText(text)
-        if "baud" in patch:
-            win.baud_edit.setText(str(int(patch["baud"])))
-        if "udp_listen_host" in patch:
-            win.udp_host.setText(str(patch["udp_listen_host"]))
-        if "udp_listen_port" in patch:
-            win.udp_port.setText(str(int(patch["udp_listen_port"])))
         if "remote_host" in patch and hasattr(win, "remote_host"):
             win.remote_host.setText(str(patch["remote_host"]))
         if "remote_port" in patch and hasattr(win, "remote_port"):
@@ -432,13 +441,67 @@ class BridgeAppFacade(QtCore.QObject):
             if rb is not None:
                 rb.setChecked(True)
         if "hub_device_id" in patch and patch["hub_device_id"]:
+            device_id = str(patch["hub_device_id"])
             hub = getattr(win, "connection_hub", None)
             if hub is not None:
-                win._on_hub_selection(str(patch["hub_device_id"]))
+                win._on_hub_selection(device_id)
+            else:
+                from discovery_service import resolve_network_bind_from_device_id
+
+                if device_id.startswith("config:"):
+                    port = device_id.split(":", 1)[1].strip()
+                    if port:
+                        idx = win.com_cb.findText(port)
+                        if idx >= 0:
+                            win.com_cb.setCurrentIndex(idx)
+                        else:
+                            win.com_cb.setCurrentText(port)
+                elif device_id.startswith("serial:"):
+                    port = device_id.split(":", 1)[-1].strip()
+                    if port and not port.startswith("serial"):
+                        idx = win.com_cb.findText(port)
+                        if idx >= 0:
+                            win.com_cb.setCurrentIndex(idx)
+                        else:
+                            win.com_cb.setCurrentText(port)
+                bind = resolve_network_bind_from_device_id(device_id)
+                if bind is not None:
+                    host, port = bind
+                    rb = getattr(win, "rb_udp_listen", None)
+                    if rb is not None:
+                        rb.setChecked(True)
+                    win.udp_host.setText(host)
+                    win.udp_port.setText(str(port))
+                    if hasattr(win, "_mode_toggle"):
+                        win._mode_toggle()
+        if "udp_listen_host" in patch:
+            win.udp_host.setText(str(patch["udp_listen_host"]).strip() or "0.0.0.0")
+        if "udp_listen_port" in patch:
+            win.udp_port.setText(str(int(patch["udp_listen_port"])))
+        if ("udp_listen_host" in patch or "udp_listen_port" in patch) and hasattr(
+            win, "_mode_toggle"
+        ):
+            rb = getattr(win, "rb_udp_listen", None)
+            if rb is not None:
+                rb.setChecked(True)
+            win._mode_toggle()
         if "manual_override" in patch:
             hub = getattr(win, "connection_hub", None)
             if hub is not None:
                 hub.set_manual_override(bool(patch["manual_override"]))
+        # Apply explicit COM/baud after hub selection so web/dashboard picks are not
+        # overwritten by Connection Hub last-known-good presets.
+        if "com_port" in patch:
+            text = str(patch["com_port"]).strip()
+            idx = win.com_cb.findText(text)
+            if idx >= 0:
+                win.com_cb.setCurrentIndex(idx)
+            else:
+                win.com_cb.setCurrentText(text)
+        if "baud" in patch:
+            from ui.connection_fields import coerce_baud, write_baud_widget
+
+            write_baud_widget(win.baud_edit, int(patch["baud"]))
 
         return WebCommandResult(True, "Configuration updated", None, "running" if running else "stopped")
 
@@ -491,6 +554,10 @@ class BridgeAppFacade(QtCore.QObject):
         with self._discovery_lock:
             return self._discovery_payload
 
+    def set_discovery_scan_busy(self, busy: bool) -> None:
+        """Web dashboard: scan spinner while LAN/COM discovery worker runs."""
+        self._set_discovery_busy(busy)
+
     def _set_discovery_busy(self, busy: bool) -> None:
         with self._discovery_lock:
             old = self._discovery_payload
@@ -505,6 +572,26 @@ class BridgeAppFacade(QtCore.QObject):
 
     def request_refresh_discovery(self) -> WebCommandResult:
         return self._invoke_on_main(self._refresh_discovery_on_main)
+
+    def request_refresh_serial_ports(self) -> WebCommandResult:
+        """Rescan COM ports only (fast; no LAN scan). Updates web discovery snapshot."""
+        return self._invoke_on_main(self._refresh_serial_ports_on_main)
+
+    def _refresh_serial_ports_on_main(self, win: Any) -> WebCommandResult:
+        try:
+            if hasattr(win, "refresh_ports"):
+                win.refresh_ports()
+            if hasattr(win, "_poll_discovery_snapshot"):
+                win._poll_discovery_snapshot()
+            n = len(self.get_discovery().serial_devices)
+            return WebCommandResult(
+                True,
+                f"Found {n} serial port(s)" if n else "No serial ports detected on this PC",
+                None,
+                "ok",
+            )
+        except Exception as exc:
+            return WebCommandResult(False, str(exc), "error")
 
     def _refresh_discovery_on_main(self, win: Any) -> WebCommandResult:
         try:
@@ -521,12 +608,12 @@ class BridgeAppFacade(QtCore.QObject):
         try:
             from port_release import hint_udp_listen_busy, smart_release_com
 
-            from ui.connection_fields import parse_baud
+            from ui.connection_fields import parse_baud, read_baud_widget
 
             com = win.com_cb.currentText().strip()
             if not com:
                 return WebCommandResult(False, "No COM port configured", "validation")
-            baud = parse_baud(win.baud_edit.text()) or 115200
+            baud = parse_baud(read_baud_widget(win.baud_edit)) or 115200
             running = win._is_bridge_running()
             bridge_com = win.bridge.com if getattr(win, "bridge", None) else None
             state = smart_release_com(com, baud, bridge_running=running, bridge_com=bridge_com)
@@ -599,13 +686,13 @@ class BridgeAppFacade(QtCore.QObject):
     # ------------------------------------------------------------------ publish
     def publish_from_window(self, win: Any) -> None:
         """Called on Qt main thread from mixin stats tick."""
-        from ui.connection_fields import parse_baud
+        from ui.connection_fields import parse_baud, read_baud_widget
 
         if self._window() is None:
             self.attach_window(win)
         running = win._is_bridge_running()
         merged = getattr(win, "_bridge_stats_cache", None) or {}
-        baud = parse_baud(win.baud_edit.text()) or 115200
+        baud = parse_baud(read_baud_widget(win.baud_edit)) or 115200
         nmea = "passthrough"
         try:
             nmea = win._selected_nmea_mode().value
@@ -615,16 +702,86 @@ class BridgeAppFacade(QtCore.QObject):
             port = int(win.udp_port.text().strip())
         except ValueError:
             port = 10110
+        from ui.stats_line import queue_backlog
+
+        d_n2s = int(merged.get("drops_n2s", 0) or 0)
+        d_s2n = int(merged.get("drops_s2n", 0) or 0)
+        r_n2s = int(merged.get("rej_n2s", 0) or 0)
+        r_s2n = int(merged.get("rej_s2n", 0) or 0)
+        q_n2s = int(merged.get("n2s_q", 0) or 0)
+        q_s2n = int(merged.get("s2n_q", 0) or 0)
+        transport_ok = not (
+            d_n2s or d_s2n or r_n2s or r_s2n or queue_backlog(q_n2s, q_s2n)
+        )
+        hdop = merged.get("hdop")
+        try:
+            hdop_f = float(hdop) if hdop is not None else None
+        except (TypeError, ValueError):
+            hdop_f = None
+        sats = merged.get("num_sats")
+        try:
+            sats_i = int(sats) if sats is not None else None
+        except (TypeError, ValueError):
+            sats_i = None
+        configured_com = win.com_cb.currentText().strip()
+        runtime_com = configured_com
+        if running:
+            bridge = getattr(win, "bridge", None)
+            if bridge is not None:
+                runtime_com = (getattr(bridge, "com", None) or "").strip() or configured_com
         self.update_snapshot(
             running=running,
-            com_port=win.com_cb.currentText().strip(),
+            com_port=runtime_com,
+            configured_com_port=configured_com,
             baud=baud,
             udp_listen_host=win.udp_host.text().strip(),
             udp_listen_port=port,
             nmea_mode=nmea,
             hz_net_to_com=merged.get("hz_down"),
             hz_com_to_net=merged.get("hz_up"),
-            drops=int(merged.get("drops_n2s", 0) or 0) + int(merged.get("drops_s2n", 0) or 0),
-            rejects=int(merged.get("rej_n2s", 0) or 0) + int(merged.get("rej_sn", 0) or 0),
+            hz_inject=merged.get("hz_gui"),
+            drops=d_n2s + d_s2n,
+            rejects=r_n2s + r_s2n,
+            drops_net_to_com=d_n2s,
+            drops_com_to_net=d_s2n,
+            rejects_net_to_com=r_n2s,
+            rejects_com_to_net=r_s2n,
+            queue_net_to_com=q_n2s,
+            queue_com_to_net=q_s2n,
+            lines_net_to_com=int(merged.get("lines_down", 0) or 0),
+            lines_com_to_net=int(merged.get("lines_up", 0) or 0),
+            transport_ok=transport_ok,
+            gnss_summary=str(merged.get("summary") or ""),
+            gnss_fix=str(merged.get("fix_label") or ""),
+            gnss_sats=sats_i,
+            gnss_hdop=hdop_f,
+            gnss_stale=bool(merged.get("nav_stale")),
+            gnss_quality=_gnss_quality_code(merged),
+            gnss_stream_idle=bool(merged.get("stream_idle")),
+            position_lat=_position_float(merged.get("position_lat")),
+            position_lon=_position_float(merged.get("position_lon")),
+            position_source=str(merged.get("position_source") or ""),
+            position_stale=bool(merged.get("position_stale", True)),
             last_error=self._last_facade_error,
         )
+
+
+def _position_float(value: Any) -> Optional[float]:
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _gnss_quality_code(merged: dict[str, Any]) -> Optional[int]:
+    if bool(merged.get("stream_idle")) or bool(merged.get("nav_stale")):
+        return 0
+    q = merged.get("quality")
+    if isinstance(q, int) and not isinstance(q, bool):
+        return q
+    try:
+        return int(q) if q is not None else None
+    except (TypeError, ValueError):
+        return None

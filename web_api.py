@@ -69,14 +69,36 @@ class MetaResponse(BaseModel):
 class StatusResponse(BaseModel):
     running: bool
     com_port: str
+    configured_com_port: str = ""
     baud: int
     udp_listen_host: str
     udp_listen_port: int
     nmea_mode: str
     hz_net_to_com: Optional[float] = None
     hz_com_to_net: Optional[float] = None
+    hz_inject: Optional[float] = None
     drops: int
     rejects: int
+    drops_net_to_com: int = 0
+    drops_com_to_net: int = 0
+    rejects_net_to_com: int = 0
+    rejects_com_to_net: int = 0
+    queue_net_to_com: int = 0
+    queue_com_to_net: int = 0
+    lines_net_to_com: int = 0
+    lines_com_to_net: int = 0
+    transport_ok: bool = True
+    gnss_summary: str = ""
+    gnss_fix: str = ""
+    gnss_sats: Optional[int] = None
+    gnss_hdop: Optional[float] = None
+    gnss_stale: bool = False
+    gnss_quality: Optional[int] = None
+    gnss_stream_idle: bool = False
+    position_lat: Optional[float] = None
+    position_lon: Optional[float] = None
+    position_source: str = ""
+    position_stale: bool = True
     last_error: Optional[str] = None
     updated_mono: float
 
@@ -306,6 +328,15 @@ def create_app(
         return _as_command_response(facade.request_refresh_discovery(), facade)
 
     # ------------------------------------------------------------------ ports
+    @app.post("/ports/refresh", response_model=CommandResponse)
+    def ports_refresh(
+        request: Request,
+        x_bridge_token: Optional[str] = Header(default=None),
+    ) -> CommandResponse:
+        if not _auth_ok(request, lan_token):
+            raise HTTPException(status_code=401, detail="Invalid or missing X-Bridge-Token")
+        return _as_command_response(facade.request_refresh_serial_ports(), facade)
+
     @app.post("/ports/unlock", response_model=CommandResponse)
     def ports_unlock(
         request: Request,

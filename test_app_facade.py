@@ -72,6 +72,27 @@ class TestBridgeAppFacade(unittest.TestCase):
         win.chk_advanced_net.setChecked.assert_called_with(True)
         win.rb_tcp_client.setChecked.assert_called_with(True)
 
+    def test_apply_config_com_port_wins_over_hub_lkg(self) -> None:
+        facade = BridgeAppFacade()
+        win = MagicMock()
+        win._is_bridge_running.return_value = False
+        win.com_cb.findText.return_value = -1
+        win.connection_hub = MagicMock()
+        applied: list[str] = []
+
+        def hub_select(_device_id: str) -> None:
+            win.com_cb.setCurrentText("COM1")
+
+        win._on_hub_selection = MagicMock(side_effect=hub_select)
+        win.com_cb.setCurrentText.side_effect = lambda t: applied.append(t)
+        result = facade._apply_config_on_main(
+            win,
+            {"hub_device_id": "serial:bench", "com_port": "COM7"},
+        )
+        self.assertTrue(result.ok)
+        win._on_hub_selection.assert_called_once()
+        self.assertEqual(applied[-1], "COM7")
+
     def test_unsupported_config_patch(self) -> None:
         facade = BridgeAppFacade()
         win = MagicMock()
@@ -111,7 +132,7 @@ class TestBridgeAppFacade(unittest.TestCase):
         facade = BridgeAppFacade()
         win = MagicMock()
         win.com_cb.currentText.return_value = "COM7"
-        win.baud_edit.text.return_value = "115200"
+        win.baud_edit.currentText.return_value = "115200"
         win.udp_host.text.return_value = "0.0.0.0"
         win.udp_port.text.return_value = "10110"
         win.chk_advanced_net = None

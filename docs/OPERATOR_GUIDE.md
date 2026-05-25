@@ -2,11 +2,18 @@
 
 Step-by-step guide for survey / bench use. Screenshots are optional; a **shot list** at the end lists exactly what to capture if you want illustrated docs.
 
+**New to the app?** Start with **[GETTING_STARTED.md](GETTING_STARTED.md)** (install + 15-minute bench walkthrough).  
+**Doc index:** [docs/README.md](README.md).
+
 **Display comfort:** default theme is **Field Slate** (neutral gray, high-contrast text). Gold is used for accents and primary actions only, not for paragraph text on bright panels. Change theme via **View → Theme** if you prefer Maroon & Gold or others.
 
 **What this app does:** forwards data between **UDP (or advanced TCP)** and a **COM port**. Default path is **NMEA 0183 text** (Trimble R10, simulators, Hypack). Optional **Raw binary** mode forwards **RTCM** and other non-NMEA bytes without parsing.
 
 Typical use: INS or GNSS on Ethernet → bridge → designated device COM input.
+
+**NORBIT DCT + GUI:** multibeam positioning over serial is the same pattern — see **[NORBIT_DCT.md](NORBIT_DCT.md)** and preset **NORBIT DCT** in the app.
+
+**NTRIP:** not shown in the Connect UI (Applanix/internal RTK workflows). Legacy prefs keep corrections off.
 
 **Baseline reference**: Spec Kit as-built spec and traceability live under
 [`specs/001-baseline-spec/`](../specs/001-baseline-spec/) (fan-out FR-011–FR-013, FR-020).
@@ -57,7 +64,7 @@ The app remembers your layout under:
 
 | Layout       | Best for                                                                 |
 | ------------ | ------------------------------------------------------------------------ |
-| **Standard** | Tabs: Connect, Presets, NMEA, Send, Diagnostics + log on the right     |
+| **Standard** | **Connect** + **Log** + **Tools** (Presets, Phone, NMEA, Terminal, Diagnostics, Theme, Guide) |
 | **Field**    | Large log, Start/Stop strip, COM/UDP row, Tools drawer, survey quick bar |
 
 
@@ -69,18 +76,22 @@ Older names **Minimal** / **Log-first** map to **Field** in the launcher (or sti
 
 ## 4. Main window map
 
-### Standard layout
+### Standard layout (current)
 
 ```
-┌─ Survey bar: View · Presets · Recent · Checklists · HUD · Tools · … ─┐
-├─ Tabs: Connect | Presets | NMEA | Send | Diagnostics ─┬─ Live log ───┤
-│  Connect: Run, intent hint, serial, UDP, Advanced    │              │
-├──────────────────────────────────────────────────────┴──────────────┤
-│ Status bar: Serial | Network | NMEA mode | Hz / session stats         │
-└───────────────────────────────────────────────────────────────────────┘
+┌─ Survey bar: View · Presets · Recent · HUD · UI editor · … ─────────────┐
+├─ Main tabs: Connect | Log | Tools ─────────────────────────────────────┤
+│  Connect: Run, Serial & network (hub), hint, optional quick log/term   │
+│  Tools sidebar: Presets | Phone | NMEA | Terminal | Diagnostics | Theme | Guide│
+├─ Status bar: Serial | Network | NMEA | GNSS | Hz / session stats ──────┤
+└────────────────────────────────────────────────────────────────────────┘
 ```
 
 On launch, connection fields load your **last-used named preset** (or the first bench-style preset from `bench_defaults.json`).
+
+**Customize Connect:** survey bar or Connect toolbar **UI editor…** → drag sections (Run and Serial & network always stay on). Default order puts **Serial & network** directly under **Run** to reduce scrolling.
+
+**Resize Connect panels:** drag the green splitter handles between sections; **Reset sizes** on the Connect toolbar.
 
 ### Field layout
 
@@ -89,12 +100,12 @@ On launch, connection fields load your **last-used named preset** (or the first 
 ├─ Start bridge | Stop bridge ─────────────────────────────────────────┤
 ├─ Live log (most of the window) ──────────────────────────────────────┤
 ├─ COM / Baud / UDP row · status · one-line intent hint · Tools ▾ ─────┤
-│  Tools drawer: Presets | NMEA | Send | Diagnostics (when expanded)   │
+│  Tools drawer: Presets | NMEA | Terminal | Diagnostics | Theme | Guide│
 ├─ Status bar ─────────────────────────────────────────────────────────┤
 └──────────────────────────────────────────────────────────────────────┘
 ```
 
-**TCP / advanced UDP:** Field does not duplicate Advanced on the connect row — open **Tools → Presets → Advanced network**.
+**TCP / advanced UDP:** Field does not duplicate Advanced on the connect row — open **Tools → Presets** (advanced network section when shown).
 
 ---
 
@@ -221,7 +232,7 @@ The bridge does not configure routers or VPN — only opens sockets on the Windo
 
 ### Web control plane (optional, v1.7+)
 
-- **Enable** — Tools → **Guide** → **Enable Web API on this PC** (default port **8765**, localhost only).
+- **Enable** — Tools → **Phone** → **Enable Web API on this PC** (default port **8765**, localhost only).
 - **Endpoints** — `GET /status`, `GET /config`, `PATCH /config`, `POST /bridge/start`, `POST /bridge/stop` (see `specs/005-hybrid-ui-webui/quickstart.md`).
 - **LAN access** — Off by default. Enabling **Allow LAN access** binds all interfaces; use Windows firewall and optional `token` in `%USERPROFILE%\.cursor-udp-com-bridge\ui_prefs.json` under `web_ui`.
 - **Dev install** — `python -m pip install -r requirements-web.txt` when running from source.
@@ -255,7 +266,7 @@ The bridge does not configure routers or VPN — only opens sockets on the Windo
 
 Strict does **not** apply to Raw mode.
 
-### Send
+### Terminal (Tools → Terminal)
 
 While **Running** (NMEA text modes):
 
@@ -265,15 +276,29 @@ While **Running** (NMEA text modes):
 
 Does **not** inject binary streams — NMEA text only.
 
-### Diagnostics
+### Phone (Tools → Phone)
 
-Collapsible sections keep the tab scannable:
+- Enable localhost Web API, LAN/Tailscale bind, API token, **Show QR**, setup link copy/paste, **Detect Tailscale IP**, **Open dashboard in browser**.
 
-- **Quick UI switch** — open Standard or Field layout.
-- **Rotating file log** — optional survey log on disk while Running.
-- **On-screen log** — clear the main live log panel.
-- **Automated checks** — Full verify, Bench/Boat checklist, UDP burst, TCP stress/demo, capacity probe; **Stop** ends the running helper.
-- Mirror output to the live log when debugging script output.
+### Guide (Tools → Guide)
+
+- **UDP / TCP Client / TCP Server / Checklist** — short HTML workflows (connection methods).
+- Buttons at the top open **GETTING_STARTED.md**, this guide, and **NORBIT_DCT.md** when running from a dev tree (frozen builds: open `docs\` beside the install folder).
+
+### Diagnostics (Tools → Diagnostics)
+
+Four **collapsible cards** in a vertical stack (default order: **Automated checks** first). Use **Reorder cards…** (top right) to drag cards into your preferred order; **Apply** saves per layout mode. Drag the splitter between cards to set height — sizes persist.
+
+| Card | Purpose |
+| ---- | ------- |
+| **Automated checks** | Same scripts as the command line: **Bench pair setup…** (opens this guide §5 + runs checks), **Full verify** (`verify_all.py`), **Bench/Boat checklist** (`check_setup.py`), **UDP sample burst**, TCP stress/demo, **capacity probe**, **Stop** / **Clear output**. Mirror checkbox sends lines to the main **Log** tab. |
+| **Rotating file log** | Optional `bridge_survey.log` on disk while Running (size/backups). |
+| **On-screen log** | **Clear live log panel** — does not delete the rotating file above. |
+| **Traffic & data quality** | **Legend only** for status-bar Hz, transport OK/warn, session totals, GNSS chip — expand when you need a reminder; live values stay in the status bar and Survey HUD. |
+
+**Quick UI switch** (when present) jumps between Standard and Field layout.
+
+**Presenter tip:** collapse **Traffic & data quality** and **On-screen log**; keep **Automated checks** expanded for bench demos.
 
 ### Survey bar (all layouts)
 
@@ -366,13 +391,13 @@ Use **Field Slate** theme unless noted. Hide unrelated windows; status bar and s
 | --- | -------- | --------------- | -------------------- |
 | S01 | `01-layout-picker.png` | Launcher layout picker | Delete `%USERPROFILE%\.cursor-udp-com-bridge\ui_choice.json` or first run |
 | S02 | `02-standard-stopped.png` | Full window, **Connect** tab, **Stopped** | Fresh launch; intent hint visible |
-| S03 | `03-presets-bench.png` | **Presets** tab: list + **Load** / **Save** | Select **Desk test** (or your bench preset); fields filled after Load |
-| S04 | `04-connect-running.png` | **Connect**: Run box **Running**, log with traffic | Load bench preset → **Start** → **UDP sample burst** once |
+| S03 | `03-presets-bench.png` | **Tools → Presets**: list + **Load** / **Save** | Select **Desk test** (or your bench preset); fields filled after Load |
+| S04 | `04-connect-running.png` | **Connect**: Run box **Running**, **Log** tab with traffic | Load bench preset → **Start** → **UDP sample burst** once |
 | S05 | `05-status-bar-hz.png` | Crop status bar (Serial, Network, NMEA, Hz line) | Same session as S04 |
 | S06 | `06-nmea-passthrough.png` | **NMEA** tab; **Passthrough** selected; strict grid grayed out | |
-| S07 | `07-send-tab.png` | **Send** tab with sample GGA | **Insert sample GGA** |
-| S08 | `08-diagnostics-checklist.png` | **Diagnostics** → **Automated checks** expanded; bench checklist output | **Bench checklist**; show `diag_output` pane |
-| S09 | `09-presets-boat-notes.png` | **Presets**: boat preset selected; **Survey network** fields visible | Load **Boat / INS** (or boat preset) |
+| S07 | `07-terminal-tab.png` | **Tools → Terminal** with sample GGA | **Insert sample GGA** |
+| S08 | `08-diagnostics-checklist.png` | **Tools → Diagnostics** → **Automated checks** expanded; bench checklist output | **Bench checklist**; show `diag_output` pane |
+| S09 | `09-presets-boat-notes.png` | **Tools → Presets**: boat preset selected; **Survey network** fields visible | Load **Boat / INS** (or boat preset) |
 
 ### Field layout (daily ops)
 

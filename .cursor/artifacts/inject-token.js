@@ -1,0 +1,1 @@
+localStorage.setItem('nmea-bridge-web-token', "M3_BUpeNiAlUl5B6QCSxyGPfafm8DyR7"); token = "M3_BUpeNiAlUl5B6QCSxyGPfafm8DyR7";

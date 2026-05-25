@@ -42,6 +42,7 @@ from bridge_core import (
 )
 from ntrip_client import NtripConfig, parse_caster_host, run_ntrip_forwarder
 from nmea_codec import NmeaFilter, NmeaMode
+from ui.connection_fields import read_baud_widget
 from ui.log_view import (
     PRESET_CUSTOM,
     LogViewState,
@@ -267,6 +268,7 @@ class BridgeLogicMixin:
         self._refresh_preset_list()
         self._sync_preset_action_buttons()
         self._apply_theme(self._theme_id, persist=False)
+        self._sync_connect_row_style_combo()
         apply_app_icon(self)
         self._restore_file_log_prefs_ui()
         self._restore_auto_discover_pref()
@@ -693,6 +695,11 @@ class BridgeLogicMixin:
         for name in catalog.keys():
             if name not in hidden and name not in visible_names:
                 visible_names.append(name)
+        if key == "tools_tabs" and "Phone" in catalog and "Phone" not in visible_names:
+            if "Presets" in visible_names:
+                visible_names.insert(visible_names.index("Presets") + 1, "Phone")
+            else:
+                visible_names.insert(0, "Phone")
         self._tab_rebuild_guard = True
         try:
             while tabs.count():
@@ -1017,7 +1024,11 @@ class BridgeLogicMixin:
         chip = getattr(self, "status_gnss", None)
         if chip is None:
             return
-        from survey_quality import format_gnss_status_chip
+        from survey_quality import (
+            format_gnss_status_chip,
+            gnss_status_badge_quality,
+            gnss_status_badge_stylesheet,
+        )
         from ui.controls import elide_status_label
 
         running = self._is_bridge_running()
@@ -1025,12 +1036,17 @@ class BridgeLogicMixin:
         nav = self.bridge.navigation_quality() if running and self.bridge and not raw_mode else None
         text = format_gnss_status_chip(nav, running=running, raw_mode=raw_mode)
         elide_status_label(chip, text)
+        chip.setStyleSheet(
+            gnss_status_badge_stylesheet(
+                gnss_status_badge_quality(nav, running=running, raw_mode=raw_mode)
+            )
+        )
         if running and raw_mode:
             chip.setToolTip("Raw binary mode — no GGA parsing. Use passthrough/strict for live GNSS quality.")
         elif running and nav and not nav.get("nav_stale"):
             chip.setToolTip(str(nav.get("detail") or nav.get("summary") or ""))
         elif running:
-            chip.setToolTip("No GGA in the last ~3 seconds — check INS output and NMEA filter.")
+            chip.setToolTip("No GGA in the last ~2 seconds — check INS output and NMEA filter.")
         else:
             chip.setToolTip("GNSS quality from GGA while the bridge is Running (POSPac-style hints).")
 
@@ -1156,8 +1172,9 @@ class BridgeLogicMixin:
         com = str(entry.get("com", "")).strip()
         if not com:
             return
-        baud = str(entry.get("baud", "115200"))
-        self.baud_edit.setText(baud)
+        from ui.connection_fields import coerce_baud
+
+        self.baud_edit.setCurrentText(str(coerce_baud(int(entry.get("baud", 115200) or 115200))))
         idx = self.com_cb.findText(com)
         if idx >= 0:
             self.com_cb.setCurrentIndex(idx)
@@ -1178,10 +1195,12 @@ class BridgeLogicMixin:
         self._log_ui(f"[UI] Loaded recent session: {com} @ {baud}")
 
     def _record_recent_session(self) -> None:
+        if getattr(self, "_demo_session_active", False):
+            return
         push_recent_session(
             {
                 "com": self.com_cb.currentText().strip(),
-                "baud": self.baud_edit.text().strip(),
+                "baud": read_baud_widget(self.baud_edit),
                 "net_mode": "udp_listen",
                 "udp_host": self.udp_host.text().strip(),
                 "udp_port": self.udp_port.text().strip(),
@@ -1200,7 +1219,7 @@ class BridgeLogicMixin:
             elif self.rb_tcp_client.isChecked():
                 mode = "tcp_client"
         com = self.com_cb.currentText().strip() or "?"
-        baud = self.baud_edit.text().strip() or "?"
+        baud = read_baud_widget(self.baud_edit) or "?"
         udp_host = self.udp_host.text().strip() or "0.0.0.0"
         udp_port = self.udp_port.text().strip() or "10110"
         if mode == "udp_remote":
@@ -1270,6 +1289,9 @@ class BridgeLogicMixin:
         self.setStyleSheet("")  # clear cached rules so theme swap is visible
         self.setStyleSheet(bridge_stylesheet(ui_mode, theme_id))
         apply_global_contrast_guard(QtWidgets.QApplication.instance())
+        from ui.connect_row_style import apply_connect_row_style
+
+        apply_connect_row_style(self)
         pop = getattr(self, "_stats_popout_window", None)
         if pop is not None:
             try:
@@ -1541,6 +1563,46 @@ class BridgeLogicMixin:
         theme_id = str(combo.currentData() or THEME_SLATE)
         self._apply_theme(theme_id)
 
+    def _sync_connect_row_style_combo(self) -> None:
+        combo = getattr(self, "cmb_connect_row_style", None)
+        if combo is None:
+            return
+        from ui.connect_row_style import apply_connect_row_style, normalize_connect_row_style
+        from ui.ui_prefs import load_connect_panel_prefs
+
+        ui_mode = getattr(self, "_ui_mode", "standard")
+        prefs = load_connect_panel_prefs(ui_mode)
+        style_id = normalize_connect_row_style(str(prefs.get("connect_row_style", "pill")))
+        apply_connect_row_style(self, style_id)
+        idx = combo.findData(style_id)
+        if idx >= 0 and combo.currentIndex() != idx:
+            combo.blockSignals(True)
+            combo.setCurrentIndex(idx)
+            combo.blockSignals(False)
+
+    def _on_connect_row_style_changed(self, _idx: int) -> None:
+        combo = getattr(self, "cmb_connect_row_style", None)
+        if combo is None:
+            return
+        from ui.connect_row_style import apply_connect_row_style, normalize_connect_row_style
+        from ui.ui_prefs import load_connect_panel_prefs, save_connect_panel_prefs
+
+        style_id = normalize_connect_row_style(str(combo.currentData() or "pill"))
+        apply_connect_row_style(self, style_id)
+        ui_mode = getattr(self, "_ui_mode", "standard")
+        prefs = load_connect_panel_prefs(ui_mode)
+        save_connect_panel_prefs(
+            ui_mode,
+            list(prefs.get("order", [])),
+            dict(prefs.get("collapsed", {})),
+            sizes=dict(prefs.get("sizes", {})),
+            hidden=list(prefs.get("hidden", [])),
+            toolbar_order=list(prefs.get("toolbar_order", [])),
+            qr_lane_width=int(prefs.get("qr_lane_width", 228)),
+            connect_row_style=style_id,
+        )
+        self._log_ui(f"[UI] Connect section style: {style_id}.")
+
     def _pick_theme_zone_color(self, zone_id: str) -> None:
         current = self._theme_zone_colors.get(zone_id, DEFAULT_ZONE_COLORS.get(zone_id, "#222222"))
         start = QtGui.QColor(current)
@@ -1787,8 +1849,14 @@ class BridgeLogicMixin:
         facade = getattr(self, "_app_facade", None)
         if facade is not None:
             facade.attach_window(self)
+        self._ensure_discovery_for_web()
         self._restore_web_ui_prefs()
+        self._update_web_listen_label()
         self._maybe_start_web_server()
+        self._update_web_listen_label()
+        from ui.connect_qr_overlay import schedule_refresh_connect_qr_overlay
+
+        schedule_refresh_connect_qr_overlay(self)
 
     def _web_token_from_ui(self) -> Optional[str]:
         edit = getattr(self, "edit_web_token", None)
@@ -1823,31 +1891,311 @@ class BridgeLogicMixin:
             edit.blockSignals(False)
         phone_edit = getattr(self, "edit_web_phone_url", None)
         if phone_edit is not None:
+            from web.phone_url import normalize_phone_base_url
+
             phone_edit.blockSignals(True)
-            phone_edit.setText(str(prefs.get("phone_base_url") or ""))
+            phone_edit.setText(
+                normalize_phone_base_url(str(prefs.get("phone_base_url") or ""))
+            )
             phone_edit.blockSignals(False)
+        self._refresh_phone_tab_qr()
+
+    def _tools_nav_is_phone(self) -> bool:
+        nav = getattr(self, "_tools_nav", None)
+        if nav is None:
+            return False
+        item = nav.currentItem()
+        if item is None:
+            return False
+        return item.text().strip().lower() == "phone"
+
+    def _on_tools_nav_row_changed(self, row: int) -> None:
+        stack = getattr(self, "_tools_stack", None)
+        if stack is not None and 0 <= row < stack.count():
+            stack.setCurrentIndex(row)
+        if self._tools_nav_is_phone():
+            self._refresh_phone_tab_qr()
+            floater = getattr(self, "_connect_qr_overlay", None)
+            if floater is not None and floater.isVisible():
+                floater.hide()
+        else:
+            from ui.connect_qr_overlay import schedule_refresh_connect_qr_overlay
+
+            schedule_refresh_connect_qr_overlay(self, delay_ms=0)
+
+    def _sync_web_port_spin_locked(self) -> None:
+        spin = getattr(self, "spin_web_port", None)
+        if spin is None:
+            return
+        chk = getattr(self, "chk_web_port_unlock", None)
+        unlocked = chk is not None and chk.isChecked()
+        spin.setEnabled(True)
+        spin.setReadOnly(not unlocked)
+        spin.setProperty("portLocked", not unlocked)
+        spin.style().unpolish(spin)
+        spin.style().polish(spin)
+        spin.update()
+
+    def _on_web_port_unlock_toggled(self, checked: bool) -> None:
+        self._sync_web_port_spin_locked()
+        timer: QtCore.QTimer | None = getattr(self, "_web_port_unlock_timer", None)
+        if timer is None:
+            timer = QtCore.QTimer(self)
+            timer.setSingleShot(True)
+            timer.timeout.connect(self._on_web_port_unlock_expired)
+            self._web_port_unlock_timer = timer
+        timer.stop()
+        if checked:
+            timer.start(10_000)
+
+    def _on_web_port_unlock_expired(self) -> None:
+        chk = getattr(self, "chk_web_port_unlock", None)
+        if chk is None or not chk.isChecked():
+            return
+        chk.blockSignals(True)
+        chk.setChecked(False)
+        chk.blockSignals(False)
+        self._sync_web_port_spin_locked()
+
+    def _web_dashboard_local_url(self, port: int | None = None) -> str:
+        p = int(port if port is not None else self._web_port_from_ui())
+        return f"http://127.0.0.1:{p}/"
+
+    def _sync_phone_url_port(self, port: int) -> None:
+        """Keep Phone dashboard URL port aligned when the spin box changes."""
+        edit = getattr(self, "edit_web_phone_url", None)
+        if edit is None:
+            return
+        raw = edit.text().strip()
+        if not raw:
+            return
+        from urllib.parse import urlparse, urlunparse
+
+        text = raw if "://" in raw else f"http://{raw}"
+        parsed = urlparse(text)
+        host = parsed.hostname
+        if not host:
+            return
+        port_i = max(1024, min(65535, int(port)))
+        userinfo = ""
+        if parsed.username:
+            userinfo = parsed.username
+            if parsed.password:
+                userinfo += f":{parsed.password}"
+            userinfo += "@"
+        host_part = host
+        if ":" in host and not host.startswith("["):
+            host_part = f"[{host}]"
+        netloc = f"{userinfo}{host_part}:{port_i}"
+        new_url = urlunparse(parsed._replace(netloc=netloc))
+        if new_url.rstrip("/") != text.rstrip("/"):
+            edit.blockSignals(True)
+            edit.setText(new_url)
+            edit.blockSignals(False)
+
+    def _update_web_listen_label(self, *, pending_restart: bool = False) -> None:
+        lbl = getattr(self, "lbl_web_listen", None)
+        if lbl is None:
+            return
+        enabled = getattr(self, "chk_web_enabled", None)
+        if enabled is None or not enabled.isChecked():
+            lbl.setText("Web API off — enable above, then open the URL on this PC.")
+            return
+        port_ui = self._web_port_from_ui()
+        local = self._web_dashboard_local_url(port_ui)
+        if pending_restart:
+            lbl.setText(f"Applying port {port_ui} — restarting API at {local}")
+            return
+        server = getattr(self, "_web_server", None)
+        if server is not None and server.running:
+            live_port = int(getattr(server, "_port", port_ui) or port_ui)
+            live = self._web_dashboard_local_url(live_port)
+            if live_port != port_ui:
+                lbl.setText(
+                    f"Live: {live} (spin box shows {port_ui} — wait for restart to finish)"
+                )
+            else:
+                lbl.setText(f"This PC dashboard: {live}")
+            return
+        lbl.setText(f"Starting Web API on {local}")
+
+    def _on_web_port_spin_changed(self, _value: int) -> None:
+        chk = getattr(self, "chk_web_port_unlock", None)
+        if chk is not None and not chk.isChecked():
+            return
+        self._persist_web_ui_prefs()
+        self._sync_phone_url_port(self._web_port_from_ui())
+        self._schedule_web_server_restart(300)
+
+    def _schedule_web_server_restart(self, delay_ms: int = 400) -> None:
+        """One debounced restart — avoids overlapping stop/start on the same port."""
+        self._update_web_listen_label(pending_restart=True)
+        for attr in ("_web_port_restart_timer", "_web_prefs_debounce_timer"):
+            t: QtCore.QTimer | None = getattr(self, attr, None)
+            if t is not None:
+                t.stop()
+        gen = getattr(self, "_web_restart_gen", 0) + 1
+        self._web_restart_gen = gen
+        self._web_restart_scheduled_gen = gen
+        timer: QtCore.QTimer | None = getattr(self, "_web_restart_timer", None)
+        if timer is None:
+            t = QtCore.QTimer(self)
+            t.setSingleShot(True)
+            t.timeout.connect(self._on_web_restart_timer_fired)
+            self._web_restart_timer = t
+            timer = t
+        timer.stop()
+        timer.start(max(50, int(delay_ms)))
+
+    def _on_web_restart_timer_fired(self) -> None:
+        if getattr(self, "_web_restart_scheduled_gen", -1) != getattr(self, "_web_restart_gen", -1):
+            return
+        self._apply_web_server_restart()
+
+    def _apply_web_server_restart(self) -> None:
+        if getattr(self, "_web_restart_busy", False):
+            self._web_restart_pending = True
+            return
+        self._web_restart_busy = True
+        try:
+            self._persist_web_ui_prefs()
+            self._stop_web_server()
+            from ui.ui_prefs import load_web_ui_prefs
+            from web_server import wait_port_free
+
+            prefs = load_web_ui_prefs()
+            if not prefs.get("enabled"):
+                self._update_web_listen_label()
+                return
+            port = int(prefs.get("port", 8765))
+            lan = bool(prefs.get("lan_bind"))
+            host = str(prefs.get("host", "127.0.0.1"))
+            if not wait_port_free(port, lan_bind=lan, host=host, timeout=3.0):
+                self._report_web_bind_failure(port)
+                return
+            self._maybe_start_web_server()
+            self._update_web_listen_label()
+        finally:
+            self._web_restart_busy = False
+            if getattr(self, "_web_restart_pending", False):
+                self._web_restart_pending = False
+                self._schedule_web_server_restart(200)
+
+    def _report_web_bind_failure(self, port: int) -> None:
+        msg = (
+            f"Port {port} is already in use — close another bridge window, "
+            "stop any test using that port, or choose a different port."
+        )
+        lbl = getattr(self, "lbl_web_listen", None)
+        if lbl is not None:
+            lbl.setText(f"Web API failed: {msg}")
+        self._log_ui(f"[Web] {msg}")
+        self._web_server = None
+
+    def _web_port_from_ui(self) -> int:
+        spin = getattr(self, "spin_web_port", None)
+        if spin is not None:
+            return int(spin.value())
+        from ui.ui_prefs import load_web_ui_prefs
+
+        return int(load_web_ui_prefs().get("port", 8765))
+
+    def _web_lan_bind_from_ui(self) -> bool:
+        lan = getattr(self, "chk_web_lan", None)
+        if lan is not None:
+            return bool(lan.isChecked())
+        from ui.ui_prefs import load_web_ui_prefs
+
+        return bool(load_web_ui_prefs().get("lan_bind"))
 
     def _phone_dashboard_base_url(self) -> str:
+        from web.phone_url import normalize_phone_base_url
+
         edit = getattr(self, "edit_web_phone_url", None)
         if edit is not None:
-            text = edit.text().strip()
+            text = normalize_phone_base_url(edit.text())
             if text:
                 return text
         from ui.ui_prefs import load_web_ui_prefs
 
-        return str(load_web_ui_prefs().get("phone_base_url") or "").strip()
+        return normalize_phone_base_url(
+            str(load_web_ui_prefs().get("phone_base_url") or "")
+        )
+
+    def _normalize_phone_url_field(self) -> None:
+        from web.phone_url import normalize_phone_base_url
+
+        edit = getattr(self, "edit_web_phone_url", None)
+        if edit is None:
+            return
+        clean = normalize_phone_base_url(edit.text())
+        if clean != edit.text().strip():
+            edit.blockSignals(True)
+            edit.setText(clean)
+            edit.blockSignals(False)
+
+    def _phone_url_ready_for_remote(self) -> tuple[bool, str]:
+        """Return (ok, message) for QR / copy when LAN is enabled."""
+        from web.phone_url import is_loopback_base
+
+        if not self._web_lan_bind_from_ui():
+            return True, ""
+        base = self._phone_dashboard_base_url()
+        if base and not is_loopback_base(base):
+            return True, ""
+        return (
+            False,
+            "Set Phone dashboard URL to this PC's Tailscale IP (100.x.x.x:port) — "
+            "127.0.0.1 only works on this computer, not on your phone.",
+        )
+
+    def _maybe_autofill_phone_url(self) -> bool:
+        """Try Tailscale/LAN detect when remote access is on. Returns True if filled."""
+        from web.phone_url import is_loopback_base, suggest_phone_base_urls
+
+        if not self._web_lan_bind_from_ui():
+            return False
+        base = self._phone_dashboard_base_url()
+        if base and not is_loopback_base(base):
+            return False
+        port = self._web_port_from_ui()
+        urls = suggest_phone_base_urls(port)
+        if not urls:
+            return False
+        edit = getattr(self, "edit_web_phone_url", None)
+        if edit is None:
+            return False
+        edit.setText(urls[0])
+        self._persist_web_ui_prefs()
+        self._log_ui(f"[Web] Phone dashboard URL set to {urls[0]} (detected for tailnet/LAN).")
+        return True
 
     def _build_phone_setup_url(self) -> Optional[str]:
         token = self._web_token_from_ui()
         if not token:
             return None
+        ok, msg = self._phone_url_ready_for_remote()
+        if not ok:
+            self._log_ui(f"[Web] {msg}")
+            return None
         base = self._phone_dashboard_base_url()
         if not base:
-            from ui.ui_prefs import load_web_ui_prefs
+            from web.phone_url import is_loopback_base, suggest_phone_base_urls
 
-            prefs = load_web_ui_prefs()
-            port = int(prefs.get("port", 8765))
-            base = f"http://127.0.0.1:{port}"
+            port = self._web_port_from_ui()
+            if self._web_lan_bind_from_ui():
+                urls = suggest_phone_base_urls(port)
+                if urls:
+                    base = urls[0]
+                else:
+                    self._log_ui(
+                        "[Web] Enter Phone dashboard URL (Tailscale IP from tailscale ip -4)."
+                    )
+                    return None
+            else:
+                base = f"http://127.0.0.1:{port}"
+            if is_loopback_base(base) and self._web_lan_bind_from_ui():
+                return None
         from web.token_setup import build_setup_url
 
         return build_setup_url(base, token)
@@ -1861,7 +2209,11 @@ class BridgeLogicMixin:
         lan = getattr(self, "chk_web_lan", None)
         token_ui = self._web_token_from_ui()
         phone_edit = getattr(self, "edit_web_phone_url", None)
-        phone_url = phone_edit.text().strip() if phone_edit is not None else None
+        phone_url = None
+        if phone_edit is not None:
+            from web.phone_url import normalize_phone_base_url
+
+            phone_url = normalize_phone_base_url(phone_edit.text()) or None
         save_web_ui_prefs(
             enabled=enabled.isChecked() if enabled is not None else prev["enabled"],
             host=str(prev.get("host", "127.0.0.1")),
@@ -1878,8 +2230,11 @@ class BridgeLogicMixin:
             edit = getattr(self, "edit_web_token", None)
             if edit is not None:
                 edit.setText(generate_web_api_token())
-                self._log_ui("[Web] Generated API token for LAN access — copy it to your phone dashboard.")
+                self._log_ui("[Web] Generated remote control token for LAN/Tailscale access.")
+        if checked:
+            self._maybe_autofill_phone_url()
         self._on_web_ui_prefs_changed()
+        self._refresh_web_token_qr()
 
     def _on_web_generate_token(self) -> None:
         from ui.ui_prefs import generate_web_api_token
@@ -1900,6 +2255,12 @@ class BridgeLogicMixin:
             self._refresh_web_token_qr()
 
     def _refresh_web_token_qr(self) -> None:
+        self._refresh_phone_tab_qr()
+        from ui.connect_qr_overlay import schedule_refresh_connect_qr_overlay
+
+        schedule_refresh_connect_qr_overlay(self)
+
+    def _refresh_phone_tab_qr(self) -> None:
         lbl = getattr(self, "lbl_web_token_qr", None)
         chk = getattr(self, "chk_web_show_qr", None)
         if lbl is None or chk is None:
@@ -1928,9 +2289,17 @@ class BridgeLogicMixin:
             lbl.setWordWrap(True)
             lbl.setVisible(True)
             return
+        lbl.setWordWrap(False)
+        lbl.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
         lbl.setText("")
         lbl.setPixmap(pix)
+        lbl.setScaledContents(False)
         lbl.setVisible(True)
+
+    def _refresh_connect_qr_overlay(self) -> None:
+        from ui.connect_qr_overlay import schedule_refresh_connect_qr_overlay
+
+        schedule_refresh_connect_qr_overlay(self)
 
     def _on_web_copy_token(self) -> None:
         token = self._web_token_from_ui()
@@ -1942,20 +2311,50 @@ class BridgeLogicMixin:
             app.clipboard().setText(token)
         self._log_ui("[Web] API token copied to clipboard.")
 
+    def _on_web_detect_phone_url(self) -> None:
+        if self._maybe_autofill_phone_url():
+            self._refresh_web_token_qr()
+            return
+        self._log_ui(
+            "[Web] Could not detect a Tailscale/LAN IP — run `tailscale ip -4` and paste "
+            "http://THAT-IP:8765 into Phone dashboard URL."
+        )
+
+    def _on_web_open_dashboard(self) -> None:
+        if not self._web_lan_bind_from_ui():
+            base = self._web_dashboard_local_url()
+        else:
+            base = self._phone_dashboard_base_url()
+            if not base:
+                if self._maybe_autofill_phone_url():
+                    base = self._phone_dashboard_base_url()
+        if not base:
+            self._log_ui(
+                "[Web] Set Phone dashboard URL (Tailscale/LAN IP) or click Detect Tailscale IP."
+            )
+            return
+        QtGui.QDesktopServices.openUrl(QtCore.QUrl(base.rstrip("/") + "/"))
+        self._log_ui(f"[Web] Opened dashboard in browser ({base}).")
+
     def _on_web_copy_phone_setup(self) -> None:
+        ok, msg = self._phone_url_ready_for_remote()
+        if not ok:
+            if self._maybe_autofill_phone_url():
+                ok, msg = self._phone_url_ready_for_remote()
+        if not ok:
+            self._log_ui(f"[Web] {msg}")
+            return
         url = self._build_phone_setup_url()
         if not url:
             self._log_ui("[Web] Generate a token first, then set Phone dashboard URL (Tailscale IP).")
             return
-        if not self._phone_dashboard_base_url():
-            self._log_ui(
-                "[Web] Phone setup link copied (using localhost). "
-                "Set Phone dashboard URL to your Tailscale/LAN address for phones."
-            )
         app = QtWidgets.QApplication.instance()
         if app is not None:
             app.clipboard().setText(url)
-        self._log_ui("[Web] Phone setup link copied — open once on the phone, or Paste setup link there.")
+        base = self._phone_dashboard_base_url()
+        self._log_ui(
+            f"[Web] Phone setup link copied ({base}) — open once on the phone or Paste setup link there."
+        )
 
     def _apply_token_from_text(self, text: str) -> bool:
         from web.token_setup import parse_token_from_text
@@ -1982,9 +2381,13 @@ class BridgeLogicMixin:
         )
 
     def _on_web_ui_prefs_changed(self, *_args: object) -> None:
-        self._persist_web_ui_prefs()
-        self._stop_web_server()
-        self._maybe_start_web_server()
+        self._schedule_web_server_restart(400)
+
+    def _restart_web_control_plane(self) -> None:
+        self._apply_web_server_restart()
+        from ui.connect_qr_overlay import schedule_refresh_connect_qr_overlay
+
+        schedule_refresh_connect_qr_overlay(self)
 
     def _maybe_start_web_server(self) -> None:
         from ui.ui_prefs import load_web_ui_prefs
@@ -1992,10 +2395,19 @@ class BridgeLogicMixin:
         prefs = load_web_ui_prefs()
         if not prefs.get("enabled"):
             return
+        port = int(prefs.get("port", 8765))
         try:
             from version import __version__
             from web_api import create_app
-            from web_server import WebServerThread
+            from web_server import WebServerThread, port_is_free
+
+            if not port_is_free(
+                port,
+                lan_bind=bool(prefs.get("lan_bind")),
+                host=str(prefs.get("host", "127.0.0.1")),
+            ):
+                self._report_web_bind_failure(port)
+                return
 
             token = prefs.get("token") if prefs.get("lan_bind") else None
             app = create_app(
@@ -2007,37 +2419,53 @@ class BridgeLogicMixin:
             server.start(
                 app,
                 host=str(prefs.get("host", "127.0.0.1")),
-                port=int(prefs.get("port", 8765)),
+                port=port,
                 lan_bind=bool(prefs.get("lan_bind")),
             )
             self._web_server = server
-            host = "127.0.0.1" if not prefs.get("lan_bind") else "0.0.0.0"
-            self._log_ui(
-                f"Web control plane: http://{host}:{prefs.get('port')}/ "
-                "(status, config, start/stop — see Tools → Guide)"
-            )
-        except Exception as exc:
-            self._log_ui(f"Web control plane failed to start: {exc}")
+            if prefs.get("lan_bind"):
+                self._log_ui(
+                    f"Web API listening on LAN port {port} — open http://127.0.0.1:{port}/ "
+                    "on this PC (paste API token in the dashboard if prompted). "
+                    "Phone: scan QR or use your PC LAN IP."
+                )
+            else:
+                self._log_ui(
+                    f"Web API: http://127.0.0.1:{port}/ "
+                    "(Tools → Phone — no token required on this PC)"
+                )
+        except Exception:
+            self._web_server = None
+            self._report_web_bind_failure(port)
 
     def _stop_web_server(self) -> None:
         server = getattr(self, "_web_server", None)
         if server is not None:
             server.stop(join_timeout=2.0)
             self._web_server = None
+        self._update_web_listen_label()
+
+    def _ensure_discovery_for_web(self) -> None:
+        """Passive discovery poll + web façade feed (Field/minimal have no Connection Hub)."""
+        if not hasattr(self, "_discovery_stable_counts"):
+            self._discovery_stable_counts = {}
+        if not hasattr(self, "_bridge_stats_cache"):
+            self._bridge_stats_cache = {}
+        if not hasattr(self, "_discovery_worker"):
+            self._discovery_worker = None
+        self._start_discovery_poll()
 
     def _wire_connection_hub(self) -> None:
         hub = getattr(self, "connection_hub", None)
         if hub is None:
             return
-        self._discovery_stable_counts: dict[str, int] = {}
-        self._bridge_stats_cache: dict = {}
+        self._ensure_discovery_for_web()
         self._hub_selected_device_id: Optional[str] = None
         self._manual_override_dirty = False
         hub.selection_changed.connect(self._on_hub_selection)
         hub.manual_override_toggled.connect(self._on_manual_override_toggled)
         hub.refresh_requested.connect(self._on_hub_refresh_discovery)
         hub.unlock_requested.connect(self._on_hub_unlock_ports)
-        self._discovery_worker = None
         for w in (
             self.com_cb,
             self.baud_edit,
@@ -2060,8 +2488,6 @@ class BridgeLogicMixin:
         ):
             if rb is not None:
                 rb.toggled.connect(self._mark_manual_override_dirty)
-        self._start_discovery_poll()
-
     def _mark_manual_override_dirty(self, *_args: object) -> None:
         self._manual_override_dirty = True
 
@@ -2122,24 +2548,34 @@ class BridgeLogicMixin:
 
     def _on_hub_refresh_discovery(self) -> None:
         hub = getattr(self, "connection_hub", None)
-        if hub is None:
-            return
         self._cancel_discovery_worker()
         from ui.discovery_worker import DiscoveryScanWorker
 
-        hub.set_scan_busy(True)
+        if hub is not None:
+            hub.set_scan_busy(True)
+        facade = getattr(self, "_app_facade", None)
+        if facade is not None:
+            facade.set_discovery_scan_busy(True)
         worker = DiscoveryScanWorker(self._discovery_scan_params(), full_network_scan=True, parent=self)
+
+        def _clear_busy() -> None:
+            if hub is not None:
+                hub.set_scan_busy(False)
+            if facade is not None:
+                facade.set_discovery_scan_busy(False)
+
         worker.snapshot_ready.connect(self._on_discovery_worker_snapshot)
         worker.scan_failed.connect(self._on_discovery_worker_failed)
-        worker.finished.connect(lambda: hub.set_scan_busy(False))
+        worker.finished.connect(_clear_busy)
         self._discovery_worker = worker
         worker.start()
 
     def _on_discovery_worker_snapshot(self, snap: object, counts: object) -> None:
-        hub = getattr(self, "connection_hub", None)
-        if hub is not None and snap is not None:
+        if snap is not None:
             self._discovery_stable_counts = counts if isinstance(counts, dict) else {}
-            hub.set_snapshot(snap)
+            hub = getattr(self, "connection_hub", None)
+            if hub is not None:
+                hub.set_snapshot(snap)
             self._update_field_connect_summary()
             facade = getattr(self, "_app_facade", None)
             if facade is not None:
@@ -2151,6 +2587,9 @@ class BridgeLogicMixin:
         hub = getattr(self, "connection_hub", None)
         if hub is not None:
             hub.set_scan_busy(False)
+        facade = getattr(self, "_app_facade", None)
+        if facade is not None:
+            facade.set_discovery_scan_busy(False)
         self._poll_discovery_snapshot()
         self._cancel_discovery_worker()
 
@@ -2161,7 +2600,7 @@ class BridgeLogicMixin:
 
         hub = getattr(self, "connection_hub", None)
         com = self.com_cb.currentText().strip()
-        baud = parse_baud(self.baud_edit.text()) or 115200
+        baud = parse_baud(read_baud_widget(self.baud_edit)) or 115200
         running = self._is_bridge_running()
         bridge_com = self.bridge.com if self.bridge else None
         state = smart_release_com(
@@ -2192,9 +2631,6 @@ class BridgeLogicMixin:
     def _poll_discovery_snapshot(self) -> None:
         from discovery_service import build_snapshot
 
-        hub = getattr(self, "connection_hub", None)
-        if hub is None:
-            return
         if getattr(self, "_discovery_worker", None) is not None and self._discovery_worker.isRunning():
             return
         params = self._discovery_scan_params()
@@ -2208,7 +2644,9 @@ class BridgeLogicMixin:
             selected_port=params.get("selected_port"),
             network_scan_results=None,
         )
-        hub.set_snapshot(snap)
+        hub = getattr(self, "connection_hub", None)
+        if hub is not None:
+            hub.set_snapshot(snap)
         self._update_field_connect_summary()
         facade = getattr(self, "_app_facade", None)
         if facade is not None:
@@ -2224,7 +2662,7 @@ class BridgeLogicMixin:
         sel = hub.selected_device_id() if hub else None
         sel_note = f" · hub: {sel}" if sel else ""
         lbl.setText(
-            f"{self.com_cb.currentText().strip()} @ {self.baud_edit.text().strip()} · "
+            f"{self.com_cb.currentText().strip()} @ {read_baud_widget(self.baud_edit)} · "
             f"UDP {self.udp_host.text().strip()}:{self.udp_port.text().strip()}{sel_note}"
         )
 
@@ -2267,7 +2705,9 @@ class BridgeLogicMixin:
                 self.com_cb.insertItem(0, com)
                 self.com_cb.setCurrentIndex(0)
         if lkg.get("baud") is not None:
-            self.baud_edit.setText(str(lkg["baud"]))
+            from ui.connection_fields import coerce_baud
+
+            self.baud_edit.setCurrentText(str(coerce_baud(int(lkg["baud"]))))
         if lkg.get("udp_host"):
             self.udp_host.setText(str(lkg["udp_host"]))
         if lkg.get("udp_port") is not None:
@@ -2294,11 +2734,9 @@ class BridgeLogicMixin:
 
     def _should_apply_hub_for_start(self) -> bool:
         hub = getattr(self, "connection_hub", None)
-        if hub is None:
+        if hub is None or not hub.selected_device_id():
             return False
-        if not hub.selected_device_id():
-            return False
-        if hub.manual_override_active() and getattr(self, "_manual_override_dirty", False):
+        if getattr(self, "_manual_override_dirty", False):
             return False
         return True
 
@@ -2313,7 +2751,7 @@ class BridgeLogicMixin:
     def _collect_last_known_good_config(self) -> dict:
         cfg: dict = {
             "com": self.com_cb.currentText().strip(),
-            "baud": self.baud_edit.text().strip(),
+            "baud": read_baud_widget(self.baud_edit),
             "udp_host": self.udp_host.text().strip(),
             "udp_port": self.udp_port.text().strip(),
             "udp_fanout": getattr(self, "chk_udp_fanout", None) is None
@@ -2456,12 +2894,42 @@ class BridgeLogicMixin:
     def _set_status_banner(self, state: str, title: str, detail: str = "") -> None:
         self.status_banner.setProperty("state", state)
         self._polish_widget(self.status_banner)
-        text = title if not detail else f"{title}\n{detail}"
-        self.status_banner_text.setText(text)
+        lbl = self.status_banner_text
+        if getattr(lbl, "objectName", lambda: "")() == "statusBannerText":
+            from ui.connect_panels import format_connect_status_banner_html
+
+            lbl.setTextFormat(QtCore.Qt.TextFormat.RichText)
+            lbl.setText(format_connect_status_banner_html(title, detail))
+        else:
+            lbl.setTextFormat(QtCore.Qt.TextFormat.PlainText)
+            lbl.setText(title if not detail else f"{title} | {detail}")
+
+    def _set_demo_status_chip(self, on: bool) -> None:
+        """Optional banner hint while Product Demo is open (Standard layout)."""
+        if not on:
+            b = self.bridge
+            if b is not None and getattr(b, "running", False) and hasattr(
+                self, "_running_banner_detail"
+            ):
+                self._set_status_banner(
+                    "running", "Running", self._running_banner_detail(b)
+                )
+            else:
+                self._set_status_banner(
+                    "stopped",
+                    "Stopped",
+                    "Choose a path and Start when ready.",
+                )
+            return
+        self._set_status_banner(
+            "starting",
+            "Demonstration",
+            "Product demo open — your session restores when you close the presenter",
+        )
 
     def _set_active_preset(self, name: Optional[str]) -> None:
         self._active_preset_name = name.strip() if name else None
-        if self._active_preset_name:
+        if self._active_preset_name and not getattr(self, "_demo_session_active", False):
             set_last_preset(self._active_preset_name)
         self._refresh_preset_list_selection()
         self._rebuild_presets_quick_menu()
@@ -2505,15 +2973,19 @@ class BridgeLogicMixin:
                 f"Send UDP to 127.0.0.1:{self.udp_port.text()} (bench). "
                 f"Watch paired com0com, not {com}."
             )
-        text = "Load a preset (Presets tab or survey bar), or set COM + UDP listen, then Start."
-        if getattr(self, "_ui_mode", "") == "field":
-            text += " NTRIP caster: switch to Standard layout → Connect tab."
-        return text
+        return "Load a preset (Presets tab or survey bar), or set COM + UDP listen, then Start."
 
     def _apply_intent_hint_display(self) -> None:
         hint = getattr(self, "intent_hint", None)
         if hint is None:
             return
+        try:
+            from shiboken6 import isValid
+
+            if not isValid(hint):
+                return
+        except ImportError:
+            pass
         full = self._intent_hint_text()
         compact = getattr(self, "_compact_intent_hint", False)
         hint.setProperty("intentCompact", compact)
@@ -2541,7 +3013,7 @@ class BridgeLogicMixin:
             return "Select a COM port (Refresh ports if the list is empty)."
         from ui.connection_fields import validate_baud, validate_udp_port
 
-        baud_err = validate_baud(self.baud_edit.text())
+        baud_err = validate_baud(read_baud_widget(self.baud_edit))
         if baud_err:
             return baud_err
 
@@ -2685,7 +3157,9 @@ class BridgeLogicMixin:
         else:
             self.com_cb.addItem(com)
             self.com_cb.setCurrentText(com)
-        self.baud_edit.setText(str(baud))
+        from ui.connection_fields import coerce_baud
+
+        self.baud_edit.setCurrentText(str(coerce_baud(baud)))
         self.rb_udp_listen.setChecked(True)
         self.udp_host.setText(udp_host)
         self.udp_port.setText(str(udp_port))
@@ -2698,7 +3172,7 @@ class BridgeLogicMixin:
     def _connection_preset_from_ui(self) -> dict[str, str | int]:
         com = self.com_cb.currentText().strip()
         try:
-            baud = int(self.baud_edit.text().strip())
+            baud = int(read_baud_widget(self.baud_edit))
         except ValueError:
             baud = 0
         udp_host = self.udp_host.text().strip() or "0.0.0.0"
@@ -2747,7 +3221,34 @@ class BridgeLogicMixin:
     def _preset_full_from_ui(self) -> dict[str, str | int]:
         merged = dict(self._connection_preset_from_ui())
         merged.update(self._preset_survey_fields_from_ui())
+        merged.update(self._preset_nmea_from_ui())
         return merged
+
+    def _preset_nmea_from_ui(self) -> dict[str, str | list[str]]:
+        out: dict[str, str | list[str]] = {"nmea_mode": self._nmea_mode_label()}
+        checks = getattr(self, "_nmea_type_checks", None)
+        if self._nmea_mode_label() == "strict" and checks:
+            types = [st for st, cb in checks.items() if cb.isChecked()]
+            if types:
+                out["nmea_types"] = types
+        return out
+
+    def _apply_preset_nmea_mode(self, data: dict) -> None:
+        nmea = str(data.get("nmea_mode", "passthrough")).strip().lower()
+        if nmea == "raw" and getattr(self, "rb_nmea_raw", None):
+            self.rb_nmea_raw.setChecked(True)
+        elif nmea == "strict" and getattr(self, "rb_nmea_strict", None):
+            self.rb_nmea_strict.setChecked(True)
+        elif getattr(self, "rb_nmea_passthrough", None):
+            self.rb_nmea_passthrough.setChecked(True)
+        types = data.get("nmea_types")
+        checks = getattr(self, "_nmea_type_checks", None)
+        if nmea == "strict" and isinstance(types, list) and checks:
+            enabled = {str(t).strip().upper() for t in types}
+            for st, cb in checks.items():
+                cb.setChecked(st in enabled)
+        self._sync_nmea_mode_ui()
+        self._refresh_nmea_status_chip()
 
     def _apply_preset_survey_fields(self, data: dict) -> None:
         if not hasattr(self, "preset_pc_ip"):
@@ -2888,6 +3389,31 @@ class BridgeLogicMixin:
         act_edit.setData("open_presets_tab")
         menu.addAction(act_edit)
 
+    def _open_phone_tab(self) -> None:
+        tools_nav = getattr(self, "_tools_nav", None)
+        main_tabs = getattr(self, "_main_tabs", None)
+        if tools_nav is not None and main_tabs is not None:
+            for i in range(main_tabs.count()):
+                if main_tabs.tabText(i).lower() == "tools":
+                    main_tabs.setCurrentIndex(i)
+                    break
+            for row in range(tools_nav.count()):
+                item = tools_nav.item(row)
+                if item is not None and item.text().strip().lower() == "phone":
+                    tools_nav.setCurrentRow(row)
+                    return
+            return
+        tabs = getattr(self, "_drawer_tabs", None)
+        if tabs is None:
+            return
+        drawer = getattr(self, "_drawer_btn", None)
+        if drawer is not None and not drawer.isChecked():
+            drawer.setChecked(True)
+        for i in range(tabs.count()):
+            if tabs.tabText(i).strip().lower() == "phone":
+                tabs.setCurrentIndex(i)
+                return
+
     def _open_presets_tab(self) -> None:
         # Standard layout: Presets lives inside the Tools tab as a sidebar nav item.
         tools_nav = getattr(self, "_tools_nav", None)
@@ -2938,6 +3464,7 @@ class BridgeLogicMixin:
         if getattr(self, "tcp_sink_port", None) is not None and data.get("tcp_sink_port"):
             self.tcp_sink_port.setText(str(data["tcp_sink_port"]))
         self._apply_preset_survey_fields(data)
+        self._apply_preset_nmea_mode(data)
         self._update_field_connect_summary()
         if name:
             self._set_active_preset(name)
@@ -2945,9 +3472,10 @@ class BridgeLogicMixin:
             return
         pc_ip = str(data.get("pc_ip", "")).strip()
         ins_ip = str(data.get("ins_ip", "")).strip()
+        nmea = str(data.get("nmea_mode", "passthrough"))
         lines = [
             f"Loaded preset{f' «{name}»' if name else ''}: {com} @ {baud}, "
-            f"UDP listen {udp_host}:{udp_port}."
+            f"UDP listen {udp_host}:{udp_port}, NMEA {nmea}."
         ]
         if pc_ip:
             lines.append(f"Survey PC {pc_ip} / {data.get('subnet_mask', '255.255.255.0')} — INS → {pc_ip}:{udp_port}.")
@@ -2978,11 +3506,12 @@ class BridgeLogicMixin:
             return
         if self.bridge is not None or self._starting:
             self._apply_preset_survey_fields(data)
+            self._apply_preset_nmea_mode(data)
             self._presets_menu_pending = clean
             self._rebuild_presets_quick_menu()
             self._sync_preset_action_buttons()
             self._log_ui(
-                f"Preset «{clean}» selected (survey fields). "
+                f"Preset «{clean}» selected (survey + NMEA fields). "
                 "Stop the bridge to apply COM/UDP from this preset."
             )
             return
@@ -3014,12 +3543,21 @@ class BridgeLogicMixin:
         load_tip_stopped = "Apply the selected preset to COM, UDP, and survey fields"
         load_tip_running = "Stop the bridge before loading a different preset"
 
+        delete_tip = (
+            "Remove the selected preset"
+            if not running
+            else "Stop the bridge before deleting a preset"
+        )
         for attr, enabled, tip in (
             ("btn_preset_load", has_selection and not running, load_tip_stopped if not running else load_tip_running),
             ("btn_preset_save", has_selection, "Overwrite the selected preset with current fields"),
-            ("btn_preset_save_as", not running, "Save current fields under a new preset name"),
+            (
+                "btn_preset_save_as",
+                True,
+                "Save current fields under a new preset name (safe while the bridge is running)",
+            ),
             ("btn_preset_new", True, "Create a new named preset"),
-            ("btn_preset_delete", can_delete and not running, "Remove the selected preset"),
+            ("btn_preset_delete", can_delete, delete_tip),
         ):
             btn = getattr(self, attr, None)
             if btn is None:
@@ -3071,6 +3609,8 @@ class BridgeLogicMixin:
         self._apply_preset_data(data, name=name, log=False)
 
     def _preset_save_selected(self) -> None:
+        if getattr(self, "_demo_session_active", False):
+            return
         name = self._selected_preset_name()
         if not name:
             self._preset_save_as()
@@ -3087,6 +3627,8 @@ class BridgeLogicMixin:
         self._log_ui(f"Saved preset «{name}» → {path}")
 
     def _preset_save_as(self) -> None:
+        if getattr(self, "_demo_session_active", False):
+            return
         from ui.path_preset_dialog import ask_preset_name
 
         fields = self._preset_full_from_ui()
@@ -3104,6 +3646,8 @@ class BridgeLogicMixin:
         self._log_ui(f"Saved preset «{name}» → {path}")
 
     def _preset_new(self) -> None:
+        if getattr(self, "_demo_session_active", False):
+            return
         from ui.path_preset_dialog import ask_preset_name
 
         name = ask_preset_name(self, "New preset")
@@ -3120,8 +3664,36 @@ class BridgeLogicMixin:
         self._log_ui(f"Preset «{name}» ready — adjust fields and Save.")
 
     def _preset_delete_selected(self) -> None:
+        if self.bridge is not None or self._starting:
+            QtWidgets.QMessageBox.information(
+                self,
+                "Delete preset",
+                "Stop the bridge before deleting a preset.",
+            )
+            return
         name = self._selected_preset_name()
         if not name:
+            QtWidgets.QMessageBox.information(
+                self, "Presets", "Select a preset in the list first."
+            )
+            return
+        names = list_preset_names()
+        if len(names) <= 1:
+            QtWidgets.QMessageBox.information(
+                self,
+                "Delete preset",
+                "Keep at least one preset on this PC.",
+            )
+            return
+        reply = QtWidgets.QMessageBox.question(
+            self,
+            "Delete preset",
+            f"Delete preset «{name}»?",
+            QtWidgets.QMessageBox.StandardButton.Yes
+            | QtWidgets.QMessageBox.StandardButton.No,
+            QtWidgets.QMessageBox.StandardButton.No,
+        )
+        if reply != QtWidgets.QMessageBox.StandardButton.Yes:
             return
         if not delete_preset(name):
             QtWidgets.QMessageBox.warning(
@@ -3357,23 +3929,29 @@ class BridgeLogicMixin:
         }
         dlg = QtWidgets.QDialog(self)
         dlg.setWindowTitle("Reorder diagnostics cards")
-        dlg.resize(420, 320)
+        dlg.setMinimumSize(480, 360)
+        dlg.resize(560, 400)
         lay = QtWidgets.QVBoxLayout(dlg)
         hint = QtWidgets.QLabel("Drag cards into your preferred order, then Apply.")
         hint.setWordWrap(True)
         lay.addWidget(hint)
         lst = QtWidgets.QListWidget()
         lst.setObjectName("presetList")
+        lst.setMinimumHeight(220)
         lst.setDragEnabled(True)
         lst.setAcceptDrops(True)
         lst.setDropIndicatorShown(True)
         lst.setDefaultDropAction(QtCore.Qt.DropAction.MoveAction)
         lst.setDragDropMode(QtWidgets.QAbstractItemView.DragDropMode.InternalMove)
+        lst.setSelectionMode(QtWidgets.QAbstractItemView.SelectionMode.SingleSelection)
         order = self._load_diag_card_order()
         for key in order:
             text = labels.get(key, key)
             item = QtWidgets.QListWidgetItem(text)
             item.setData(QtCore.Qt.ItemDataRole.UserRole, key)
+            item.setFlags(
+                QtCore.Qt.ItemFlag.ItemIsEnabled | QtCore.Qt.ItemFlag.ItemIsDragEnabled
+            )
             lst.addItem(item)
         lay.addWidget(lst, 1)
         row = QtWidgets.QHBoxLayout()
@@ -3446,7 +4024,7 @@ class BridgeLogicMixin:
             "Warn/backlog when depth reaches ~12+ on a side, or on drops/rejects.\n\n"
             "session totals — Lifetime sentences forwarded: remote →COM (UDP/TCP) and COM→net.\n\n"
             "GNSS — Latest GGA: fix (RTK fixed best), satellites (5+ min, 7+ preferred with low HDOP), "
-            "HDOP (ideal <2.5, acceptable <4; POSPac MMS Ch.16). Stale if no GGA ~3 s.\n\n"
+            "HDOP (ideal <2.5, acceptable <4; POSPac MMS Ch.16). Stale if no GGA ~2 s.\n\n"
             "Live log: identical “Serial … timed out (open/write).” lines are shown at most once per ~2.5 s "
             "(same window as the bridge engine; avoids spam during stress or Stop)."
         )
@@ -3491,6 +4069,7 @@ class BridgeLogicMixin:
             "lines_down": b.lines_remote_to_serial,
             "lines_up": b.lines_serial_to_net,
             **b.navigation_quality_stats(),
+            **b.navigation_position_stats(),
         }
 
     def _stats_from_bridge(self, _d: dict) -> None:
@@ -3526,7 +4105,7 @@ class BridgeLogicMixin:
 
             elide_status_label(
                 self.lbl_stats,
-                "Stopped — live Hz, transport health, and session totals appear here when Running (hover)",
+                "Stopped — Hz & transport here when Running (hover)",
             )
             self.lbl_stats.setToolTip(self._stats_tooltip())
             self._refresh_gnss_status_chip()
@@ -3653,7 +4232,18 @@ class BridgeLogicMixin:
         proc.finished.connect(self._diag_on_finished)
         proc.errorOccurred.connect(self._diag_on_error)
         self._diag_qprocess = proc
-        qprocess_attach_no_console(proc)
+        try:
+            qprocess_attach_no_console(proc)
+        except Exception as exc:
+            self._append_diag_output(
+                f"\n[Diagnostics spawn setup failed: {exc!r}]\n"
+                "Restart the app after updating to the latest bridge build.\n"
+            )
+            self._diag_release_process(user_stop=False)
+            if bench_chain:
+                self._bench_preflight_chain = False
+            self._log_ui(f"[UI] Diagnostics spawn failed: {exc!r}")
+            return
         proc.start()
         if not proc.waitForStarted(5000):
             err = proc.errorString() or "unknown error"
@@ -4153,7 +4743,7 @@ class BridgeLogicMixin:
             return
         com = self.com_cb.currentText().strip()
         try:
-            baud = int(self.baud_edit.text())
+            baud = int(read_baud_widget(self.baud_edit))
             if baud <= 0:
                 raise ValueError("baud must be positive")
         except ValueError:

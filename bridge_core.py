@@ -7,6 +7,7 @@ import logging
 import sys
 import threading
 import time
+import traceback
 from collections import deque
 from dataclasses import dataclass
 from enum import Enum
@@ -30,7 +31,13 @@ from nmea_codec import (
     format_binary_log_preview,
     parse_nmea_utc,
 )
-from survey_quality import feed_nmea_navigation_quality, nav_quality_stale
+from nmea_position import feed_nmea_position
+from survey_quality import (
+    feed_nmea_navigation_quality,
+    nav_metrics_should_reset,
+    nav_quality_stream_idle_snapshot,
+    nav_quality_stale,
+)
 
 NET_TO_SERIAL_QUEUE_MAX = 512
 SERIAL_TO_NET_QUEUE_MAX = 512
@@ -73,6 +80,26 @@ def configure_windows_event_loop_policy() -> None:
     if sys.version_info >= (3, 14):
         return
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+
+
+def install_bridge_loop_exception_handler(loop: asyncio.AbstractEventLoop) -> None:
+    """Suppress noisy WinError 10054 proactor shutdown callbacks (Python 3.14+ on Windows)."""
+    if sys.platform != "win32":
+        return
+    default = loop.get_exception_handler()
+
+    def _handler(
+        active_loop: asyncio.AbstractEventLoop, context: dict[str, object]
+    ) -> None:
+        exc = context.get("exception")
+        if isinstance(exc, ConnectionResetError):
+            return
+        if default is not None:
+            default(active_loop, context)
+        else:
+            active_loop.default_exception_handler(context)
+
+    loop.set_exception_handler(_handler)
 
 
 def _open_serial_port_timed(port: str, baud: int, timeout_s: float) -> serial.Serial:
@@ -292,8 +319,12 @@ class SerialNetBridge:
 
         self.loop = loop or asyncio.get_event_loop()
         self._ui_log = ui_log or (lambda *_a, **_k: None)
-        self._status_cb = status_cb or (lambda *_a, **_k: None)
-        self._stats_cb = stats_cb or (lambda *_a, **_k: None)
+        self._status_cb = self._wrap_bridge_callback(
+            status_cb or (lambda *_a, **_k: None), "status"
+        )
+        self._stats_cb = self._wrap_bridge_callback(
+            stats_cb or (lambda *_a, **_k: None), "stats"
+        )
         self._file_log = file_log
 
         self.serial_reader: Optional[asyncio.StreamReader] = None
@@ -316,6 +347,8 @@ class SerialNetBridge:
         self._udp_peers: set[tuple] = set()
         self._gps_state: list[Optional[str]] = [None]
         self._nav_quality_state: list[Optional[dict]] = [None]
+        self._position_state: list[Optional[dict]] = [None]
+        self._last_nmea_forward_mono: float = 0.0
 
         self.net_to_serial: asyncio.Queue[bytes] = asyncio.Queue(maxsize=NET_TO_SERIAL_QUEUE_MAX)
         self.serial_to_net: asyncio.Queue[bytes] = asyncio.Queue(maxsize=SERIAL_TO_NET_QUEUE_MAX)
@@ -348,6 +381,25 @@ class SerialNetBridge:
         self._ui_event_log_state: dict[str, tuple[float, int]] = {}
         self._serial_write_lock: Optional[asyncio.Lock] = None
 
+    def _wrap_bridge_callback(
+        self, cb: Callable[..., None], label: str
+    ) -> Callable[..., None]:
+        """Keep Qt/UI callback failures from aborting ingest or asyncio startup."""
+
+        def _wrapped(*args: object, **kwargs: object) -> None:
+            try:
+                cb(*args, **kwargs)
+            except Exception as exc:
+                logging.getLogger("survey_bridge").exception(
+                    "%s callback failed", label
+                )
+                self._ui_log_event_limited(
+                    f"cb_{label}",
+                    f"[{label}] UI callback error: {exc!r}",
+                )
+
+        return _wrapped
+
     def _set_status(self, serial_line: str, network_line: str) -> None:
         self._last_network_status = network_line
         self._status_cb(serial_line, network_line)
@@ -357,16 +409,75 @@ class SerialNetBridge:
 
     def navigation_quality(self) -> Optional[dict]:
         """Latest GGA-based survey quality snapshot, or None if no GGA seen."""
+        if self._nav_metrics_inactive():
+            return nav_quality_stream_idle_snapshot() if self.running else None
         return self._nav_quality_state[0]
+
+    def navigation_position(self) -> Optional[dict]:
+        """Latest WGS84 fix from GGA/RMC (reserved for Survey HUD map integration)."""
+        if self.nmea_mode == NmeaMode.RAW or not self.running:
+            return None
+        if self._nav_metrics_inactive():
+            return None
+        pos = self._position_state[0]
+        if not pos:
+            return None
+        stale = nav_quality_stale(self._nav_quality_state[0])
+        return {
+            "lat": float(pos["lat"]),
+            "lon": float(pos["lon"]),
+            "source": str(pos.get("source") or ""),
+            "stale": stale,
+        }
+
+    def navigation_position_stats(self) -> dict:
+        """Web `/status` and stats coalescing — position_* keys (HUD may use navigation_position())."""
+        if self.nmea_mode == NmeaMode.RAW:
+            return {}
+        if not self.running:
+            return {}
+        if self._nav_metrics_inactive():
+            return {"position_stale": True}
+        pos = self._position_state[0]
+        if not pos:
+            return {"position_stale": True}
+        stale = nav_quality_stale(self._nav_quality_state[0])
+        return {
+            "position_lat": float(pos["lat"]),
+            "position_lon": float(pos["lon"]),
+            "position_source": str(pos.get("source") or ""),
+            "position_stale": stale,
+        }
 
     def navigation_quality_stats(self) -> dict:
         """Stats-bar / HUD fields from latest GGA (excludes internal monotonic timestamp)."""
+        if self._nav_metrics_inactive():
+            return nav_quality_stream_idle_snapshot() if self.running else {}
         nav = self._nav_quality_state[0]
         if not nav:
             return {}
         out = {k: v for k, v in nav.items() if k != "mono"}
-        out["nav_stale"] = nav_quality_stale(nav)
+        out["nav_stale"] = False
         return out
+
+    def _nmea_traffic_hz(self) -> float:
+        """Max rolling 1 s Hz on any parsed NMEA path (UDP/TCP, inject, COM)."""
+        return max(
+            self.hz_remote_to_serial(),
+            self.hz_gui_to_serial(),
+            self.hz_serial_to_net(),
+        )
+
+    def _nav_metrics_inactive(self) -> bool:
+        last_mono = self._last_nmea_forward_mono or None
+        if last_mono is not None and last_mono <= 0.0:
+            last_mono = None
+        return nav_metrics_should_reset(
+            traffic_hz=self._nmea_traffic_hz(),
+            nav=self._nav_quality_state[0],
+            last_nmea_mono=last_mono,
+            running=self.running,
+        )
 
     def _ui_log_serial_coalesced(self, msg: str, window_s: float = 2.5) -> None:
         """Throttle identical serial-path errors (burst traffic or shutdown overlap)."""
@@ -470,6 +581,7 @@ class SerialNetBridge:
                 "tcp_sink_drops": self._tcp_sink_drops,
                 "tcp_sink_enabled": bool(self._tcp_sink),
                 **self.navigation_quality_stats(),
+                **self.navigation_position_stats(),
             }
         )
 
@@ -566,8 +678,11 @@ class SerialNetBridge:
             return
         filt = self.nmea_filter if self.nmea_mode == NmeaMode.STRICT else None
         result = self._asm_n2s.feed(data, self.nmea_mode, filt)
+        if result.forward:
+            self._last_nmea_forward_mono = now
         feed_nmea_times_from_lines(result.forward, self._gps_state)
         feed_nmea_navigation_quality(result.forward, self._nav_quality_state)
+        feed_nmea_position(result.forward, self._position_state)
         for reason in result.rejected:
             self.rejected_net_to_serial += 1
             self._schedule_stats_emit()
@@ -594,8 +709,11 @@ class SerialNetBridge:
             return
         filt = self.nmea_filter if self.nmea_mode == NmeaMode.STRICT else None
         result = self._asm_s2n.feed(data, self.nmea_mode, filt)
+        if result.forward:
+            self._last_nmea_forward_mono = time.monotonic()
         feed_nmea_times_from_lines(result.forward, self._gps_state)
         feed_nmea_navigation_quality(result.forward, self._nav_quality_state)
+        feed_nmea_position(result.forward, self._position_state)
         for reason in result.rejected:
             self.rejected_serial_to_net += 1
             self._schedule_stats_emit()
@@ -620,18 +738,25 @@ class SerialNetBridge:
     def on_udp_datagram(self, data: bytes, addr) -> None:
         if not self.running:
             return
-        is_new_peer = addr not in self._udp_peers
-        self._udp_peers.add(addr)
-        self.last_udp_addr = addr
-        if is_new_peer and self.mode == NetMode.UDP_LISTEN and self.udp_listen:
-            host, port = self.udp_listen
-            n = len(self._udp_peers)
-            peer_label = f"{n} peers" if n > 1 else f"peer {addr}"
-            self._set_status(
-                f"Serial: {self.com} @ {self.baud} — open",
-                f"Network: UDP listen {host}:{port} — {peer_label}",
+        try:
+            is_new_peer = addr not in self._udp_peers
+            self._udp_peers.add(addr)
+            self.last_udp_addr = addr
+            if is_new_peer and self.mode == NetMode.UDP_LISTEN and self.udp_listen:
+                host, port = self.udp_listen
+                n = len(self._udp_peers)
+                peer_label = f"{n} peers" if n > 1 else f"peer {addr}"
+                self._set_status(
+                    f"Serial: {self.com} @ {self.baud} — open",
+                    f"Network: UDP listen {host}:{port} — {peer_label}",
+                )
+            self._ingest_net(data, f"UDP←{addr}")
+        except Exception as exc:
+            logging.getLogger("survey_bridge").exception("UDP datagram handler failed")
+            self._ui_log_event_limited(
+                "udp_handler",
+                f"UDP←{addr} handler error: {exc!r}",
             )
-        self._ingest_net(data, f"UDP←{addr}")
 
     def schedule_net_to_serial(self, data: bytes, tag: str = "INJECT→SER") -> None:
         if not self.running or not data:
@@ -1228,6 +1353,8 @@ class SerialNetBridge:
         self._network_ready = False
         self._asm_n2s.reset()
         self._asm_s2n.reset()
+        self._nav_quality_state[0] = None
+        self._position_state[0] = None
 
         self._set_status("Serial: closed", "Network: stopped")
         self._ui_log("Bridge stopped")
@@ -1261,6 +1388,7 @@ class BridgeAsyncThread(QtCore.QThread):
         configure_windows_event_loop_policy()
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
+        install_bridge_loop_exception_handler(loop)
         self._loop = loop
         try:
             self.bridge = self._build(loop)
@@ -1271,7 +1399,8 @@ class BridgeAsyncThread(QtCore.QThread):
             if ok:
                 loop.run_forever()
         except Exception as exc:
-            self.log_msg.emit(f"Bridge thread: {exc!r}")
+            tb = traceback.format_exc()
+            self.log_msg.emit(f"Bridge thread: {exc!r}\n{tb}")
             self.start_done.emit(False)
         finally:
             try:

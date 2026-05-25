@@ -41,6 +41,44 @@ class TestCliPythonGuiSpawn(unittest.TestCase):
             self.assertEqual(got.resolve(), pyw.resolve())
 
 
+class TestQprocessAttachNoConsole(unittest.TestCase):
+    def test_skips_when_modifier_api_missing(self) -> None:
+        class _Proc:
+            pass
+
+        proc = _Proc()
+        with mock.patch.object(sys, "platform", "win32"):
+            with mock.patch.object(
+                py_interpreter.subprocess,
+                "CREATE_NO_WINDOW",
+                0x08000000,
+                create=True,
+            ):
+                py_interpreter.qprocess_attach_no_console(proc)
+        self.assertFalse(hasattr(proc, "_modifier_called"))
+
+    def test_attaches_modifier_when_available(self) -> None:
+        class _Args:
+            flags = 0
+
+        class _Proc:
+            def setCreateProcessArgumentsModifier(self, fn) -> None:
+                self._fn = fn
+
+        proc = _Proc()
+        with mock.patch.object(sys, "platform", "win32"):
+            with mock.patch.object(
+                py_interpreter.subprocess,
+                "CREATE_NO_WINDOW",
+                0x08000000,
+                create=True,
+            ):
+                py_interpreter.qprocess_attach_no_console(proc)
+        args = _Args()
+        proc._fn(args)
+        self.assertEqual(args.flags & 0x08000000, 0x08000000)
+
+
 class TestCliPythonExecutable(unittest.TestCase):
     def test_pythonw_maps_to_python_exe(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

@@ -62,4 +62,8 @@ def qprocess_attach_no_console(proc: object) -> None:
     def _modifier(args: QtCore.QProcess.CreateProcessArguments) -> None:
         args.flags |= int(flag)
 
-    proc.setCreateProcessArgumentsModifier(_modifier)  # type: ignore[attr-defined]
+    attach = getattr(proc, "setCreateProcessArgumentsModifier", None)
+    if not callable(attach):
+        # Older PySide6 builds: rely on pythonw.exe from cli_python_gui_spawn() instead.
+        return
+    attach(_modifier)

@@ -27,11 +27,24 @@ _PRODUCTION_DEFAULTS: dict[str, Any] = {
 
 USER_PRESETS_PATH = Path.home() / ".cursor-udp-com-bridge" / "path_presets.json"
 
-_PRESET_KEYS = ("com", "baud", "udp_host", "udp_port", "pc_ip", "subnet_mask", "ins_ip", "notes")
+_PRESET_KEYS = (
+    "com",
+    "baud",
+    "udp_host",
+    "udp_port",
+    "pc_ip",
+    "subnet_mask",
+    "ins_ip",
+    "notes",
+    "nmea_mode",
+    "nmea_types",
+)
+_VALID_NMEA_MODES = frozenset({"passthrough", "strict", "raw"})
 _LEGACY_DESK = ("desk", "bench")
 _LEGACY_BOAT = ("boat", "production")
 _BUILTIN_DESK = "Desk test"
 _BUILTIN_BOAT = "Boat / INS"
+_BUILTIN_NORBIT = "NORBIT DCT"
 _NAME_RE = re.compile(r"^[\w][\w \-./()]{0,47}$")
 _PRESET_ORDER_KEY = "preset_order"
 
@@ -76,13 +89,37 @@ def _write_user_file(data: dict[str, Any]) -> Path:
     return USER_PRESETS_PATH
 
 
+def _normalize_nmea_fields(data: dict[str, Any]) -> dict[str, Any]:
+    from nmea_codec import NMEA_SENTENCE_TYPES
+
+    mode = str(data.get("nmea_mode", "passthrough")).strip().lower()
+    if mode not in _VALID_NMEA_MODES:
+        mode = "passthrough"
+    out: dict[str, Any] = {"nmea_mode": mode}
+    raw_types = data.get("nmea_types")
+    if isinstance(raw_types, list):
+        allowed = set(NMEA_SENTENCE_TYPES)
+        types = sorted(
+            {
+                str(t).strip().upper()
+                for t in raw_types
+                if str(t).strip().upper() in allowed
+            }
+        )
+        if types:
+            out["nmea_types"] = types
+    return out
+
+
 def _normalize_desk(data: dict[str, Any]) -> dict[str, Any]:
-    return {
+    base = {
         "com": str(data.get("com", "")).strip(),
         "baud": int(data.get("baud", 115200)),
         "udp_host": str(data.get("udp_host", "0.0.0.0")).strip() or "0.0.0.0",
         "udp_port": int(data.get("udp_port", 10110)),
     }
+    base.update(_normalize_nmea_fields(data))
+    return base
 
 
 def _normalize_boat(data: dict[str, Any]) -> dict[str, Any]:
@@ -123,7 +160,25 @@ def _builtin_presets() -> dict[str, dict[str, Any]]:
     prod = merged.get("production")
     if isinstance(prod, dict):
         boat = _normalize_boat({**boat, **prod})
-    return {_BUILTIN_DESK: desk, _BUILTIN_BOAT: boat}
+    norbit_block = merged.get("norbit_dct")
+    if not isinstance(norbit_block, dict):
+        norbit_block = {}
+    norbit = _normalize_boat(
+        {
+            **boat,
+            **{k: norbit_block[k] for k in _PRESET_KEYS if k in norbit_block},
+            "pc_ip": str(norbit_block.get("pc_ip", "192.168.1.4")).strip() or "192.168.1.4",
+            "ins_ip": str(norbit_block.get("ins_ip", "192.168.1.150")).strip() or "192.168.1.150",
+            "notes": str(norbit_block.get("notes") or "").strip()
+            or (
+                "Bridge on boat PC, UDP 40810. DCT target: on boat PC 127.0.0.1:40810; "
+                "on operator laptop (MikroTik wireless) 192.168.1.8:40810; "
+                "Tailscale/ZeroTier boat StaticIp:40810. Applanix→boat:40810. "
+                "COM=serial leg if used. Trimble→Applanix. BT $SDDBT=other COM."
+            ),
+        }
+    )
+    return {_BUILTIN_DESK: desk, _BUILTIN_BOAT: boat, _BUILTIN_NORBIT: norbit}
 
 
 def _migrate_legacy_into_presets(raw: dict[str, Any], presets: dict[str, dict[str, Any]]) -> None:

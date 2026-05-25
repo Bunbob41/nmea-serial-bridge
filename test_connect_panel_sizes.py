@@ -11,7 +11,7 @@ from PySide6 import QtWidgets
 from ui import connect_panels, ui_prefs
 
 
-def _mock_row(expanded: bool, *, hint_h: int = 72) -> MagicMock:
+def _mock_row(expanded: bool, *, hint_h: int = 72, row_h: int | None = None) -> MagicMock:
     row = MagicMock()
     btn = MagicMock()
     btn.isChecked.return_value = expanded
@@ -22,6 +22,7 @@ def _mock_row(expanded: bool, *, hint_h: int = 72) -> MagicMock:
     sh.height.return_value = hint_h
     row.sizeHint.return_value = sh
     row.minimumSizeHint.return_value = sh
+    row.height.return_value = row_h if row_h is not None else hint_h
     return row
 
 
@@ -29,12 +30,33 @@ class _MockWin:
     def __init__(self, order: list[str], sizes: list[int], expanded: dict[str, bool]) -> None:
         self._ui_mode = "standard"
         self._connect_panel_order = order
-        self._connect_panel_disclosures = {k: _mock_row(expanded[k]) for k in order}
-        self._connect_panel_splitter = MagicMock()
-        self._connect_panel_splitter.sizes.return_value = sizes
+        self._connect_panel_disclosures = {
+            k: _mock_row(expanded[k], row_h=sizes[i] if i < len(sizes) else 72)
+            for i, k in enumerate(order)
+        }
+        self._connect_panel_stack = MagicMock()
+        self._connect_panel_stack_lay = MagicMock()
+        self._connect_panel_host = MagicMock()
+        self._connect_panel_host_lay = MagicMock()
+        self._connect_panel_host_lay.indexOf.return_value = 0
+        self._connect_panel_scroll = MagicMock()
+        self._connect_panel_page = MagicMock()
+        self._connect_panel_page.layout.return_value = QtWidgets.QVBoxLayout()
+        self._connect_tab_widget = MagicMock()
+        tab_lay = MagicMock()
+        tab_lay.indexOf.return_value = 0
+        self._connect_tab_layout = tab_lay
+        self._connect_panel_stretch_item = None
 
 
 class ConnectPanelSizesTests(unittest.TestCase):
+    def test_sanitize_drops_legacy_strip_height_sizes(self) -> None:
+        raw = {"run": 84, "connection": 28, "quick_log": 26}
+        out = connect_panels._sanitize_saved_panel_sizes(raw)
+        self.assertEqual(out.get("run"), 84)
+        self.assertNotIn("connection", out)
+        self.assertNotIn("quick_log", out)
+
     def test_normalize_keeps_all_collapsed_state(self) -> None:
         order = list(connect_panels.CONNECT_PANEL_KEYS)
         collapsed = {k: True for k in order}
@@ -89,31 +111,25 @@ class ConnectPanelSizesTests(unittest.TestCase):
                 loaded = ui_prefs.load_connect_panel_prefs("standard")
                 self.assertEqual(loaded["sizes"].get("quick_log"), 180)
 
-    def test_single_expanded_panel_uses_zero_stretch(self) -> None:
-        splitter = MagicMock()
-        splitter.count.return_value = 3
-        splitter.handleWidth.return_value = 8
-        host = MagicMock()
-        host_lay = MagicMock()
-        host_lay.indexOf = MagicMock(return_value=0)
-        tab_lay = MagicMock()
-        tab_lay.indexOf = MagicMock(return_value=0)
-        tab_lay.contentsMargins.return_value = MagicMock(
-            top=MagicMock(return_value=0), bottom=MagicMock(return_value=0)
-        )
-        tab_lay.spacing.return_value = 0
-        tab_lay.count.return_value = 1
-        tab_lay.itemAt.return_value = None
+    def test_single_expanded_panel_pins_row_height(self) -> None:
         win = MagicMock()
-        win._connect_panel_splitter = splitter
-        win._connect_panel_host = host
-        win._connect_panel_host_lay = host_lay
-        win._connect_tab_layout = tab_lay
+        win._connect_panel_stack = MagicMock()
+        win._connect_panel_stack_lay = MagicMock()
+        win._connect_panel_host = MagicMock()
+        win._connect_panel_host_lay = MagicMock()
+        win._connect_panel_host_lay.indexOf.return_value = 0
         win._connect_panel_scroll = MagicMock()
+        win._connect_panel_page = MagicMock()
+        win._connect_panel_page.layout.return_value = QtWidgets.QVBoxLayout()
         win._connect_tab_widget = MagicMock()
+        tab_lay = MagicMock()
+        tab_lay.indexOf.return_value = 0
+        win._connect_tab_layout = tab_lay
+        win._connect_panel_stretch_item = None
         win._connect_panel_order = ["run", "hint", "quick_log"]
+        run_row = _mock_row(True)
         win._connect_panel_disclosures = {
-            "run": _mock_row(True),
+            "run": run_row,
             "hint": _mock_row(False),
             "quick_log": _mock_row(False),
         }
@@ -123,13 +139,9 @@ class ConnectPanelSizesTests(unittest.TestCase):
             "load_connect_panel_prefs",
             return_value={"collapsed": {"hint": True, "quick_log": True}, "sizes": {"run": 72}},
         ):
-            connect_panels._apply_connect_splitter_sizes(win)
-        for i in range(3):
-            splitter.setStretchFactor.assert_any_call(i, 0)
-        splitter.setFixedHeight.assert_not_called()
-        splitter.setMinimumHeight.assert_called()
-        sizes_arg = splitter.setSizes.call_args_list[-1][0][0]
-        self.assertGreaterEqual(sizes_arg[0], 48)
+            connect_panels._apply_connect_panel_layout(win)
+        run_row.setMinimumHeight.assert_called()
+        win._connect_panel_stack_lay.addStretch.assert_not_called()
 
     def test_target_row_height_uses_size_hint_floor(self) -> None:
         row = _mock_row(True, hint_h=40)
@@ -142,32 +154,25 @@ class ConnectPanelSizesTests(unittest.TestCase):
         self.assertEqual(h, 150)
 
     def test_apply_sizes_uses_strip_for_collapsed(self) -> None:
-        splitter = MagicMock()
-        splitter.count.return_value = 2
-        splitter.height.return_value = 500
-        splitter.handleWidth.return_value = 8
-        host = MagicMock()
-        tab = MagicMock()
-        tab.height.return_value = 480
-        host.parentWidget.return_value = tab
-        margins = MagicMock()
-        margins.top.return_value = 0
-        margins.bottom.return_value = 0
-        lay = MagicMock()
-        lay.indexOf.return_value = 1
-        lay.count.return_value = 3
-        lay.contentsMargins.return_value = margins
-        lay.spacing.return_value = 4
-        lay.itemAt.return_value = None
+        quick = _mock_row(False)
         win = MagicMock()
-        win._connect_tab_layout = lay
-        win._connect_panel_splitter = splitter
-        win._connect_panel_host = host
-        win._connect_tab_layout = lay
+        win._connect_panel_stack = MagicMock()
+        win._connect_panel_stack_lay = MagicMock()
+        win._connect_panel_host = MagicMock()
+        win._connect_panel_host_lay = MagicMock()
+        win._connect_panel_host_lay.indexOf.return_value = 0
+        win._connect_panel_scroll = MagicMock()
+        win._connect_panel_page = MagicMock()
+        win._connect_panel_page.layout.return_value = QtWidgets.QVBoxLayout()
+        win._connect_tab_widget = MagicMock()
+        tab_lay = MagicMock()
+        tab_lay.indexOf.return_value = 0
+        win._connect_tab_layout = tab_lay
+        win._connect_panel_stretch_item = None
         win._connect_panel_order = ["run", "quick_log"]
         win._connect_panel_disclosures = {
             "run": _mock_row(True),
-            "quick_log": _mock_row(False),
+            "quick_log": quick,
         }
         win._ui_mode = "standard"
         with patch.object(
@@ -175,18 +180,17 @@ class ConnectPanelSizesTests(unittest.TestCase):
             "load_connect_panel_prefs",
             return_value={"collapsed": {"quick_log": True}, "sizes": {"run": 80}},
         ):
-            connect_panels._apply_connect_splitter_sizes(win)
-        sizes_arg = splitter.setSizes.call_args[0][0]
-        self.assertEqual(sizes_arg[1], connect_panels._COLLAPSED_STRIP_HEIGHT)
+            connect_panels._apply_connect_panel_layout(win)
+        quick.setFixedHeight.assert_called_with(connect_panels._COLLAPSED_STRIP_HEIGHT)
 
     def test_default_collapsed_only_run_and_connection_open(self) -> None:
         self.assertFalse(connect_panels._default_collapsed("run"))
         self.assertFalse(connect_panels._default_collapsed("connection"))
         self.assertTrue(connect_panels._default_collapsed("hint"))
-        self.assertTrue(connect_panels._default_collapsed("ntrip"))
+        self.assertTrue(connect_panels._default_collapsed("quick_log"))
 
     def test_connection_panel_default_height_for_hub(self) -> None:
-        self.assertGreaterEqual(connect_panels._DEFAULT_PANEL_HEIGHTS["connection"], 360)
+        self.assertGreaterEqual(connect_panels._DEFAULT_PANEL_HEIGHTS["connection"], 240)
 
     def test_splitter_target_uses_tab_height(self) -> None:
         host = MagicMock()
@@ -225,39 +229,20 @@ class ConnectPanelSizesTests(unittest.TestCase):
         win.resize.assert_not_called()
 
     def test_collapse_reflow_does_not_schedule_window_fit(self) -> None:
-        host = MagicMock()
-        splitter = MagicMock()
-        splitter.handleWidth.return_value = 8
-        scroll = MagicMock()
-        lay = MagicMock()
-        lay.indexOf.side_effect = lambda w: 1 if w is scroll else -1
-        host_lay = MagicMock()
-        host_lay.indexOf.return_value = 0
         win = MagicMock()
-        win._connect_tab_layout = lay
-        win._connect_panel_scroll = scroll
-        win._connect_tab_widget = MagicMock()
-        win._connect_panel_page = MagicMock()
-        win._connect_page_in_main_scroll = True
-        win._connect_panel_splitter = splitter
-        win._connect_panel_host = host
-        win._connect_panel_host_lay = host_lay
-        win._connect_panel_order = ["run", "hint"]
-        win._connect_panel_disclosures = {
-            "run": _mock_row(False),
-            "hint": _mock_row(False),
-        }
-        with patch.object(connect_panels, "schedule_fit_window_to_connect") as mock_fit:
+        with patch.object(connect_panels, "schedule_fit_window_to_connect") as mock_fit, patch.object(
+            connect_panels, "_apply_connect_panel_layout"
+        ):
             connect_panels._reflow_connect_panel_host(win, [26, 26])  # type: ignore[arg-type]
             mock_fit.assert_not_called()
 
     def test_sync_scroll_compact_height(self) -> None:
-        # After the native-scrolling refactor, _sync_connect_panel_scroll_geometry
-        # always RELEASES height locks (setMinimumHeight(0), setMaximumHeight(MAX))
-        # regardless of expanded_any.  It no longer pins the scroll area or tab to
-        # a fixed content height.
         scroll = MagicMock()
+        vp = MagicMock()
+        vp.width.return_value = 360
+        scroll.viewport.return_value = vp
         page = MagicMock()
+        page.layout.return_value = QtWidgets.QVBoxLayout()
         tab = MagicMock()
         win = MagicMock()
         win._connect_panel_scroll = scroll
@@ -266,11 +251,11 @@ class ConnectPanelSizesTests(unittest.TestCase):
         win._connect_tab_layout = MagicMock()
         win._connect_panel_host = MagicMock()
         connect_panels._sync_connect_panel_scroll_geometry(
-            win, content_h=180, expanded_any=False
+            win, content_h=98, expanded_any=False
         )  # type: ignore[arg-type]
+        scroll.setWidgetResizable.assert_called_with(False)
         scroll.setMinimumHeight.assert_called_with(0)
         scroll.setMaximumHeight.assert_called_with(connect_panels._WIDGET_SIZE_MAX)
-        # Tab lock is released (setMaximumHeight called with WIDGET_SIZE_MAX).
         tab.setMaximumHeight.assert_called_with(connect_panels._WIDGET_SIZE_MAX)
 
     def test_sync_scroll_geometry_reapplies_when_signature_same(self) -> None:
@@ -302,15 +287,115 @@ class ConnectPanelSizesTests(unittest.TestCase):
         win.resize.assert_called_once()
         self.assertGreaterEqual(win.resize.call_args[0][1], 380)
 
-    def test_sync_connect_panel_layout_triggers_reflow(self) -> None:
+    def test_clamp_splitter_sizes_fits_viewport(self) -> None:
+        order = ["run", "connection", "hint"]
+        disclosures = {
+            "run": _mock_row(False),
+            "connection": _mock_row(True, hint_h=400),
+            "hint": _mock_row(False),
+        }
+        splitter = MagicMock()
+        splitter.height.return_value = 300
+        splitter.handleWidth.return_value = 10
+        raw = [44, 520, 44]
+        out = connect_panels._clamp_splitter_sizes_to_viewport(
+            splitter, order, raw, disclosures
+        )
+        self.assertEqual(out[0], connect_panels._COLLAPSED_STRIP_HEIGHT)
+        self.assertEqual(out[2], connect_panels._COLLAPSED_STRIP_HEIGHT)
+        self.assertLessEqual(sum(out) + 20, 300)
+
+    def test_clamp_all_collapsed_uses_strip_heights_only(self) -> None:
+        order = ["run", "connection"]
+        disclosures = {
+            "run": _mock_row(False),
+            "connection": _mock_row(False),
+        }
+        splitter = MagicMock()
+        splitter.height.return_value = 480
+        out = connect_panels._clamp_splitter_sizes_to_viewport(
+            splitter, order, [400, 400], disclosures
+        )
+        self.assertEqual(out, [connect_panels._COLLAPSED_STRIP_HEIGHT] * 2)
+
+    def test_expand_all_stacks_without_bottom_stretch(self) -> None:
+        stack_lay = MagicMock()
         win = MagicMock()
-        win._connect_panel_splitter = MagicMock()
-        with patch.object(connect_panels, "_apply_connect_splitter_sizes") as apply_sizes, patch.object(
-            connect_panels.QtCore.QTimer, "singleShot"
-        ) as single_shot:
+        win._connect_panel_stack = MagicMock()
+        win._connect_panel_stack_lay = stack_lay
+        win._connect_panel_host = MagicMock()
+        win._connect_panel_host_lay = MagicMock()
+        win._connect_panel_host_lay.indexOf.return_value = 0
+        scroll = MagicMock()
+        scroll.viewport.return_value = MagicMock(width=MagicMock(return_value=500))
+        win._connect_panel_scroll = scroll
+        win._connect_panel_page = MagicMock()
+        win._connect_panel_page.layout.return_value = QtWidgets.QVBoxLayout()
+        win._connect_tab_widget = MagicMock()
+        tab_lay = MagicMock()
+        tab_lay.indexOf.return_value = 0
+        win._connect_tab_layout = tab_lay
+        win._connect_panel_stretch_item = None
+        win._connect_panel_order = ["run", "connection"]
+        win._connect_panel_disclosures = {
+            "run": _mock_row(True),
+            "connection": _mock_row(True, hint_h=400),
+        }
+        win._ui_mode = "standard"
+        with patch.object(
+            connect_panels,
+            "load_connect_panel_prefs",
+            return_value={"collapsed": {}, "sizes": {}},
+        ):
+            connect_panels._apply_connect_panel_layout(win)
+        stack_lay.addStretch.assert_not_called()
+        scroll.setWidgetResizable.assert_called_with(True)
+
+    def test_all_collapsed_pins_stack_height(self) -> None:
+        stack = MagicMock()
+        host = MagicMock()
+        host_lay = MagicMock()
+        host_lay.indexOf = MagicMock(return_value=0)
+        scroll = MagicMock()
+        scroll.viewport.return_value = MagicMock(width=MagicMock(return_value=400))
+        win = MagicMock()
+        win._connect_panel_stack = stack
+        win._connect_panel_stack_lay = MagicMock()
+        win._connect_panel_host = host
+        win._connect_panel_host_lay = host_lay
+        win._connect_panel_scroll = scroll
+        win._connect_panel_page = MagicMock()
+        win._connect_panel_page.layout.return_value = QtWidgets.QVBoxLayout()
+        win._connect_tab_widget = MagicMock()
+        tab_lay = MagicMock()
+        tab_lay.indexOf.return_value = 0
+        win._connect_tab_layout = tab_lay
+        win._connect_panel_stretch_item = None
+        win._connect_panel_order = ["run", "connection"]
+        win._connect_panel_disclosures = {
+            "run": _mock_row(False),
+            "connection": _mock_row(False),
+        }
+        win._ui_mode = "standard"
+        with patch.object(
+            connect_panels,
+            "load_connect_panel_prefs",
+            return_value={"collapsed": {"run": True, "connection": True}, "sizes": {}},
+        ):
+            connect_panels._apply_connect_panel_layout(win)
+        expected = connect_panels._stack_content_height(
+            [connect_panels._COLLAPSED_STRIP_HEIGHT] * 2
+        )
+        stack.setFixedHeight.assert_called_with(expected)
+        host.setFixedHeight.assert_called_with(expected)
+        scroll.setWidgetResizable.assert_called_with(False)
+
+    def test_sync_connect_panel_layout_applies_stack_layout(self) -> None:
+        win = MagicMock()
+        win._connect_panel_stack = MagicMock()
+        with patch.object(connect_panels, "_apply_connect_panel_layout") as apply_layout:
             connect_panels.sync_connect_panel_layout(win)  # type: ignore[arg-type]
-            apply_sizes.assert_called()
-            self.assertEqual(single_shot.call_count, 2)
+            apply_layout.assert_called_once_with(win)
 
 
 if __name__ == "__main__":

@@ -56,6 +56,16 @@ class TestConnectionHubWidget(unittest.TestCase):
         self.assertEqual(refreshed, [True])
         self.assertEqual(unlocked, [True])
 
+    def test_standalone_cards_viewport_two_rows(self) -> None:
+        hub = ConnectionHubWidget(standalone=True)
+        expected = (
+            ConnectionHubWidget._CARD_ROW_HEIGHT * ConnectionHubWidget._CARDS_VISIBLE_ROWS
+            + (ConnectionHubWidget._CARDS_VISIBLE_ROWS - 1) * 8
+        )
+        self.assertEqual(hub._card_scroll.minimumHeight(), expected)
+        self.assertEqual(hub._card_scroll.maximumHeight(), expected)
+        self.assertIsNone(hub._splitter)
+
     def test_column_count_wide(self) -> None:
         hub = ConnectionHubWidget()
         hub.resize(800, 400)

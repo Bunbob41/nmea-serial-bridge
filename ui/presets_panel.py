@@ -18,8 +18,9 @@ def create_presets_tab(
     lay.setSpacing(10)
 
     hint = QtWidgets.QLabel(
-        "Save COM, UDP listen, and optional survey Ethernet targets under names you choose. "
-        "Load a preset to fill the connection fields, then Start on Connect (or the field strip)."
+        "Save COM, UDP listen, NMEA mode (Tools → NMEA: passthrough / strict / raw), "
+        "and optional survey Ethernet targets under names you choose. "
+        "Load a preset to fill connection + NMEA fields, then Start on Connect (or the field strip)."
     )
     hint.setWordWrap(True)
     hint.setObjectName("tabHint")
@@ -104,6 +105,8 @@ def create_presets_tab(
     parent.preset_list.itemClicked.connect(parent._on_preset_list_item_clicked)
     parent.preset_list.itemSelectionChanged.connect(parent._on_preset_list_selection_changed)
     parent.preset_list.itemDoubleClicked.connect(parent._preset_load_selected)
-    parent.preset_list.model().rowsMoved.connect(parent._on_preset_rows_moved)
+    model = parent.preset_list.model()
+    if model is not None and hasattr(model, "rowsMoved"):
+        model.rowsMoved.connect(parent._on_preset_rows_moved)
 
     return _scrollable(host)

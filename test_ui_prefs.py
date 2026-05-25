@@ -138,16 +138,17 @@ class TestUiPrefs(unittest.TestCase):
                 ui_prefs.save_connect_panel_prefs(
                     "standard",
                     ["run", "quick_terminal", "quick_log", "connection"],
-                    {"ntrip": True, "quick_log": False},
+                    {"quick_log": True},
                     sizes={"quick_log": 140, "connection": 300},
                     toolbar_order=["reset_sizes", "ui_editor", "expand_all", "collapse_all"],
                 )
                 loaded = ui_prefs.load_connect_panel_prefs("standard")
                 self.assertEqual(loaded["order"][:4], ["run", "quick_terminal", "quick_log", "connection"])
-                self.assertTrue(loaded["collapsed"].get("ntrip"))
-                self.assertFalse(loaded["collapsed"].get("quick_log"))
+                self.assertTrue(loaded["collapsed"].get("quick_log"))
+                self.assertNotIn("ntrip", loaded["order"])
                 self.assertEqual(loaded["sizes"].get("connection"), 300)
-                self.assertEqual(loaded["toolbar_order"][0], "reset_sizes")
+                self.assertNotIn("reset_sizes", loaded["toolbar_order"])
+                self.assertEqual(loaded["toolbar_order"][0], "ui_editor")
 
     def test_bench_setup_prefs_roundtrip(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -171,7 +172,7 @@ class TestUiPrefs(unittest.TestCase):
                     }
                 )
                 loaded = ui_prefs.load_ntrip_prefs()
-                self.assertTrue(loaded["enabled"])
+                self.assertFalse(loaded["enabled"])
                 self.assertEqual(loaded["mountpoint"], "BASE")
 
     def test_top_bar_prefs_roundtrip(self) -> None:
@@ -210,6 +211,25 @@ class TestUiPrefs(unittest.TestCase):
                 self.assertIn("tools_open", loaded)
                 raw = json.loads(path.read_text(encoding="utf-8"))
                 self.assertEqual(raw.get("schema_version"), ui_prefs.PREFS_SCHEMA_VERSION)
+
+    def test_connect_panel_order_migrates_legacy_factory_layout(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "ui_prefs.json"
+            legacy = {
+                "schema_version": ui_prefs.PREFS_SCHEMA_VERSION,
+                "connect_panels": {
+                    "standard": {
+                        "order": list(ui_prefs._LEGACY_CONNECT_PANEL_ORDER),
+                        "collapsed": {},
+                        "sizes": {},
+                        "hidden": [],
+                    }
+                },
+            }
+            path.write_text(json.dumps(legacy), encoding="utf-8")
+            with patch.object(ui_prefs, "CONFIG_PATH", path):
+                loaded = ui_prefs.load_connect_panel_prefs("standard")
+                self.assertEqual(loaded["order"], list(ui_prefs._CONNECT_PANEL_DEFAULT_ORDER))
 
     def test_connect_toolbar_order_migrates_for_old_schema(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

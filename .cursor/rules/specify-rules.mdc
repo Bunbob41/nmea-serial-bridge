@@ -5,11 +5,12 @@ alwaysApply: true
 <!-- SPECKIT START -->
 For additional context about technologies to be used, project structure,
 shell commands, and other important information, read
-`specs/007-web-config-desktop-ux/plan.md` and `quickstart.md` (active).
+`specs/008-ui-journey-modernization/plan.md` and
+`specs/008-ui-journey-modernization/quickstart.md` (active).
 Non-negotiable project gates live in `.specify/memory/constitution.md`.
-Active feature: Web Config Editor & Desktop UX (`specs/007-web-config-desktop-ux/`, FR-101–403).
-Shipped: Phase B Dashboard (`specs/006-phase-b-dashboard/`, v1.8.x).
-Builds on: Hybrid UI Web API (`specs/005-hybrid-ui-webui/`, shipped v1.7.x).
-Prior shipped: Connection Hub Phase 2 (`specs/004-hub-network-discovery/`, v1.6.0).
+Active feature: UI & Workflow Journey Modernization (`specs/008-ui-journey-modernization/`, FR-101–401).
+Product Demo isolation contract: `specs/008-ui-journey-modernization/contracts/demo-state-isolation.md`.
+Prior shipped: Web Config Desktop UX (`specs/007-web-config-desktop-ux/`, v1.9.x).
+Builds on: Phase B Dashboard (`specs/006-phase-b-dashboard/`, v1.8.x).
 Baseline reference: `specs/001-baseline-spec/spec.md` (FR-001–FR-021).
 <!-- SPECKIT END -->

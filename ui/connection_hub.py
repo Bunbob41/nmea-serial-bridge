@@ -5,6 +5,8 @@ from typing import Optional
 
 from PySide6 import QtCore, QtGui, QtWidgets
 
+_WIDGET_SIZE_MAX = 16777215
+
 from discovery_service import (
     DiscoverySnapshot,
     NetworkCardInfo,
@@ -89,13 +91,37 @@ class ConnectionHubWidget(QtWidgets.QWidget):
     refresh_requested = QtCore.Signal()
     unlock_requested = QtCore.Signal()
 
-    def __init__(self, parent: Optional[QtWidgets.QWidget] = None) -> None:
+    _CARDS_MIN_H = 120
+    _MANUAL_MIN_H = 100
+    _DEFAULT_SPLIT = (320, 200)
+    _CARD_ROW_HEIGHT = 88
+    _CARDS_VISIBLE_ROWS = 2
+
+    def __init__(
+        self,
+        parent: Optional[QtWidgets.QWidget] = None,
+        *,
+        standalone: bool = True,
+    ) -> None:
         super().__init__(parent)
         self.setObjectName("connectionHub")
+        self._standalone = bool(standalone)
+        self._bridge_win: Optional[QtWidgets.QWidget] = None
+        self._splitter: QtWidgets.QSplitter | None = None
+        self._manual_box: QtWidgets.QGroupBox | None = None
+        self._manual_inner: QtWidgets.QVBoxLayout | None = None
+        cards_view_h = (
+            self._CARD_ROW_HEIGHT * self._CARDS_VISIBLE_ROWS
+            + max(0, self._CARDS_VISIBLE_ROWS - 1) * 8
+        )
         self.setSizePolicy(
             QtWidgets.QSizePolicy.Policy.Expanding,
-            QtWidgets.QSizePolicy.Policy.Expanding,
+            QtWidgets.QSizePolicy.Policy.Minimum,
         )
+        if self._standalone:
+            self.setMinimumHeight(cards_view_h + 96)
+        else:
+            self.setMinimumHeight(300)
         root = QtWidgets.QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(6)
@@ -118,18 +144,74 @@ class ConnectionHubWidget(QtWidgets.QWidget):
         header.addWidget(self._refresh_lbl)
         root.addLayout(header)
 
-        hint = QtWidgets.QLabel(
-            "Pick a detected GNSS serial port or UDP listen context. "
-            "Use Manual override below for TCP modes and edge cases."
-        )
+        if self._standalone:
+            hint_text = (
+                "Pick a detected GNSS serial port or UDP listen context. "
+                "Two rows shown — scroll inside for more. "
+                "Manual COM/UDP fields live on Connect → Serial & network."
+            )
+        else:
+            hint_text = (
+                "Pick a detected GNSS serial port or UDP listen context. "
+                "Drag the splitter handle to resize the card area vs Manual override."
+            )
+        hint = QtWidgets.QLabel(hint_text)
         hint.setWordWrap(True)
         hint.setObjectName("tabHint")
         root.addWidget(hint)
 
+        cards_wrap = self._build_cards_pane(cards_view_h)
+        if self._standalone:
+            root.addWidget(cards_wrap, 0)
+        else:
+            self._splitter = QtWidgets.QSplitter(QtCore.Qt.Orientation.Vertical)
+            self._splitter.setObjectName("connectionHubSplitter")
+            self._splitter.setChildrenCollapsible(False)
+            self._splitter.setHandleWidth(8)
+            self._splitter.setOpaqueResize(True)
+            self._splitter.addWidget(cards_wrap)
+            self._manual_box = QtWidgets.QGroupBox("Manual override")
+            self._manual_box.setObjectName("manualOverrideBox")
+            self._manual_box.setCheckable(True)
+            self._manual_box.setChecked(False)
+            self._manual_box.setMinimumHeight(self._MANUAL_MIN_H)
+            self._manual_box.setToolTip(
+                "Show full COM, baud, and advanced network fields. "
+                "When expanded and edited, hub card defaults are ignored for Start."
+            )
+            self._manual_inner = QtWidgets.QVBoxLayout(self._manual_box)
+            self._manual_inner.setContentsMargins(8, 12, 8, 8)
+            self._splitter.addWidget(self._manual_box)
+            root.addWidget(self._splitter, 1)
+            self._manual_box.toggled.connect(self._on_manual_box_toggled)
+            self._splitter.splitterMoved.connect(
+                lambda *_a: self._split_save_timer.start(300)
+            )
+
+        self._selected_id: Optional[str] = None
+        self._cards: dict[str, EndpointCardWidget] = {}
+        self._snapshot: Optional[DiscoverySnapshot] = None
+        self._max_cols = 2
+        self._quality_state: Optional[str] = None
+        self._split_save_timer = QtCore.QTimer(self)
+        self._split_save_timer.setSingleShot(True)
+        self._split_save_timer.timeout.connect(self._persist_hub_split_sizes)
+
+    def _build_cards_pane(self, cards_view_h: int) -> QtWidgets.QWidget:
+        cards_wrap = QtWidgets.QWidget()
+        cards_wrap.setObjectName("connectionHubCardsPane")
+        cards_wrap.setMinimumHeight(cards_view_h)
+        cards_lay = QtWidgets.QVBoxLayout(cards_wrap)
+        cards_lay.setContentsMargins(0, 0, 0, 0)
+        cards_lay.setSpacing(4)
+
         scroll = QtWidgets.QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QtWidgets.QFrame.Shape.NoFrame)
-        scroll.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        scroll.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        scroll.setVerticalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        scroll.setMinimumHeight(cards_view_h)
+        scroll.setMaximumHeight(cards_view_h)
         self._cards_host = QtWidgets.QWidget()
         self._cards_host.setObjectName("connectionHubCards")
         self._cards_layout = QtWidgets.QGridLayout(self._cards_host)
@@ -138,41 +220,98 @@ class ConnectionHubWidget(QtWidgets.QWidget):
         self._cards_layout.setVerticalSpacing(8)
         scroll.setWidget(self._cards_host)
         self._card_scroll = scroll
-        root.addWidget(scroll, 1)
+        cards_lay.addWidget(scroll, 0)
+
         self._empty_hint = QtWidgets.QLabel("")
         self._empty_hint.setObjectName("connectionHubEmptyHint")
         self._empty_hint.setWordWrap(True)
         self._empty_hint.hide()
-        root.addWidget(self._empty_hint)
+        cards_lay.addWidget(self._empty_hint)
+        return cards_wrap
 
-        self._manual_box = QtWidgets.QGroupBox("Manual override")
-        self._manual_box.setObjectName("manualOverrideBox")
-        self._manual_box.setCheckable(True)
-        self._manual_box.setChecked(False)
-        self._manual_box.setToolTip(
-            "Show full COM, baud, and advanced network fields. "
-            "When expanded and edited, hub card defaults are ignored for Start."
+    def _on_manual_box_toggled(self, checked: bool) -> None:
+        self.manual_override_toggled.emit(checked)
+        if self._splitter is None or self._manual_box is None:
+            return
+        total = max(int(self._splitter.height()), self._CARDS_MIN_H + self._MANUAL_MIN_H)
+        if checked:
+            self._apply_hub_split_sizes()
+            return
+        self._splitter.setSizes([max(total - 48, self._CARDS_MIN_H), 0])
+
+    def attach_bridge_window(self, win: QtWidgets.QWidget) -> None:
+        """Load/save hub splitter sizes via connect panel prefs."""
+        self._bridge_win = win
+        if self._standalone:
+            QtCore.QTimer.singleShot(0, self.reflow_card_columns)
+            return
+        QtCore.QTimer.singleShot(0, self._apply_hub_split_sizes)
+
+    def _apply_hub_split_sizes(self) -> None:
+        if self._splitter is None or self._manual_box is None:
+            return
+        if not self._manual_box.isChecked():
+            self._on_manual_box_toggled(False)
+            return
+        top, bottom = self._DEFAULT_SPLIT
+        win = self._bridge_win
+        if win is not None:
+            from ui.ui_prefs import load_connect_panel_prefs
+
+            ui_mode = getattr(win, "_ui_mode", "standard")
+            prefs = load_connect_panel_prefs(ui_mode)
+            raw = prefs.get("hub_split_sizes")
+            if isinstance(raw, (list, tuple)) and len(raw) >= 2:
+                try:
+                    top = max(self._CARDS_MIN_H, int(raw[0]))
+                    bottom = max(self._MANUAL_MIN_H, int(raw[1]))
+                except (TypeError, ValueError):
+                    pass
+        total = max(int(self._splitter.height()), top + bottom)
+        if total > top + bottom:
+            top = max(self._CARDS_MIN_H, total - bottom)
+        self._splitter.setSizes([top, bottom])
+
+    def _persist_hub_split_sizes(self) -> None:
+        if self._splitter is None:
+            return
+        win = self._bridge_win
+        if win is None:
+            return
+        sizes = self._splitter.sizes()
+        if len(sizes) < 2 or sizes[0] < 40:
+            return
+        from ui.ui_prefs import load_connect_panel_prefs, save_connect_panel_prefs
+
+        ui_mode = getattr(win, "_ui_mode", "standard")
+        prefs = load_connect_panel_prefs(ui_mode)
+        save_connect_panel_prefs(
+            ui_mode,
+            list(prefs.get("order", [])),
+            dict(prefs.get("collapsed", {})),
+            sizes=dict(prefs.get("sizes", {})),
+            hidden=list(prefs.get("hidden", [])),
+            toolbar_order=list(prefs.get("toolbar_order", [])),
+            connect_row_style=str(prefs.get("connect_row_style", "pill")),
+            hub_split_sizes=[int(sizes[0]), int(sizes[1])],
         )
-        self._manual_inner = QtWidgets.QVBoxLayout(self._manual_box)
-        self._manual_inner.setContentsMargins(8, 12, 8, 8)
-        root.addWidget(self._manual_box)
-
-        self._selected_id: Optional[str] = None
-        self._cards: dict[str, EndpointCardWidget] = {}
-        self._snapshot: Optional[DiscoverySnapshot] = None
-        self._max_cols = 2
-        self._quality_state: Optional[str] = None
-
-        self._manual_box.toggled.connect(self.manual_override_toggled.emit)
 
     def set_manual_override_panel(self, widget: QtWidgets.QWidget) -> None:
         """Embed legacy connection controls inside the manual override group."""
+        if self._manual_inner is None:
+            return
         self._manual_inner.addWidget(widget)
+
+    def set_manual_override(self, checked: bool) -> None:
+        if self._manual_box is not None:
+            self._manual_box.setChecked(bool(checked))
 
     def selected_device_id(self) -> Optional[str]:
         return self._selected_id
 
     def manual_override_active(self) -> bool:
+        if self._manual_box is None:
+            return False
         return self._manual_box.isChecked()
 
     def set_snapshot(self, snapshot: DiscoverySnapshot) -> None:
@@ -327,10 +466,33 @@ class ConnectionHubWidget(QtWidgets.QWidget):
             card.setProperty("cardStatus", self._quality_state)
 
     def _column_count_for_width(self) -> int:
-        w = max(self._cards_host.width(), self._card_scroll.viewport().width(), 240)
-        return max(1, min(3, w // EndpointCardWidget.MIN_WIDTH))
+        w = self.width()
+        parent = self.parentWidget()
+        while parent is not None and w < 320:
+            w = max(w, parent.width())
+            parent = parent.parentWidget()
+        w = max(
+            w,
+            self._card_scroll.viewport().width(),
+            self._cards_host.width(),
+            320,
+        )
+        return max(1, min(4, w // EndpointCardWidget.MIN_WIDTH))
+
+    def reflow_card_columns(self) -> None:
+        """Re-grid cards when the hub receives full width."""
+        self._cards_host.setMinimumWidth(0)
+        self._cards_host.setMaximumWidth(_WIDGET_SIZE_MAX)
+        if self._snapshot is not None:
+            cols = self._column_count_for_width()
+            if cols != self._max_cols:
+                self.set_snapshot(self._snapshot)
+        if self._manual_box is not None and not self._manual_box.isChecked():
+            self._on_manual_box_toggled(False)
 
     def resizeEvent(self, event: QtGui.QResizeEvent) -> None:
         super().resizeEvent(event)
         if self._snapshot is not None:
-            self.set_snapshot(self._snapshot)
+            cols = self._column_count_for_width()
+            if cols != self._max_cols:
+                self.set_snapshot(self._snapshot)

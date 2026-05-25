@@ -7,5 +7,5 @@ alwaysApply: true
 
 - **Do not** re-add inline "Edit layout" on the Connect tab unless the user explicitly asks.
 - Connect section order/visibility: **UI editor…** dialog → **Connect** tab (checkbox + drag reorder).
-- Panel **heights**: drag splitter handles on the live Connect tab; **Reset sizes** on the toolbar.
+- Panel **heights**: expand/collapse Connect sections; disclosure rows size to content (no splitter / Reset sizes).
 - Required sections: `run`, `connection` (never hideable in the dialog).

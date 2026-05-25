@@ -16,7 +16,7 @@ class _ValidateHost(BridgeLogicMixin, object):
         self.com_cb = MagicMock()
         self.com_cb.currentText.return_value = "COM7"
         self.baud_edit = MagicMock()
-        self.baud_edit.text.return_value = "115200"
+        self.baud_edit.currentText.return_value = "115200"
         self.chk_advanced_net = MagicMock()
         self._active_preset_name = "Desk test"
         self.rb_udp_remote = MagicMock()

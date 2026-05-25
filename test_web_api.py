@@ -31,6 +31,7 @@ class TestWebApi(unittest.TestCase):
         self.facade.update_snapshot(
             running=False,
             com_port="COM7",
+            configured_com_port="COM7",
             baud=115200,
             udp_listen_port=10110,
         )
@@ -47,6 +48,8 @@ class TestWebApi(unittest.TestCase):
         props = schema["components"]["schemas"]["StatusResponse"]["properties"]
         self.assertIn("com_port", props)
         self.assertIn("running", props)
+        self.assertIn("position_lat", props)
+        self.assertIn("position_lon", props)
 
     def test_openapi_documents_discovery_fields(self) -> None:
         schema = self.app.openapi()

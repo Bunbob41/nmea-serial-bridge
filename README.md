@@ -1,12 +1,19 @@
 # nmea-serial-bridge
 
-**Current release: v1.4.10** — Windows desktop app that **bidirectionally bridges** traffic between **UDP/TCP** and a **serial COM port**. Primary use: **NMEA 0183 text** for survey / USV workflows — Ethernet GNSS or INS (e.g. Trimble R10) → bridge → physical COM destination.
+**Current version:** see [`version.py`](version.py) (e.g. **v1.9.x**) — Windows desktop app that **bidirectionally bridges** traffic between **UDP/TCP** and a **serial COM port**. Primary use: **NMEA 0183 text** for survey / USV workflows — Ethernet GNSS or INS (e.g. Trimble R10) → bridge → physical COM destination.
 
 **Spec Kit baseline**: [`specs/001-baseline-spec/spec.md`](specs/001-baseline-spec/spec.md) (as-built FR traceability).
 
 **Stack:** Python 3.10+, [PySide6](https://doc.qt.io/qtforpython/), [pyserial-asyncio](https://pyserial-asyncio.readthedocs.io/). Bridge I/O runs on a **background asyncio thread**; the GUI stays on the Qt main thread.
 
-**Operator manual:** [`docs/OPERATOR_GUIDE.md`](docs/OPERATOR_GUIDE.md)
+**Documentation**
+
+| Doc | Audience |
+| --- | -------- |
+| [`docs/GETTING_STARTED.md`](docs/GETTING_STARTED.md) | First install + 15-minute bench walkthrough |
+| [`docs/OPERATOR_GUIDE.md`](docs/OPERATOR_GUIDE.md) | Full operator manual |
+| [`docs/NORBIT_DCT.md`](docs/NORBIT_DCT.md) | NORBIT DCT + Applanix workflow |
+| [`docs/README.md`](docs/README.md) | Doc index |
 
 **Frozen build:** `.\release.ps1` (or `.\build.ps1` then zip under `dist\`)
 
@@ -28,15 +35,17 @@
 
 - **Send tab** — inject NMEA text (`\r\n` normalized); **not** for binary streams.
 
-- **Diagnostics** — file log, checklists, UDP burst, TCP stress/demo, verify suite.
+- **Diagnostics** (Tools) — collapsible cards: automated checks (`verify_all`, checklists, UDP/TCP bench tools), rotating file log, on-screen log clear, traffic legend; **Reorder cards…**
 
-- **UI layouts** — **Standard** (Connect + Presets + tool tabs + log) and **Field** (log-first, survey bar, tools drawer). Launcher remembers choice.
+- **UI layouts** — **Standard** (`Connect | Log | Tools`) and **Field** (log-first, survey bar, tools drawer). Launcher remembers choice. **UI editor** reorders Connect sections, top bar, main tabs.
 
-- **Survey workflow** — Survey HUD popout, **GNSS** status (GGA fix / sats / HDOP), product demo teleprompter, preflight menus, themes.
+- **Survey workflow** — Survey HUD popout, **GNSS** status (GGA fix / sats / HDOP), product demo teleprompter, preflight menus, themes, recent sessions.
 - **Connection Hub (Standard Connect)** — card grid for GNSS COM + UDP listen + **LAN-discovered** hosts (Refresh discovery); **Unlock ports** for bench COM conflicts; live **QoS** on the active card; **Manual override** for TCP/advanced; optional **TCP sink mirror** (parallel egress with fan-out). Field strip adds Refresh/Unlock.
-- **Hybrid UI (v1.7+)** — Standard/Field shells load from Qt Designer `.ui` files; optional **Web API** on localhost (`requirements-web.txt`) for status, config, and start/stop — see `specs/005-hybrid-ui-webui/quickstart.md`.
-- **Connect tab (Standard)** — collapsible panels, NTRIP corrections (phase 1), quick log/terminal.
-- **Log tab** — full live log (replaces side-only log in Standard).
+- **Hybrid UI (v1.7+)** — Qt Designer shells; optional **Web API** + browser **operator dashboard** (`requirements-web.txt`) — status, config, discovery, start/stop — see `specs/005-hybrid-ui-webui/quickstart.md` and `specs/006-phase-b-dashboard/quickstart.md`.
+- **Connect tab (Standard)** — collapsible panels (Serial & network defaults under Run), quick log/terminal, intent hint.
+- **Log tab** — full live log with presets, pause, save.
+- **Phone tab** (Tools) — Web API, token, QR, phone dashboard setup.
+- **Guide tab** (Tools) — UDP/TCP connection workflows, links to operator docs.
 
 ## Requirements
 
@@ -68,7 +77,7 @@ python bridge_gui.py --ui field --demo
 
 | UI | Use |
 |----|-----|
-| **Standard** | Connect, NMEA, Send, Diagnostics + log |
+| **Standard** | Connect + Log + Tools (Presets, NMEA, Terminal, Diagnostics, Theme, Guide) |
 | **Field** | Large log, COM/UDP strip, Tools drawer, survey bar (**Presets**, **Recent**, **Checklists**, **HUD**, **Demo**) |
 
 Saved layout: `%USERPROFILE%\.cursor-udp-com-bridge\ui_choice.json`
@@ -146,7 +155,9 @@ Version: `version.py` + `CHANGELOG.md`.
 | `nmea_codec.py` | Line assembly, strict checksum, filters |
 | `bridge_gui.py` | GUI entry |
 | `ui/` | Standard, Field, demo, HUD, diagnostics |
+| `docs/GETTING_STARTED.md` | First install and walkthrough |
 | `docs/OPERATOR_GUIDE.md` | Step-by-step operator manual |
+| `docs/NORBIT_DCT.md` | NORBIT DCT operator notes |
 | `bench_defaults.json` | Shipped Desk + production defaults |
 
 ## What this app is not

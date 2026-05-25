@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
-from PySide6 import QtWidgets
+from PySide6 import QtCore, QtWidgets
 
 from bench_config import validate_preset_name
 
@@ -14,15 +14,18 @@ def ask_preset_name(
     *,
     initial: str = "",
 ) -> Optional[str]:
-    text, ok = QtWidgets.QInputDialog.getText(
-        parent,
-        title,
-        "Preset name:",
-        QtWidgets.QLineEdit.EchoMode.Normal,
-        initial,
-    )
-    if not ok:
+    host = parent.window() if parent is not None else parent
+    dialog = QtWidgets.QInputDialog(host)
+    dialog.setWindowTitle(title)
+    dialog.setLabelText("Preset name:")
+    dialog.setTextValue(initial or "")
+    dialog.setWindowModality(QtCore.Qt.WindowModality.WindowModal)
+    if host is not None:
+        host.raise_()
+        host.activateWindow()
+    if dialog.exec() != QtWidgets.QDialog.DialogCode.Accepted:
         return None
+    text = dialog.textValue()
     name = text.strip()
     err = validate_preset_name(name)
     if err:

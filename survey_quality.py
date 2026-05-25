@@ -43,7 +43,7 @@ HDOP_ACCEPT = 4.0
 SATS_MIN_MISSION = 5
 SATS_RELIABLE = 7
 HDOP_RELIABLE = 3.0
-NAV_STALE_S = 3.0
+NAV_STALE_S = 2.0
 
 
 @dataclass(frozen=True)
@@ -202,17 +202,103 @@ def feed_nmea_navigation_quality(lines: list[bytes], state: list[Optional[dict[s
                 state[0] = snap
 
 
-def nav_quality_stale(nav: Optional[dict[str, Any]], *, now: Optional[float] = None) -> bool:
+def nav_quality_stale(
+    nav: Optional[dict[str, Any]],
+    *,
+    now: Optional[float] = None,
+    stale_s: Optional[float] = None,
+) -> bool:
     if not nav:
         return True
     mono = nav.get("mono")
     if mono is None:
         return True
     t = now if now is not None else time.monotonic()
+    limit = NAV_STALE_S if stale_s is None else stale_s
     try:
-        return (t - float(mono)) > NAV_STALE_S
+        return (t - float(mono)) > limit
     except (TypeError, ValueError):
         return True
+
+
+def nav_quality_stream_idle_snapshot() -> dict[str, Any]:
+    """Reset GNSS HUD fields when NMEA traffic or GGA parsing has stopped."""
+    return {
+        "level": NavQualityLevel.BAD.value,
+        "fix_label": GGA_FIX_LABELS[0],
+        "quality": 0,
+        "num_sats": 0,
+        "hdop": 0.0,
+        "summary": "No Data Stream",
+        "detail": "No NMEA traffic or GGA in the last 2 s.",
+        "nav_stale": True,
+        "stream_idle": True,
+    }
+
+
+def nav_metrics_should_reset(
+    *,
+    traffic_hz: float,
+    nav: Optional[dict[str, Any]],
+    last_nmea_mono: Optional[float] = None,
+    running: bool = True,
+    now: Optional[float] = None,
+) -> bool:
+    """True when live GNSS metrics should clear (0 Hz or no fresh GGA/NMEA)."""
+    if not running:
+        return False
+    if traffic_hz <= 0.0:
+        return True
+    t = now if now is not None else time.monotonic()
+    if last_nmea_mono is not None:
+        try:
+            if (t - float(last_nmea_mono)) > NAV_STALE_S:
+                return True
+        except (TypeError, ValueError):
+            return True
+    return nav_quality_stale(nav, now=t)
+
+
+_GNSS_BADGE_STYLE = "padding: 6px; border-radius: 4px; font-weight: bold;"
+
+
+def gnss_status_badge_quality(
+    nav: Optional[dict[str, Any]],
+    *,
+    running: bool,
+    raw_mode: bool = False,
+) -> Optional[int]:
+    """NMEA GGA quality for status-badge coloring; None = no badge (stopped/raw)."""
+    if not running or raw_mode:
+        return None
+    if not nav:
+        return 0
+    if (
+        nav.get("stream_idle")
+        or nav.get("nav_stale")
+        or str(nav.get("summary", "")) == "No Data Stream"
+    ):
+        return 0
+    if nav_quality_stale(nav):
+        return 0
+    q = nav.get("quality")
+    if isinstance(q, int) and not isinstance(q, bool):
+        return q
+    try:
+        return int(q)
+    except (TypeError, ValueError):
+        return 0
+
+
+def gnss_status_badge_stylesheet(quality: Optional[int]) -> str:
+    """Polished status-bar / HUD badge colors from NMEA fix quality."""
+    if quality is None:
+        return ""
+    if quality in (4, 5):
+        return f"background-color: #D4EDDA; color: #155724; {_GNSS_BADGE_STYLE}"
+    if quality in (1, 2):
+        return f"background-color: #CCE5FF; color: #004085; {_GNSS_BADGE_STYLE}"
+    return f"background-color: #F8D7DA; color: #721C24; {_GNSS_BADGE_STYLE}"
 
 
 def format_gnss_status_chip(
@@ -225,7 +311,11 @@ def format_gnss_status_chip(
         return "GNSS: —"
     if raw_mode:
         return "GNSS: n/a (raw)"
-    if not nav or nav_quality_stale(nav):
+    if not nav:
+        return "GNSS: no recent GGA"
+    if nav.get("stream_idle") or str(nav.get("summary", "")) == "No Data Stream":
+        return "GNSS: No Data Stream"
+    if nav_quality_stale(nav):
         return "GNSS: no recent GGA"
     level = str(nav.get("level", ""))
     summary = str(nav.get("summary", "—"))
@@ -242,8 +332,10 @@ def format_gnss_stats_segment(nav: Optional[dict[str, Any]]) -> str:
     stale = bool(nav.get("nav_stale"))
     if not stale and "nav_stale" not in nav:
         stale = nav_quality_stale(nav)
+    if nav.get("stream_idle") or str(nav.get("summary", "")) == "No Data Stream":
+        return " · GNSS: No Data Stream"
     if stale:
-        return " · GNSS: no recent GGA (>3 s)"
+        return f" · GNSS: no recent GGA (>{NAV_STALE_S:.0f} s)"
     level = str(nav.get("level", ""))
     summary = str(nav.get("summary", ""))
     if level in (NavQualityLevel.WARN.value, NavQualityLevel.BAD.value):

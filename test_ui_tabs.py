@@ -71,9 +71,10 @@ class TestUiTabs(unittest.TestCase):
         self.assertTrue(hasattr(win, "connect_mini_log"))
         self.assertTrue(hasattr(win, "connect_terminal_out"))
         self.assertTrue(hasattr(win, "_connect_panel_disclosures"))
-        splitter = getattr(win, "_connect_panel_splitter", None)
-        self.assertIsNotNone(splitter)
-        self.assertGreaterEqual(splitter.count(), 4)  # type: ignore[union-attr]
+        stack = getattr(win, "_connect_panel_stack", None)
+        self.assertIsNotNone(stack)
+        disclosures = getattr(win, "_connect_panel_disclosures", {})
+        self.assertGreaterEqual(len(disclosures), 4)
 
     def test_field_advanced_net_on_presets_tab(self) -> None:
         from ui.field import BridgeWindowField
@@ -161,6 +162,7 @@ class TestUiTabs(unittest.TestCase):
         win.bridge = object()  # type: ignore[assignment]
         win._sync_preset_action_buttons()
         self.assertFalse(win.btn_preset_load.isEnabled())
+        self.assertTrue(win.btn_preset_save_as.isEnabled())
         self.assertTrue(win.btn_preset_new.isEnabled())
 
     def test_quick_preset_starts_bridge_without_checklist(self) -> None:

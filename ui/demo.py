@@ -8,6 +8,7 @@ from typing import Callable, Optional
 from PySide6 import QtCore, QtGui, QtWidgets
 
 from ui.app_icon import apply_app_icon
+from ui.demo_gateway import DemoHostGateway
 from ui.styles import PRODUCT_DEMO_STYLESHEET
 from version import __version__
 
@@ -232,7 +233,7 @@ PRODUCT_DEMO_STEPS: tuple[DemoStep, ...] = (
         "guide_tab",
         "intro",
         "Guide tab (transparent status)",
-        "Point at: Guide tab in Standard, or Tools → Guide in Field.",
+        "Point at: Tools → Phone for Web API/QR, or Tools → Guide for workflows.",
         "Guide is the static truth source:\n"
         "what this bridge does well, current limits, and what we are actively improving.\n"
         "Demo shows live actions; Guide explains evaluation and operational expectations.",
@@ -459,9 +460,15 @@ class DemoRunner(QtCore.QObject):
     step_changed = QtCore.Signal(int, object)  # index, DemoStep
     pause_seconds_left = QtCore.Signal(int)
 
-    def __init__(self, host: QtWidgets.QWidget, steps: tuple[DemoStep, ...] = PRODUCT_DEMO_STEPS) -> None:
+    def __init__(
+        self,
+        host: QtWidgets.QWidget,
+        gateway: DemoHostGateway,
+        steps: tuple[DemoStep, ...] = PRODUCT_DEMO_STEPS,
+    ) -> None:
         super().__init__(host)
         self._host = host
+        self._gateway = gateway
         self._steps = steps
         self._index = -1
         self._running = False
@@ -531,11 +538,8 @@ class DemoRunner(QtCore.QObject):
         step = self._steps[self._index]
         self.step_changed.emit(self._index, step)
         _log(self._host, f"Step {self._index + 1}/{len(self._steps)}: {step.title}")
-        try:
-            if step.action is not None:
-                step.action(self._host)
-        except Exception as exc:
-            _log(self._host, f"Step action error: {exc}")
+        if step.action is not None:
+            self._gateway.run_action(self._host, step.action)
         if self._needs_bridge_wait(step):
             self._waiting_for_bridge = True
             self._poll_bridge(0, self._poll_gen)
@@ -586,6 +590,8 @@ class ProductDemoDialog(QtWidgets.QDialog):
     def __init__(self, host: QtWidgets.QWidget) -> None:
         super().__init__(host)
         self._host = host
+        self._gateway = DemoHostGateway()
+        self._gateway.enter(host)
         self.setObjectName("ProductDemoDialog")
         self.setStyleSheet(PRODUCT_DEMO_STYLESHEET)
         apply_app_icon(self)
@@ -675,9 +681,15 @@ class ProductDemoDialog(QtWidgets.QDialog):
         self._btn_next.setObjectName("demoBtnNext")
         self._btn_step = QtWidgets.QPushButton("Run selected step")
         self._btn_step.setObjectName("demoBtnStep")
+        self._btn_reset_script = QtWidgets.QPushButton("Reset demo script")
+        self._btn_reset_script.setObjectName("demoBtnResetScript")
+        self._btn_reset_script.setToolTip(
+            "Rewind the presenter script to Welcome — does not undo bridge or Connect changes"
+        )
         btn_row.addWidget(self._btn_prev)
         btn_row.addWidget(self._btn_next)
         btn_row.addWidget(self._btn_step)
+        btn_row.addWidget(self._btn_reset_script)
         btn_row.addStretch(1)
         self._btn_run = QtWidgets.QPushButton("Auto-play script")
         self._btn_run.setObjectName("demoBtnRun")
@@ -702,7 +714,7 @@ class ProductDemoDialog(QtWidgets.QDialog):
         n = len(PRODUCT_DEMO_STEPS)
         self._step_index_lbl.setText(f"{n} steps · manual or auto")
 
-        self._runner = DemoRunner(host)
+        self._runner = DemoRunner(host, self._gateway)
         self._runner.step_changed.connect(self._on_step)
         self._runner.pause_seconds_left.connect(self._on_pause_tick)
         self._runner.finished.connect(self._on_completed)
@@ -712,6 +724,7 @@ class ProductDemoDialog(QtWidgets.QDialog):
         self._btn_next.clicked.connect(self._on_next_step)
         self._btn_prev.clicked.connect(self._manual_back)
         self._btn_step.clicked.connect(self._run_selected)
+        self._btn_reset_script.clicked.connect(self._reset_demo_script)
         close_btn.clicked.connect(self.close)
 
         self._bootstrap_presenter()
@@ -851,10 +864,7 @@ class ProductDemoDialog(QtWidgets.QDialog):
         self._select_list_row_for_step(next_idx)
         _log(self._host, f"Manual advance: {step.title}")
         if step.action is not None:
-            try:
-                step.action(self._host)
-            except Exception as exc:
-                _log(self._host, f"Step error: {exc}")
+            self._gateway.run_action(self._host, step.action)
         self._btn_next.setToolTip(self._next_tooltip_manual)
         self._countdown.setText("Your pace — Next step when ready")
         self._sync_nav_buttons()
@@ -903,10 +913,7 @@ class ProductDemoDialog(QtWidgets.QDialog):
         self._progress.setValue(idx + 1)
         _log(self._host, f"Manual step: {step.title}")
         if step.action is not None:
-            try:
-                step.action(self._host)
-            except Exception as exc:
-                _log(self._host, f"Step error: {exc}")
+            self._gateway.run_action(self._host, step.action)
         self._phase_chip.setText("Manual")
         self._countdown.setText("Ran setup for this step — Next step when ready")
         self._sync_nav_buttons()
@@ -934,10 +941,25 @@ class ProductDemoDialog(QtWidgets.QDialog):
         if self._phase_chip.text() == "Auto":
             self._on_stopped()
 
+    def _reset_demo_script(self) -> None:
+        if self._runner.running():
+            self._runner.stop()
+        _stop_diag(self._host)
+        self._gateway.reset_demo_script(self)
+        _log(self._host, "Demo script reset to Welcome")
+
+    def reject(self) -> None:
+        self._end_demo_session()
+        super().reject()
+
     def closeEvent(self, event: QtGui.QCloseEvent) -> None:
+        self._end_demo_session()
+        super().closeEvent(event)
+
+    def _end_demo_session(self) -> None:
         self._runner.reset()
         _stop_diag(self._host)
-        super().closeEvent(event)
+        self._gateway.exit(self._host)
 
 
 def open_product_demo(host: QtWidgets.QWidget) -> ProductDemoDialog:

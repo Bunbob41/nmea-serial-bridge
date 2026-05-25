@@ -5,8 +5,10 @@ import colorsys
 import random
 
 from ui.theme_choice import (
+    THEME_ARCTIC,
     THEME_FOREST,
     THEME_MAROON,
+    THEME_MIDNIGHT,
     THEME_OCEAN,
     THEME_RANDOM_CURRENT,
     THEME_RANDOM_FAVORITE,
@@ -220,11 +222,40 @@ _SUNSET_MAP = {
     "#e5be4f": "#e8a850",
 }
 
+_MIDNIGHT_MAP = dict(_OCEAN_MAP)
+_MIDNIGHT_MAP.update(
+    {
+        "#2f2329": "#141c24",
+        "#241a1f": "#0c1218",
+        "#3a2a31": "#1a2834",
+        "#2a1d22": "#121a22",
+        "#6f8d63": "#2a6a78",
+        "#7f9a73": "#3a7a88",
+    }
+)
+
+_ARCTIC_MAP = dict(_SLATE_MAP)
+_ARCTIC_MAP.update(
+    {
+        "#2f2329": "#e8eef4",
+        "#241a1f": "#dce4ec",
+        "#3a2a31": "#d0dae4",
+        "#2a1d22": "#e2e8f0",
+        "#f6eee0": "#1a2838",
+        "#f4f0ea": "#1a2838",
+        "#f2e7d2": "#243448",
+        "#57333f": "#b8c8d8",
+        "#6b3a4a": "#c8d8e8",
+    }
+)
+
 THEME_COLOR_MAPS: dict[str, dict[str, str]] = {
     THEME_OCEAN: _OCEAN_MAP,
     THEME_SLATE: _SLATE_MAP,
     THEME_FOREST: _FOREST_MAP,
     THEME_SUNSET: _SUNSET_MAP,
+    THEME_MIDNIGHT: _MIDNIGHT_MAP,
+    THEME_ARCTIC: _ARCTIC_MAP,
 }
 
 DEFAULT_ZONE_COLORS: dict[str, str] = {

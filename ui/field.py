@@ -7,6 +7,7 @@ from ui.controls import (
     create_connection_controls,
     create_diagnostics_controls,
     create_guide_tab,
+    create_phone_dashboard_tab,
     create_log_panel,
     create_nmea_controls,
     create_presets_tab,
@@ -22,8 +23,8 @@ from ui.ui_loader import LayoutLoadError, load_field_control_strip
 from version import __version__
 
 # Default log / control-strip split for ~960×580 (strip ≈ COM + status + preset + tool row).
-_FIELD_DEFAULT_SPLITTER_SIZES = [520, 112]
-_FIELD_STRIP_MIN_CLOSED = 92
+_FIELD_DEFAULT_SPLITTER_SIZES = [500, 148]
+_FIELD_STRIP_MIN_CLOSED = 118
 _FIELD_STRIP_DRAWER_EXTRA = 284
 
 _FIELD_LOG_PRESET_HELP: dict[str, str] = {
@@ -71,11 +72,11 @@ class BridgeWindowField(BridgeLogicMixin, QtWidgets.QWidget):
         )
         self.status_banner = self.status_line
         self.status_banner_text = self.status_line
-        self._compact_intent_hint = True
+        self._compact_intent_hint = False
         self.intent_hint = QtWidgets.QLabel()
         self.intent_hint.setObjectName("intentHint")
         self.intent_hint.setWordWrap(True)
-        self.intent_hint.setMinimumHeight(0)
+        self.intent_hint.setMinimumHeight(28)
         self.intent_hint.setSizePolicy(
             QtWidgets.QSizePolicy.Policy.Preferred,
             QtWidgets.QSizePolicy.Policy.Maximum,
@@ -103,6 +104,8 @@ class BridgeWindowField(BridgeLogicMixin, QtWidgets.QWidget):
         self._drawer_tabs = drawer_tabs
         drawer_tabs.setUsesScrollButtons(True)
         drawer_tabs.addTab(create_presets_tab(self), "Presets")
+        drawer_tabs.addTab(create_phone_dashboard_tab(self), "Phone")
+        drawer_tabs.setTabToolTip(1, "Phone dashboard — Web API, token, QR (Tailscale/LAN)")
         drawer_tabs.addTab(create_nmea_controls(self), "NMEA")
         drawer_tabs.addTab(create_theme_controls(self), "Theme")
         drawer_tabs.addTab(create_guide_tab(self), "Guide")
@@ -194,8 +197,9 @@ class BridgeWindowField(BridgeLogicMixin, QtWidgets.QWidget):
         self.status_gnss = QtWidgets.QLabel("GNSS: —")
         self.status_gnss.setToolTip("Live GGA fix, satellites, and HDOP while Running.")
         self.lbl_stats = QtWidgets.QLabel(
-            "Stopped — when Running, wire Hz + transport + session totals (hover)"
+            "Stopped — Hz & transport here when Running (hover)"
         )
+        self.lbl_stats.setObjectName("lblStats")
         self.lbl_stats.setToolTip(
             "Hz = wire update rate (UDP datagrams or serial read chunks per second), "
             "not NMEA sentences per second. Session totals count sentences."
@@ -220,6 +224,26 @@ class BridgeWindowField(BridgeLogicMixin, QtWidgets.QWidget):
     def resizeEvent(self, event: QtGui.QResizeEvent) -> None:
         super().resizeEvent(event)
         self._apply_intent_hint_display()
+        from ui.controls import refresh_status_bar_labels
+
+        refresh_status_bar_labels(self)
+
+    def showEvent(self, event: QtGui.QShowEvent) -> None:  # noqa: N802
+        super().showEvent(event)
+        QtCore.QTimer.singleShot(0, self._refresh_field_layout_text)
+        QtCore.QTimer.singleShot(120, self._refresh_field_layout_text)
+        from ui.connect_qr_overlay import schedule_qr_on_window_show
+
+        schedule_qr_on_window_show(self)
+
+    def _refresh_field_layout_text(self) -> None:
+        self._apply_intent_hint_display()
+        from ui.controls import refresh_status_bar_labels
+
+        refresh_status_bar_labels(self)
+        bar = getattr(self, "_survey_top_bar", None)
+        if bar is not None:
+            bar._schedule_spring_layout()
 
     def _build_field_control_strip(self) -> QtWidgets.QFrame:
         r1 = QtWidgets.QHBoxLayout()
@@ -235,11 +259,13 @@ class BridgeWindowField(BridgeLogicMixin, QtWidgets.QWidget):
         r1.addWidget(QtWidgets.QLabel("Baud"))
         r1.addWidget(self.baud_edit)
         r1.addWidget(QtWidgets.QLabel("UDP"))
-        self.udp_host.setMaximumWidth(100)
+        self.udp_host.setMinimumWidth(88)
+        self.udp_host.setMaximumWidth(132)
         self.udp_host.setToolTip("UDP listen bind address (Tools → Presets for TCP modes).")
         r1.addWidget(self.udp_host)
         r1.addWidget(QtWidgets.QLabel(":"))
-        self.udp_port.setMaximumWidth(64)
+        self.udp_port.setMinimumWidth(52)
+        self.udp_port.setMaximumWidth(72)
         self.udp_port.setToolTip("UDP listen port — senders use this port on the host above.")
         r1.addWidget(self.udp_port)
 

@@ -33,7 +33,7 @@ class SurveyTopBarTests(unittest.TestCase):
 
     def test_compact_display_for_known_keys(self) -> None:
         self.assertEqual(compact_letter_for("view", "View"), "View")
-        self.assertEqual(compact_letter_for("shortcuts", "Shortcuts"), "Shortcuts")
+        self.assertEqual(compact_letter_for("shortcuts", "Shortcuts"), "Keys")
         self.assertEqual(compact_letter_for("randomize_theme", "Randomize theme"), "Rand")
         self.assertEqual(compact_letter_for("standardize_theme", "Standardize theme"), "Strd")
         self.assertEqual(compact_letter_for("ui_switch", "Layout"), "Layout")

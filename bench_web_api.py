@@ -31,7 +31,7 @@ def main() -> int:
         health = _get("/health")
     except urllib.error.URLError as exc:
         print(f"[bench_web_api] Cannot reach {BASE}: {exc}")
-        print("Enable Web API in Tools → Guide and restart the app.")
+        print("Enable Web API in Tools → Phone and restart the app.")
         return 1
     print(f"[bench_web_api] health: {health}")
     ok = 0

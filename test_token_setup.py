@@ -21,6 +21,9 @@ class TestTokenSetup(unittest.TestCase):
         raw = "a" * 32
         self.assertEqual(parse_token_from_text(raw), raw)
 
+    def test_parse_token_hash_only(self) -> None:
+        self.assertEqual(parse_token_from_text("#bridge-token=abc123"), "abc123")
+
 
 if __name__ == "__main__":
     unittest.main()

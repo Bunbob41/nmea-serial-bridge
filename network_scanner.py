@@ -14,6 +14,14 @@ _ARP_LINE_IP_RE = re.compile(
     r"^\s*(\d{1,3}(?:\.\d{1,3}){3})\s+[0-9a-fA-F]{2}(?:-[0-9a-fA-F]{2}){5}",
     re.MULTILINE,
 )
+_IFACE_HEADER_RE = re.compile(
+    r"^(?:(?:Ethernet|Wireless LAN|Wi-?Fi|Bluetooth|Tailscale|vEthernet).+adapter|Unknown adapter)\s+(.+?):\s*$",
+    re.IGNORECASE,
+)
+_IPV4_ADDR_RE = re.compile(
+    r"^\s*IPv4 Address[^:]*:\s*(\d{1,3}(?:\.\d{1,3}){3})",
+    re.IGNORECASE,
+)
 
 
 @dataclass(frozen=True)
@@ -58,6 +66,52 @@ def list_lan_hosts(*, arp_output: str | None = None) -> list[str]:
     if "127.0.0.1" not in seen:
         hosts.insert(0, "127.0.0.1")
     return hosts[:64]
+
+
+@dataclass(frozen=True)
+class HostIpv4Interface:
+    """Windows NIC name + IPv4 from ipconfig (for dashboard bind hints)."""
+
+    label: str
+    address: str
+
+
+def list_host_ipv4_interfaces(*, ipconfig_output: str | None = None) -> list[HostIpv4Interface]:
+    """IPv4 addresses on this PC's adapters (Ethernet, Wi‑Fi, Tailscale, etc.)."""
+    if ipconfig_output is None:
+        try:
+            proc = subprocess.run(
+                ["ipconfig"],
+                capture_output=True,
+                text=True,
+                timeout=4,
+                errors="replace",
+            )
+            ipconfig_output = proc.stdout or ""
+        except (OSError, subprocess.TimeoutExpired):
+            ipconfig_output = ""
+    current_label = ""
+    out: list[HostIpv4Interface] = []
+    seen: set[tuple[str, str]] = set()
+    for line in (ipconfig_output or "").splitlines():
+        m_hdr = _IFACE_HEADER_RE.match(line.strip())
+        if m_hdr:
+            current_label = m_hdr.group(1).strip()
+            continue
+        if not current_label:
+            continue
+        m_ip = _IPV4_ADDR_RE.match(line)
+        if not m_ip:
+            continue
+        ip = m_ip.group(1)
+        if ip.startswith("127.") or ip.startswith("169.254."):
+            continue
+        key = (current_label, ip)
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(HostIpv4Interface(label=current_label, address=ip))
+    return out
 
 
 def probe_host_udp(

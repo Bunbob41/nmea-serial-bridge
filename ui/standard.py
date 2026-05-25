@@ -4,7 +4,8 @@ from __future__ import annotations
 from PySide6 import QtCore, QtGui, QtWidgets
 
 from ui.connect_panels import (
-    embed_connection_hub_on_connect_body,
+    configure_connect_status_banner,
+    mount_connect_tab_chrome,
     setup_connect_tab_panels,
     sync_connect_panel_layout,
 )
@@ -14,6 +15,7 @@ from ui.controls import (
     create_connection_controls,
     create_diagnostics_controls,
     create_guide_tab,
+    create_phone_dashboard_tab,
     create_log_panel,
     create_nmea_controls,
     create_presets_tab,
@@ -23,7 +25,6 @@ from ui.controls import (
 from ui.mixin import BridgeLogicMixin
 from ui.styles import bridge_stylesheet
 from ui.theme_choice import load_theme_choice
-from ui.ui_loader import LayoutLoadError, load_standard_connect_shell
 from version import __version__
 
 
@@ -42,18 +43,28 @@ class BridgeWindowStandard(BridgeLogicMixin, QtWidgets.QWidget):
         self.status_banner = QtWidgets.QFrame()
         self.status_banner.setObjectName("statusBanner")
         self.status_banner.setProperty("state", "stopped")
+        self.status_banner.setSizePolicy(
+            QtWidgets.QSizePolicy.Policy.Preferred,
+            QtWidgets.QSizePolicy.Policy.Maximum,
+        )
         bl = QtWidgets.QVBoxLayout(self.status_banner)
+        bl.setContentsMargins(0, 0, 0, 0)
+        bl.setSpacing(0)
         self.status_banner_text = QtWidgets.QLabel("Stopped")
         self.status_banner_text.setObjectName("statusBannerText")
         self.status_banner_text.setWordWrap(True)
+        self.status_banner_text.setSizePolicy(
+            QtWidgets.QSizePolicy.Policy.Preferred,
+            QtWidgets.QSizePolicy.Policy.Maximum,
+        )
         bl.addWidget(self.status_banner_text)
+        configure_connect_status_banner(self.status_banner, self.status_banner_text)
 
         self.intent_hint = QtWidgets.QLabel()
         self.intent_hint.setObjectName("intentHint")
         self.intent_hint.setWordWrap(True)
 
-        connect_scroll = self._build_standard_connection_scroll()
-        connect_panel = self._wrap_standard_connect_shell(connect_scroll)
+        connect_body = self._build_standard_connection_body()
 
         act_box = QtWidgets.QWidget()
         act_box.setObjectName("runGroup")
@@ -80,34 +91,6 @@ class BridgeWindowStandard(BridgeLogicMixin, QtWidgets.QWidget):
         al.addWidget(self.stop_btn)
         al.addStretch(1)
 
-        ntrip_box = QtWidgets.QWidget()
-        ntrip_box.setObjectName("connectNtripBox")
-        ntrip_l = QtWidgets.QVBoxLayout(ntrip_box)
-        ntrip_l.setContentsMargins(0, 0, 0, 0)
-        self.chk_ntrip_enable = QtWidgets.QCheckBox("Enable NTRIP while bridge runs")
-        self.chk_ntrip_enable.setToolTip(
-            "Streams RTCM from a caster onto the bridge COM alongside INS/NMEA from the network. "
-            "Use for live corrections (POSPAC/post-processing still uses your survey workflow)."
-        )
-        ntrip_l.addWidget(self.chk_ntrip_enable)
-        ntrip_form = QtWidgets.QFormLayout()
-        self.ntrip_caster = QtWidgets.QLineEdit()
-        self.ntrip_caster.setPlaceholderText("caster.example.com:2101")
-        self.ntrip_mount = QtWidgets.QLineEdit()
-        self.ntrip_mount.setPlaceholderText("MOUNTPOINT")
-        self.ntrip_user = QtWidgets.QLineEdit()
-        self.ntrip_pass = QtWidgets.QLineEdit()
-        self.ntrip_pass.setEchoMode(QtWidgets.QLineEdit.EchoMode.Password)
-        self.ntrip_pass.setToolTip(
-            "Saved in %USERPROFILE%\\.cursor-udp-com-bridge\\ui_prefs.json as plain text. "
-            "Use a caster account you can rotate; avoid shared PCs."
-        )
-        ntrip_form.addRow("Caster:", self.ntrip_caster)
-        ntrip_form.addRow("Mount:", self.ntrip_mount)
-        ntrip_form.addRow("User:", self.ntrip_user)
-        ntrip_form.addRow("Password:", self.ntrip_pass)
-        ntrip_l.addLayout(ntrip_form)
-
         connect_tab = QtWidgets.QWidget()
         self._connect_tab = connect_tab
         setup_connect_tab_panels(
@@ -118,9 +101,13 @@ class BridgeWindowStandard(BridgeLogicMixin, QtWidgets.QWidget):
                 "hint": self.intent_hint,
                 "quick_log": create_connect_mini_log(self),
                 "quick_terminal": create_connect_quick_terminal(self),
-                "connection": connect_panel,
-                "ntrip": ntrip_box,
+                "connection": connect_body,
             },
+        )
+        mount_connect_tab_chrome(
+            self,
+            subtitle=f"v{__version__} — Network ↔ serial (UDP/TCP NMEA)",
+            banner=self.status_banner,
         )
         # --- Tools tab: sidebar nav (left) + stacked pages (right) ---
         tools_tab = QtWidgets.QWidget()
@@ -136,18 +123,30 @@ class BridgeWindowStandard(BridgeLogicMixin, QtWidgets.QWidget):
             QtWidgets.QSizePolicy.Policy.Fixed,
             QtWidgets.QSizePolicy.Policy.Expanding,
         )
-        for item_text in ("Presets", "NMEA", "Terminal", "Diagnostics", "Theme", "Guide"):
-            tools_nav.addItem(item_text)
+        _tools_nav_labels = (
+            ("Presets", "Named COM/UDP presets"),
+            ("Phone", "Web API, token, QR — phone dashboard (Tailscale/LAN)"),
+            ("NMEA", "Passthrough, strict, or raw binary"),
+            ("Terminal", "Inject test NMEA"),
+            ("Diagnostics", "Bench checks and file log"),
+            ("Theme", "Appearance"),
+            ("Guide", "UDP/TCP connection workflows"),
+        )
+        for label, tip in _tools_nav_labels:
+            item = QtWidgets.QListWidgetItem(label)
+            item.setToolTip(tip)
+            tools_nav.addItem(item)
 
         tools_stack = QtWidgets.QStackedWidget()
         tools_stack.addWidget(create_presets_tab(self, include_advanced_net=False))  # 0
-        tools_stack.addWidget(create_nmea_controls(self))                             # 1
-        tools_stack.addWidget(create_send_controls(self))                             # 2
-        tools_stack.addWidget(create_diagnostics_controls(self))                      # 3
-        tools_stack.addWidget(create_theme_controls(self))                            # 4
-        tools_stack.addWidget(create_guide_tab(self))                                 # 5
+        tools_stack.addWidget(create_phone_dashboard_tab(self))                       # 1
+        tools_stack.addWidget(create_nmea_controls(self))                             # 2
+        tools_stack.addWidget(create_send_controls(self))                             # 3
+        tools_stack.addWidget(create_diagnostics_controls(self))                      # 4
+        tools_stack.addWidget(create_theme_controls(self))                            # 5
+        tools_stack.addWidget(create_guide_tab(self))                                 # 6
 
-        tools_nav.currentRowChanged.connect(tools_stack.setCurrentIndex)
+        tools_nav.currentRowChanged.connect(self._on_tools_nav_row_changed)
         tools_nav.setCurrentRow(0)
 
         self._tools_nav = tools_nav
@@ -168,6 +167,7 @@ class BridgeWindowStandard(BridgeLogicMixin, QtWidgets.QWidget):
         self._setup_reorderable_tabs(tabs, "main_tabs")
         tabs.currentChanged.connect(lambda *_args: self._schedule_connect_reflow(0))
         tabs.currentChanged.connect(lambda *_args: self._schedule_connect_reflow(48))
+        tabs.currentChanged.connect(lambda *_args: self._on_main_tab_changed_for_qr())
         tabs.installEventFilter(self)
         connect_tab.installEventFilter(self)
         tabs.setTabToolTip(0, "COM, UDP listen, advanced TCP/UDP, Start and Stop")
@@ -207,17 +207,31 @@ class BridgeWindowStandard(BridgeLogicMixin, QtWidgets.QWidget):
         self._schedule_connect_reflow(80)
         self._schedule_connect_reflow(180)
 
-    def _build_standard_connection_scroll(self) -> QtWidgets.QScrollArea:
+    def _build_standard_connection_body(self) -> QtWidgets.QWidget:
+        """Serial & network controls on Connect (hub lives on Tools → Diagnostics)."""
         connect_body = QtWidgets.QWidget()
         connect_body.setObjectName("connectSectionBody")
         connect_body.setAttribute(QtCore.Qt.WidgetAttribute.WA_StyledBackground, True)
-        cv = QtWidgets.QVBoxLayout(connect_body)
+        connect_body.setSizePolicy(
+            QtWidgets.QSizePolicy.Policy.Expanding,
+            QtWidgets.QSizePolicy.Policy.Minimum,
+        )
+        cv = QtWidgets.QHBoxLayout(connect_body)
+        cv.setObjectName("connectSerialNetRow")
         cv.setContentsMargins(0, 0, 0, 0)
-        cv.setSpacing(6)
+        cv.setSpacing(10)
 
         ser_box = QtWidgets.QGroupBox("Serial")
         ser_box.setObjectName("connectGroupBox")
+        ser_box.setSizePolicy(
+            QtWidgets.QSizePolicy.Policy.Expanding,
+            QtWidgets.QSizePolicy.Policy.Minimum,
+        )
         sf = QtWidgets.QFormLayout(ser_box)
+        sf.setVerticalSpacing(6)
+        sf.setFieldGrowthPolicy(
+            QtWidgets.QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow
+        )
         row = QtWidgets.QHBoxLayout()
         row.addWidget(self.com_cb, 1)
         row.addWidget(self.refresh_btn)
@@ -230,7 +244,12 @@ class BridgeWindowStandard(BridgeLogicMixin, QtWidgets.QWidget):
 
         net_box = QtWidgets.QGroupBox("Network (UDP listen)")
         net_box.setObjectName("connectGroupBox")
+        net_box.setSizePolicy(
+            QtWidgets.QSizePolicy.Policy.Expanding,
+            QtWidgets.QSizePolicy.Policy.Minimum,
+        )
         nv = QtWidgets.QVBoxLayout(net_box)
+        nv.setSpacing(4)
         hint_net = QtWidgets.QLabel(
             "Bind address and port on this PC. Enable Advanced below for TCP or UDP remote."
         )
@@ -238,6 +257,7 @@ class BridgeWindowStandard(BridgeLogicMixin, QtWidgets.QWidget):
         hint_net.setObjectName("tabHint")
         nv.addWidget(hint_net)
         uf = QtWidgets.QFormLayout()
+        uf.setVerticalSpacing(6)
         uf.addRow("Listen host:", self.udp_host)
         uf.addRow("Listen port:", self.udp_port)
         nv.addLayout(uf)
@@ -250,76 +270,22 @@ class BridgeWindowStandard(BridgeLogicMixin, QtWidgets.QWidget):
         nv.addLayout(sink_row)
         nv.addWidget(self.chk_advanced_net)
         nv.addWidget(self._advanced_net)
-        embed_connection_hub_on_connect_body(self, connect_body, [ser_box, net_box])
-        cv.addStretch(1)
-
-        connect_scroll = QtWidgets.QScrollArea()
-        connect_scroll.setObjectName("connectSectionScroll")
-        connect_scroll.setWidgetResizable(True)
-        connect_scroll.setFrameShape(QtWidgets.QFrame.Shape.NoFrame)
-        connect_scroll.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        connect_scroll.setAttribute(QtCore.Qt.WidgetAttribute.WA_StyledBackground, True)
-        connect_scroll.viewport().setObjectName("connectSectionScrollViewport")
-        connect_scroll.viewport().setAttribute(QtCore.Qt.WidgetAttribute.WA_StyledBackground, True)
-        connect_scroll.setWidget(connect_body)
-        connect_scroll.setMinimumHeight(180)
-        connect_scroll.setSizePolicy(
-            QtWidgets.QSizePolicy.Policy.Expanding,
-            QtWidgets.QSizePolicy.Policy.Expanding,
-        )
-        return connect_scroll
-
-    def _wrap_standard_connect_shell(self, connect_scroll: QtWidgets.QScrollArea) -> QtWidgets.QWidget:
-        try:
-            shell = load_standard_connect_shell(self)
-            sub = shell.findChild(QtWidgets.QLabel, "appSubtitle")
-            if sub is not None:
-                sub.setText(f"v{__version__} — Network ↔ serial (UDP/TCP NMEA)")
-            status_host = shell.findChild(QtWidgets.QWidget, "statusBannerHost")
-            if status_host is not None:
-                host_lay = QtWidgets.QVBoxLayout(status_host)
-                host_lay.setContentsMargins(0, 0, 0, 0)
-                host_lay.addWidget(self.status_banner)
-            panel_host = shell.findChild(QtWidgets.QWidget, "connectPanelHost")
-            if panel_host is not None:
-                panel_lay = QtWidgets.QVBoxLayout(panel_host)
-                panel_lay.setContentsMargins(0, 0, 0, 0)
-                panel_lay.addWidget(connect_scroll, 1)
-            shell.setSizePolicy(
-                QtWidgets.QSizePolicy.Policy.Expanding,
-                QtWidgets.QSizePolicy.Policy.Expanding,
-            )
-            return shell
-        except LayoutLoadError:
-            return self._build_standard_shell_programmatic(connect_scroll)
-
-    def _build_standard_shell_programmatic(
-        self, connect_scroll: QtWidgets.QScrollArea
-    ) -> QtWidgets.QWidget:
-        wrap = QtWidgets.QWidget()
-        wrap.setObjectName("connectSectionBody")
-        wrap.setAttribute(QtCore.Qt.WidgetAttribute.WA_StyledBackground, True)
-        lay = QtWidgets.QVBoxLayout(wrap)
-        lay.setContentsMargins(10, 8, 10, 8)
-        lay.setSpacing(6)
-        sub = QtWidgets.QLabel(f"v{__version__} — Network ↔ serial (UDP/TCP NMEA)")
-        sub.setObjectName("appSubtitle")
-        sub.setWordWrap(True)
-        lay.addWidget(sub)
-        lay.addWidget(self.status_banner)
-        lay.addWidget(connect_scroll, 1)
-        return wrap
+        cv.addWidget(ser_box, 1)
+        cv.addWidget(net_box, 1)
+        return connect_body
 
     def _on_ui_ready(self) -> None:
         self._set_status_banner("stopped", "Stopped", "Load a preset or set COM/UDP, then Start.")
         self._refresh_intent_hint()
-        self._restore_ntrip_prefs()
         self._focus_connect_tab()
 
     def showEvent(self, event: QtGui.QShowEvent) -> None:
         super().showEvent(event)
         self._schedule_connect_reflow(0)
         self._schedule_connect_reflow(60)
+        from ui.connect_qr_overlay import schedule_qr_on_window_show
+
+        schedule_qr_on_window_show(self)
 
     def resizeEvent(self, event: QtGui.QResizeEvent) -> None:
         super().resizeEvent(event)
@@ -336,6 +302,11 @@ class BridgeWindowStandard(BridgeLogicMixin, QtWidgets.QWidget):
                 self._schedule_connect_reflow(0)
                 self._schedule_connect_reflow(48)
         return super().eventFilter(watched, event)
+
+    def _on_main_tab_changed_for_qr(self) -> None:
+        from ui.connect_qr_overlay import schedule_refresh_connect_qr_overlay
+
+        schedule_refresh_connect_qr_overlay(self, delay_ms=80)
 
     def _is_connect_tab_active(self) -> bool:
         tabs = getattr(self, "_main_tabs", None)

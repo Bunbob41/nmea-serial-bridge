@@ -42,6 +42,16 @@
 - `localStorage` key: `nmea-bridge-web-token` (document in OPERATOR_GUIDE)
 - On load: read token from storage if `token_required`
 
+## Layout 2.0 Phase A (v1.9.64+)
+
+- Default panel order includes **map** after Survey monitor.
+- Desktop: COM + Survey monitor + map open by default; Configuration, Tools, Discovery, Log collapsed.
+- Map panel: `grid-column: span 2` when open (≥992px); Leaflet `invalidateSize` on open/resize.
+- `run-alert`: auto-hide ~6s; cleared when `/status.running` conflicts with message text.
+- Discovery **Serial ports** section hidden ≥992px (COM & ports is canonical).
+
+See `plan-layout-2.0.md` for optional Phase B (ops band + two-column shell).
+
 ## Out of scope (UI)
 
 - NTRIP, fan-out, TCP advanced editors

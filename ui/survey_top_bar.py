@@ -36,7 +36,7 @@ TOPBAR_SHORT_LABEL: dict[str, str] = {
     "randomize_theme": "Rand",
     "standardize_theme": "Strd",
     "ui_editor": "UI",
-    "shortcuts": "Shortcuts",
+    "shortcuts": "Keys",
     "copy_stats": "Stats",
     "ui_switch": "Layout",
 }

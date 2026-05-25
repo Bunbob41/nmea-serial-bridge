@@ -3,9 +3,16 @@ from __future__ import annotations
 
 import unittest
 
+from PySide6 import QtWidgets
 from unittest.mock import MagicMock
 
-from ui.connect_panels import DEFAULT_CONNECT_HIDDEN, sanitize_connect_panel_hidden
+from ui.connect_panels import (
+    DEFAULT_CONNECT_HIDDEN,
+    RECOMMENDED_CONNECT_PANEL_ORDER,
+    connect_panel_layout_changed,
+    connect_toolbar_order_changed,
+    sanitize_connect_panel_hidden,
+)
 from ui.survey_top_bar import normalize_topbar_order
 from ui.ui_editor import (
     MAIN_TAB_HINTS,
@@ -39,12 +46,42 @@ class TestUiEditor(unittest.TestCase):
         raw = ["view", "demo", "hidden_tabs", "hud", "ui_editor"]
         self.assertEqual(migrate_topbar_order(raw), normalize_topbar_order(raw))
 
-    def test_default_connect_hidden_includes_ntrip(self) -> None:
-        self.assertIn("ntrip", DEFAULT_CONNECT_HIDDEN)
+    def test_recommended_connect_order_puts_connection_second(self) -> None:
+        self.assertEqual(RECOMMENDED_CONNECT_PANEL_ORDER[0], "run")
+        self.assertEqual(RECOMMENDED_CONNECT_PANEL_ORDER[1], "connection")
+
+    def test_ui_editor_dialog_builds(self) -> None:
+        app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+        from ui.ui_editor import UiEditorDialog
+
+        class W(QtWidgets.QWidget):
+            _ui_mode = "standard"
+            _connect_panel_widgets = {
+                "run": QtWidgets.QWidget(),
+                "connection": QtWidgets.QWidget(),
+            }
+            _tab_catalog = {
+                "main_tabs": {
+                    "Connect": (QtWidgets.QWidget(), ""),
+                    "Log": (QtWidgets.QWidget(), ""),
+                    "Tools": (QtWidgets.QWidget(), ""),
+                }
+            }
+            _tab_hidden = {"main_tabs": set()}
+
+        dlg = UiEditorDialog(W())
+        self.assertGreaterEqual(dlg._tabs.count(), 3)
+
+    def test_ntrip_not_in_connect_panel_catalog(self) -> None:
+        from ui.connect_panels import CONNECT_PANEL_KEYS, OMITTED_CONNECT_PANELS
+
+        self.assertNotIn("ntrip", CONNECT_PANEL_KEYS)
+        self.assertIn("ntrip", OMITTED_CONNECT_PANELS)
+        self.assertNotIn("ntrip", DEFAULT_CONNECT_HIDDEN)
 
     def test_required_connect_panels_never_hidden(self) -> None:
-        out = sanitize_connect_panel_hidden(["connection", "ntrip", "run"])
-        self.assertEqual(out, ["ntrip"])
+        out = sanitize_connect_panel_hidden(["connection", "hint", "run"])
+        self.assertEqual(out, ["hint"])
 
     def test_connect_panel_rows_keep_required_visible(self) -> None:
         rows = build_connect_panel_editor_rows("standard")
@@ -58,7 +95,28 @@ class TestUiEditor(unittest.TestCase):
         self.assertIn("ui_editor", ids)
         self.assertIn("expand_all", ids)
         self.assertIn("collapse_all", ids)
-        self.assertIn("reset_sizes", ids)
+        self.assertNotIn("reset_sizes", ids)
+
+    def test_connect_layout_changed_only_when_order_or_hidden_differs(self) -> None:
+        prefs = {
+            "order": ["run", "connection", "hint"],
+            "hidden": ["quick_log"],
+        }
+        self.assertFalse(
+            connect_panel_layout_changed(
+                ["run", "connection", "hint"], ["quick_log"], prefs
+            )
+        )
+        self.assertTrue(
+            connect_panel_layout_changed(
+                ["connection", "run", "hint"], ["quick_log"], prefs
+            )
+        )
+        self.assertFalse(
+            connect_toolbar_order_changed(
+                ["ui_editor", "expand_all", "collapse_all"], prefs
+            )
+        )
 
     def test_main_tab_rows_use_tab_names_not_empty_tooltips(self) -> None:
         catalog = {

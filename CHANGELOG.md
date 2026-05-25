@@ -3,6 +3,351 @@
 High-level notes for **this fork / branch** (`feature/multi-ui-layouts-v0.5`).  
  Version = `version.py` / Git tag when you run `.\release.ps1` or tag manually.
 
+## v1.9.85
+
+- **Product Demo — session restore** — Opening **View → Product demo** snapshots your COM, network, NMEA, preset, and bridge run/stop state; closing the presenter restores it within a few seconds. Demo steps no longer write presets or recent sessions while presenting. Status banner shows **Demonstration** while the dialog is open. **Reset demo script** rewinds the presenter to Welcome without touching Connect.
+
+## v1.9.84
+
+- **Tools → Phone — port ▲▼** — Web API port step buttons use a visible button strip and triangle arrows (dark/light themes); no more invisible controls on the right.
+- **Connect toolbar** — Removed **Reset sizes** (disclosure layout no longer uses splitters; button had no effect). Saved toolbar prefs drop `reset_sizes` automatically.
+
+## v1.9.83
+
+- **Tools → Phone — QR panel** — Embedded Phone-tab QR refreshes when prefs load (no stale “Generate a token first” while a token exists). Floating Connect QR hides on **Tools → Phone** so it does not stack on the built-in QR; it returns on Connect/Log.
+
+## v1.9.82
+
+- **Tools → Phone — Web API port spin** — Port field is compact with ▲▼ pinned on the right edge (no wide empty gap). Unlock uses read-only lock instead of disabling the whole control so both step buttons work. Port prefs save immediately when you change the value.
+
+## v1.9.81
+
+- **Standard Connect — Serial & network side-by-side** — **Serial** and **Network (UDP listen)** sit in one row (like your layout mockup) so both are visible without scrolling the connection section. Default panel height targets updated for the shorter block.
+
+## v1.9.80
+
+- **Tools → Phone — Web API port lock** — Dashboard port spin box ignores the mouse wheel (scroll moves the page, not the port). Port is locked by default; check **Unlock port (10 s)** to edit, then it auto-locks again.
+
+## v1.9.79
+
+- **Presets + NMEA mode** — Tools → Presets **Save** / **Save as…** now stores the current **Passthrough / Strict / Raw** choice from Tools → NMEA (and strict sentence-type checkboxes). Loading a preset restores those radios; log line includes the mode. Existing presets without `nmea_mode` default to passthrough on load.
+
+## v1.9.78
+
+- **Web COM & ports + Discovery Select** — Fixed the same silent click block on COM rows while Running (`pointer-events: none`). Row/Select taps always reach the handler: network updates live, COM shows **Stop first** with a visible warning. One click delegate on the dashboard panel root; token errors show in the relevant section.
+
+## v1.9.77
+
+- **Web Discovery Select** — Network adapter rows and **Select** work again (including while the bridge is running). COM rows still require **Stop** first. Clicks use delegated handlers so row taps register reliably on phone layout.
+
+## v1.9.76
+
+- **Web dashboard (phone)** — Discovery adapter rows use a 3-line grid (name, host:port, mode tag) so preset labels no longer overlap IP text. **Expand log** pins the log panel under the Start/Stop header for most of the screen (Ctrl+F5 to pick up CSS).
+
+## v1.9.75
+
+- **Phone QR — all layouts** — Floating setup QR matches Field behavior everywhere (Standard, Minimal, Log-first): always visible when Web API + LAN bind are on, centered in the log area on startup, stays put across layout switches. Position is saved once in **global** prefs (normalized) so drag-to-move applies to every layout.
+
+## v1.9.74
+
+- **Field layout — phone QR** — Floating setup QR defaults to the **center of the live log** on startup (not the bottom-right). Stays centered when you resize until you drag it; your position is still saved per layout.
+
+## v1.9.73
+
+- **Web API port bind (WinError 10048)** — Restarts are serialized: wait for the old listener to release the port before starting again, skip duplicate overlapping restarts, and show a clear **Port N is already in use** message in Tools → Phone instead of repeated uvicorn errors.
+
+## v1.9.72
+
+- **Tools → Phone — Web API port** — Port spin arrows restart the API immediately (no need to press Enter). A live line shows **This PC dashboard: http://127.0.0.1:PORT/**; Phone dashboard URL port stays in sync. **Open dashboard** uses localhost when LAN bind is off.
+
+## v1.9.71
+
+- **Web dashboard rolled back to Layout 1.0** — Live `web/static/` restored from `web/static/layouts/1.0/` (pre–Layout 2.0). Offline UI no longer shows the false “Bridge is running” banner when the API is down.
+
+## v1.9.70
+
+- **Web dashboard offline state** — When the API is unreachable, the UI no longer shows the misleading “Bridge is running” lock on Configuration; forms stay disabled with the correct **Backend offline** message and recovery hint.
+
+## v1.9.69
+
+- **Web COM picker** — Selecting COM7 no longer snaps back to COM1: hub “last known good” is applied before explicit `com_port` in `PATCH /config`, and the dashboard uses **configured** vs **runtime** COM (`configured_com_port` vs open serial while Running).
+
+## v1.9.68
+
+- **Tools → Presets** — **Save as…** works while the bridge is running (writes a new named preset only). **Delete** stays blocked until Stop, with a clear message and Yes/No confirm. Preset name dialog uses a raised modal so it is not hidden behind the main window.
+
+## v1.9.67
+
+- **Connect status banner** — “Stopped / Load a preset…” text bumped +3 pt (title 9 pt, detail 8.5 pt) so it stays compact but easier to read than v1.9.65–66.
+
+## v1.9.66
+
+- **Web dashboard — Select + layout** — COM & ports and Discovery **Select** / row tap use delegated clicks (fixes no-op on some browsers). Network select sends `udp_listen_host`/`port` plus `hub_device_id` so presets and NIC rows apply when stopped. **Tailscale** appears from `Unknown adapter Tailscale` in ipconfig and from `tailscale ip -4` when missing. **Panel ▲▼ order** follows saved DOM order on desktop grid. **layout-desktop** / **layout-mobile** body classes tighten spacing on PC vs phone.
+
+## v1.9.65
+
+- **Connect status banner (Standard UI)** — “Stopped / Load a preset…” box is ~40% smaller: tighter padding, smaller type, and vertical size capped so it takes less room above the green panel headers.
+
+## v1.9.64
+
+- **Web dashboard Layout 2.0 Phase A (PC polish)** — Map in default panel order; desktop opens COM + Survey monitor + map (setup panels collapsed). Map spans two columns when open; Leaflet resizes on panel open/resize. Run-alert auto-hides and clears when status disagrees (no more “Bridge stopped” under Running). Discovery serial list hidden on wide screens (use COM & ports).
+
+## v1.9.63
+
+- **Web dashboard: position map (GGA/RMC)** — Collapsible **Position map** panel with **Show map** toggle. Live lat/lon from `/status` (`position_lat`, `position_lon`, `position_source`, `position_stale`); vendored Leaflet + OpenStreetMap tiles when online. `bridge.navigation_position()` reserved for a future Survey HUD map (no Qt map in this release).
+
+## v1.9.62
+
+- **Fix: bridge thread crash after UDP/GGA** — Bridge thread errors now log a full traceback (not only `repr`). Stats/status Qt callbacks and the UDP datagram handler are wrapped so a bad UI callback cannot tear down the asyncio loop after NMEA is received.
+
+## v1.9.61
+
+- **Fix: Connect section styles (Pill / Seamless / Outline / Accent)** — Section style from Tools → Theme now visibly updates Run and Serial & network headers. Fixed early no-op apply before the panel host existed, disabled AutoRaise on disclosure buttons (stylesheet backgrounds were ignored), repolish the full panel tree on change, and re-apply after theme swaps.
+
+## v1.9.60
+
+- **Fix: COM/Baud scroll wheel (complete block)** — Wheel input is fully disabled on COM, Baud, and TCP reconnect controls (not only when unfocused). Focus policy is ClickFocus so hover-scroll no longer changes values under Qt StrongFocus.
+- **Fix: COM/Baud dropdown arrow clipping** — Connect serial combos get min height, drop-down subcontrol padding, and form row spacing so the arrow is not cut off by rounded styling.
+
+## v1.9.59
+
+- **Fix: scroll wheel on COM/Baud** — COM and Baud dropdowns (and TCP reconnect delay) ignore the mouse wheel unless you click into them first, so scrolling the Connect tab no longer changes values accidentally.
+
+## v1.9.58
+
+- **Connection hub → Diagnostics** — Card grid moved to **Tools → Diagnostics** (two visible rows + scroll). **Connect → Serial & network** is COM/UDP settings only — no hub splitter fighting your layout.
+- **Hub pick vs manual COM** — Editing Connect fields still overrides a hub card pick on Start (same as before, without Manual override checkbox).
+
+## v1.9.57
+
+- **Fix: Connect empty gap / clipped hub** — Stopped stretching the panel stack to fill the viewport (that left a tall dead zone above the COM cards). Connection hub keeps ~280px+ for the card grid when Manual override is off; scroll the Connect tab for more sections.
+
+## v1.9.56
+
+- **Fix: Connection hub narrow column** — Removed the extra scroll wrapper around Serial/network (one Connect tab scroll only). Hub card grid now measures the real tab width so COM cards use the full row instead of a thin strip on the left.
+
+## v1.9.55
+
+- **Fix: Connect layout on startup** — Ignores junk saved panel heights from the old splitter (e.g. 26–48px) that squashed **Serial & network**; multi-open sections size naturally with full-width scroll. Click **Reset sizes** once if prefs were already corrupted.
+
+## v1.9.54
+
+- **Fix: Connect narrow column** — Expanding sections (or startup with Run + Serial open) no longer leaves the scroll page stuck at a tiny fixed width from a prior **Collapse all**; viewport resize clears the width lock so Connect uses the full tab again.
+
+## v1.9.53
+
+- **Fix: Connect startup / Expand all** — Default **Run** + **Serial & network** layout no longer caps section height or pins the outer scroll page; the connection hub sizes from content so cards are not trapped in a tiny inner scrollbar. One deferred relayout pass after first paint.
+
+## v1.9.52
+
+- **Fix: Expand all** — Multiple open Connect sections stack at their natural heights (no bottom stretch or vertical `Expanding` fight), so **Run** and **Serial & network** no longer overlap or clip the connection hub. Scroll area uses a fixed content height when two or more sections are open.
+
+## v1.9.51
+
+- **Fix: Collapse all (layout)** — Connect sections use a vertical stack instead of a `QSplitter` inside a resizable scroll area, so **Collapse all** keeps normal header strips without squashing into one line or leaving a tall empty gap. Scroll area turns off `widgetResizable` when every section is collapsed so height matches content.
+
+## v1.9.50
+
+- **Fix: Collapse all (again)** — Scroll-area geometry no longer clears the compact height lock, so sections stack as normal strips instead of a thin red stack with a huge empty void below.
+
+## v1.9.49
+
+- **Fix: Connect Collapse all** — Splitter height is pinned before `setSizes` so collapsed strips stack compactly (no tall dead gap). Thinner handles when all collapsed.
+- **Fix: QR flicker** — Debounced refresh; skips redundant hide/show during layout reflow.
+- **Fix: Web API restart** — Debounced server stop/start (port spinner no longer kills the server on every click); clearer log lines for browser URL and LAN token.
+
+## v1.9.48
+
+- **Fix: UI editor / restore defaults crash** — Rebuilding Connect panels no longer deletes `intent_hint` and other shared widgets (`libshiboken … already deleted`).
+
+## v1.9.47
+
+- **Fix: Connect collapse spacing** — Collapsed sections no longer leave a tall empty gap with a floating splitter handle; **Collapse all** stacks compact strips. Expanded sections still absorb slack; multi-open layouts keep draggable handles.
+
+## v1.9.46
+
+- **Fix: UI editor desync** — Apply no longer rebuilds Connect panels unless section order/visibility actually changed (top bar / main tab edits stay isolated). Splitter heights clamp to the visible area so green rows are not squashed flat.
+
+## v1.9.45
+
+- **Connect QR** — Floating draggable chip on the window (no right-hand column). **Right-click → Hide**; toggle **Web API** off and on to show again. Position saved in prefs.
+- **Fix: UI editor tab reorder** — After changing main/Connect layout, panel splitters and row styles resync so **Serial & network** no longer clips.
+- **Connection hub** — Taller minimum height so hub header/cards stay below the section title.
+
+## v1.9.44
+
+- **Fix: UI editor** — Typo (`sub_l_lbl`) crashed dialog open; **UI editor** and **UI editor…** work again.
+- **Fix: Connect splitters** — Tab focus no longer resets section heights; drag handles keep your sizes (persisted on release).
+
+## v1.9.43
+
+- **Connection hub resize** — Vertical splitter between discovery cards and **Manual override** (drag the handle); sizes saved in prefs. Taller default **Serial & network** panel. Card grid scrolls horizontally when needed.
+
+## v1.9.42
+
+- **UI editor** — Wider default window (760×540) so labels are not cut off; **↑ ↓** buttons replace broken drag-reorder; clearer instructions per tab. Tab renamed **Toolbar** (was Connect toolbar).
+
+## v1.9.41
+
+- **Connect launch layout** — Version line and status banner stay **above** the collapsible sections (not buried inside **Serial & network**). That section is now COM/UDP + Connection hub only.
+
+## v1.9.40
+
+- **Fix: Connect QR crash / layout thrash** — Restored missing `recommended_qr_lane_width`; debounced QR splitter updates so enabling API + LAN no longer hides the code or bounces the Connect panels.
+
+## v1.9.39
+
+- **Connect QR default width** — Lane opens wide enough to show the full code (saved width bumped if too narrow).
+- **Connect section styles** — **Tools → Theme → Connect sections**: Pill, Seamless, Outline, Accent bar (persisted).
+- **New color themes** — **Midnight Teal** and **Arctic Day** in the theme picker.
+
+## v1.9.38
+
+- **Connect seamless layout** — Flat disclosure rows (no pill cards); QR sidebar uses a **horizontal splitter** (drag to resize, width saved). QR matches app background with white quiet zone only on the code; scales with lane width.
+
+## v1.9.37
+
+- **Connect tab QR layout** — QR uses a dedicated right column so green disclosure rows end cleanly (no overlap under the code). Subtle lane divider when API + LAN are on.
+
+## v1.9.36
+
+- **Connect tab QR (Standard)** — When **Enable Web API** and **Allow LAN / Tailscale** are both on, a compact setup QR floats top-right on **Connect** (over Run / Serial & network panels). Stays visible while sections expand/collapse; **Tools → Phone** unchanged.
+
+## v1.9.35
+
+- **Phone tab** — Web API, Tailscale/LAN URL, token, QR, and setup-link actions moved from Guide to **Tools → Phone** (2nd after Presets) in Standard, Field, and drawer layouts. Guide keeps connection workflows only. **Show QR** on by default on the Phone page; **Open dashboard in browser** button added.
+
+## v1.9.34
+
+- **Field layout** — Preset/intent hint wraps (no single-line elision); taller default control strip; wider UDP host/port fields; status bar stats use remaining width with shorter stopped text; top bar **Shortcuts** tile reads **Keys** when narrow.
+
+## v1.9.33
+
+- **Bridge thread** — Suppress benign `ConnectionResetError` (WinError 10054) asyncio callback spam on Windows/Python 3.14 when UDP/TCP peers drop.
+- **Diagnostics** — Catch spawn-setup errors in the panel instead of only printing a traceback to the terminal.
+
+## v1.9.32
+
+- **Diagnostics** — Automated checks work on PySide6 builds without `setCreateProcessArgumentsModifier` (Python 3.14 / current wheels); no-console spawn falls back to `pythonw.exe`.
+- **Connect** — Fix `QBoxLayout::insert: index 2 out of range` when embedding Connection Hub on an empty connect body layout.
+
+## v1.9.31
+
+- **Docs** — NORBIT DCT wording neutralized (no personal names in preset notes or operator doc).
+
+## v1.9.30
+
+- **NORBIT DCT** — [docs/NORBIT_DCT.md](docs/NORBIT_DCT.md) and preset notes: DCT target **depends where DCT runs** — **127.0.0.1:40810** on boat PC; **192.168.1.8:40810** from operator laptop (MikroTik PTP boat IP); **Tailscale/ZeroTier StaticIp:40810** over VPN. Bridge still listens **40810** on the boat PC.
+
+## v1.9.29
+
+- **NORBIT DCT** — Preset and [docs/NORBIT_DCT.md](docs/NORBIT_DCT.md): boat PC **UDP port 40810**; DCT and Applanix use the PC’s **local IPv4** (e.g. 192.168.1.4) or **Tailscale IP** on that port (not 10110 for this stack).
+
+## v1.9.28
+
+- **Documentation** — New [docs/GETTING_STARTED.md](docs/GETTING_STARTED.md) (install + 15-minute walkthrough), [docs/README.md](docs/README.md) index; [OPERATOR_GUIDE.md](docs/OPERATOR_GUIDE.md) and [README.md](README.md) updated for Standard `Connect | Log | Tools`, UI editor, web dashboard, Diagnostics cards, and NORBIT/NTRIP notes.
+- **Guide tab** — Buttons open Getting started / Operator guide / NORBIT DCT; in-app UDP/TCP steps match current Presets UI.
+- **Diagnostics** — Default card order puts **Automated checks** first; traffic legend card uses a compact width; **Reorder cards…** dialog enlarged with reliable drag flags.
+
+## v1.9.27
+
+- **UI editor** — Connect and Connect toolbar lists use drag-and-drop reorder (`InternalMove`); dialog opens larger and stays resizable. **Serial & network** defaults directly under **Run bridge** (legacy factory order migrates on load). Use **Restore defaults** in the Connect tab to reset section order and splitter sizes.
+
+## v1.9.26
+
+- **NTRIP hidden** — Connect tab NTRIP panel removed from Standard layout and UI editor; saved `enabled` is forced off (Applanix/iWBMSe workflows use internal RTK). `ntrip_client` remains in tree for possible future use.
+
+## v1.9.25
+
+- **NORBIT DCT preset** — Defaults for Applanix+iWBMSe stack: survey PC **192.168.1.4**, Applanix **192.168.1.150**, UDP **10110**; docs clarify Trimble **192.168.142.1** → Applanix, Bluetooth **$SDDBT** → separate DCT COM (not the bridge).
+
+## v1.9.24
+
+- **NORBIT DCT** — Built-in preset **NORBIT DCT** (boat-style LAN notes) and operator doc `docs/NORBIT_DCT.md` for INS UDP → COM → DCT positioning workflow.
+
+## v1.9.23
+
+- **Web dashboard header** — Removed empty Control panel; Start/Stop alerts show in a strip under the top bar. Live **status chip** (`COM · UDP port · Running/Stopped · Hz`) between the run buttons and connection indicator.
+
+## v1.9.22
+
+- **Web dashboard** — **Start/Stop** moved to the top bar beside the version tag; Control panel keeps status messages.
+- **Web live log NMEA filter** — Dropdown replaced with picker + **Custom…** dialog (checkbox grid like desktop). Click one type; **Shift+click** in the list to combine (e.g. GGA+RMC). Presets: All types, Survey (GGA+RMC), Clear.
+
+## v1.9.21
+
+- **Web dashboard reorder (localhost + phone)** — Same **▲▼** controls on every screen size; removed unreliable drag handles. Wide layouts no longer pin sections to fixed grid cells, so saved order applies on desktop too.
+
+## v1.9.20
+
+- **Fix — web dashboard ▲▼ reorder on portrait phone** — Removed fixed CSS `order` on sections (it ignored DOM moves in vertical layout); order now follows saved layout on all orientations. Larger ▲▼ touch targets on narrow screens.
+
+## v1.9.19
+
+- **Web live log — expand** — **Expand log** checkbox fills the dashboard (hides Control/COM/Config/etc.) for a near full-screen terminal; uncheck or tap the Live Log header to minimize and configure again. Preference saved in the browser.
+
+## v1.9.18
+
+- **Web discovery — host NICs** — Network adapters list now includes this PC’s Ethernet/Wi‑Fi/Tailscale IPv4 addresses (from `ipconfig`), not only UDP listen/presets/LAN scan.
+- **Web live log** — Filter by NMEA sentence (GGA, RMC, …) or custom substring; kind filter unchanged; filters are view-only in the browser.
+- **Web COM Select** — Tap/Select applies COM with visible confirmation, updates Active COM immediately; works without desktop Connection Hub; network select requires bridge stopped.
+- **Unlock ports copy** — COM & ports hint explains unlock probes/releases stuck COM and checks UDP listen port busy state.
+
+## v1.9.17
+
+- **COM port scan (web)** — Discovery lists **all** PC COM ports (pyserial), not only GNSS-keyword matches; **Refresh ports** calls fast `/ports/refresh` (no separate scanner app).
+- **Dashboard reorder** — Drag **⋮⋮** handles (desktop) or **▲▼** (phone) to reorder sections; order saved in the browser.
+
+## v1.9.16
+
+- **Web discovery fix (Field UI)** — COM/LAN discovery now runs without the desktop Connection Hub widget; phone Refresh ports / Discovery scan populate serial + network lists (fixes stuck 15 s timeout and empty COM dropdown).
+- **Web GNSS colors** — Survey monitor GNSS tile uses RTK/GPS/no-fix badge colors; card header strip reflects fix quality while running.
+
+## v1.9.15
+
+- **Fix** — Baud `QComboBox` startup crash (`AttributeError: text`) — all desktop paths use `read_baud_widget()` / `currentText()`.
+
+## v1.9.14
+
+- **Standard baud dropdown** — Desktop Connect and web Configuration use a fixed list (4800–460800 survey/GNSS rates); legacy custom baud values snap to the nearest preset on load.
+
+## v1.9.13
+
+- **Phone COM workflow** — New collapsible **COM & ports** section under Control (tap-to-select, Apply COM, Refresh/Unlock); all dashboard cards collapse like Survey monitor (state saved); phone order Control → COM → monitor; Live Log/Discovery collapsed by default on mobile.
+
+## v1.9.12
+
+- **GNSS status badges** — Status bar and Survey HUD GNSS fix tile use color-coded badges (green RTK 4/5, blue GPS/DGPS 1/2, red no-fix/idle) with padding and rounded corners; idle stream shows soft red with “No Data Stream”.
+
+## v1.9.11
+
+- **GNSS stale reset** — When NMEA traffic hits 0 Hz or no GGA/NMEA is parsed for 2 s, HUD/status/web GNSS fields clear (0 sats, fix quality 0, “No Data Stream”) instead of holding the last simulator values.
+
+## v1.9.10
+
+- **Web Survey monitor UX** — 2-column stat grid (larger type, like v1.8); collapsible HUD sections (Connection, Sentence rates, Session, Backpressure) with one-line summaries when collapsed; mobile defaults hide Session/Backpressure until expanded.
+
+## v1.9.9
+
+- **Web Survey monitor** — `/status` exposes HUD metrics (inject Hz, session line totals, per-direction drops/rejects/queues, GNSS, transport OK). Dashboard uses a full-width monitor strip and denser layout (less empty space in status/control/discovery cards).
+
+## v1.9.8
+
+- **Web Live Log** — removed **Cards** layout trial; **Terminal** and **Table** only.
+
+## v1.9.7
+
+- **Phone setup link / QR use Tailscale IP, not 127.0.0.1** — LAN mode blocks localhost in QR and Copy phone setup link; **Detect Tailscale IP** button; Phone dashboard URL field strips pasted `#bridge-token` fragments. Renamed visible **Remote control token** label.
+
+## v1.9.6
+
+- **iPhone web UX** — clearer token onboarding copy; Copy failures on HTTP show a helpful message; Share link fallback when copy is blocked.
+
+## v1.9.5
+
+- **Fix: phone web UI token handoff** — setup links (`#bridge-token=…`) apply again (JavaScript `split` limit bug broke hash parsing). Token Tools panel shows whenever LAN bind is enabled, not only after a token exists in prefs.
+- **Fix: PC Guide Web controls** — **Web & phone** is the first Guide tab with API token, setup links, and QR (no longer buried above long workflow docs).
+
 ## v1.9.4
 
 - **Web dashboard — Live Log** — `GET /logs` mirrors the desktop live log; new **Live Log** card with three trial layouts (**Terminal**, **Cards**, **Table**), filter, auto-scroll, pause view, and clear. Layout choice persists in browser localStorage.

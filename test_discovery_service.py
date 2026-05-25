@@ -50,6 +50,62 @@ class TestScanSerialPorts(unittest.TestCase):
         self.assertEqual(devs, [])
 
 
+class TestHostInterfaces(unittest.TestCase):
+    def test_parse_ipconfig(self) -> None:
+        from network_scanner import list_host_ipv4_interfaces
+
+        sample = """
+Ethernet adapter Ethernet:
+
+   IPv4 Address. . . . . . . . . . . : 192.168.1.42
+Wireless LAN adapter Wi-Fi:
+
+   IPv4 Address. . . . . . . . . . . : 10.0.0.8
+"""
+        ifaces = list_host_ipv4_interfaces(ipconfig_output=sample)
+        addrs = {i.address for i in ifaces}
+        self.assertIn("192.168.1.42", addrs)
+        self.assertIn("10.0.0.8", addrs)
+
+    def test_merge_host_interface_cards(self) -> None:
+        from network_scanner import HostIpv4Interface
+
+        from discovery_service import build_network_cards, merge_host_interface_cards
+
+        base = build_network_cards(default_udp_port=10110)
+        merged = merge_host_interface_cards(
+            base,
+            [HostIpv4Interface("Ethernet", "192.168.50.2")],
+            default_udp_port=10110,
+        )
+        self.assertGreater(len(merged), len(base))
+        self.assertTrue(any(c.host == "192.168.50.2" for c in merged))
+
+    def test_resolve_iface_device_id(self) -> None:
+        from discovery_service import resolve_network_bind_from_device_id
+
+        bind = resolve_network_bind_from_device_id("net:iface:Ethernet:192.168.1.10")
+        self.assertEqual(bind, ("192.168.1.10", 10110))
+
+    def test_tailscale_unknown_adapter_ipconfig(self) -> None:
+        from network_scanner import list_host_ipv4_interfaces
+
+        sample = """
+Unknown adapter Tailscale:
+
+   IPv4 Address. . . . . . . . . . . : 100.64.0.1
+"""
+        ifaces = list_host_ipv4_interfaces(ipconfig_output=sample)
+        addrs = {i.address for i in ifaces}
+        self.assertIn("100.64.0.1", addrs)
+
+    def test_resolve_tailscale_device_id(self) -> None:
+        from discovery_service import resolve_network_bind_from_device_id
+
+        bind = resolve_network_bind_from_device_id("net:tailscale:100.108.1.2")
+        self.assertEqual(bind, ("100.108.1.2", 10110))
+
+
 class TestNetworkCards(unittest.TestCase):
     def test_running_peer_count(self) -> None:
         cards = build_network_cards(
@@ -68,7 +124,9 @@ class TestNetworkCards(unittest.TestCase):
 class TestBuildSnapshot(unittest.TestCase):
     def test_returns_counts(self) -> None:
         with patch("discovery_service.serial.tools.list_ports.comports", return_value=[]):
-            snap, counts = build_snapshot()
+            with patch("network_scanner.list_host_ipv4_interfaces", return_value=[]):
+                with patch("discovery_service.merge_tailscale_bind_cards", side_effect=lambda c, **_: c):
+                    snap, counts = build_snapshot()
         self.assertIsInstance(counts, dict)
         self.assertEqual(len(snap.network_cards), 1)
 

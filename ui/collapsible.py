@@ -20,14 +20,25 @@ def reflow_window(window: QtWidgets.QWidget) -> None:
         window.resize(max(window.minimumWidth(), hint.width()), hint.height())
 
 
-def enable_dialog_content_fit(dialog: QtWidgets.QDialog, *, min_width: int = 0) -> None:
-    """Keep dialog height/width tied to visible content (no empty area after collapse)."""
+def enable_dialog_content_fit(
+    dialog: QtWidgets.QDialog,
+    *,
+    min_width: int = 0,
+    min_height: int = 0,
+    fixed: bool = True,
+) -> None:
+    """Size dialog to content (fixed) or set minimum size only (resizable)."""
     lay = dialog.layout()
     if lay is None:
         return
-    lay.setSizeConstraint(QtWidgets.QLayout.SizeConstraint.SetFixedSize)
+    if fixed:
+        lay.setSizeConstraint(QtWidgets.QLayout.SizeConstraint.SetFixedSize)
+    elif min_width > 0 or min_height > 0:
+        lay.setSizeConstraint(QtWidgets.QLayout.SizeConstraint.SetMinAndMaxSize)
     if min_width > 0:
         dialog.setMinimumWidth(min_width)
+    if min_height > 0:
+        dialog.setMinimumHeight(min_height)
 
 
 class DisclosureRow(QtWidgets.QWidget):

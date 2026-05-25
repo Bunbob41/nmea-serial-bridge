@@ -32,6 +32,36 @@ class TestPathPresets(unittest.TestCase):
                 self.assertEqual(d["pc_ip"], "10.0.0.5")
                 self.assertIn("My boat", bc.list_preset_names())
 
+    def test_preset_saves_nmea_mode_and_strict_types(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            user_path = Path(tmp) / "path_presets.json"
+            with mock.patch.object(bc, "USER_PRESETS_PATH", user_path):
+                bc.save_preset(
+                    "Strict bench",
+                    {
+                        "com": "COM8",
+                        "baud": 115200,
+                        "udp_host": "0.0.0.0",
+                        "udp_port": 10110,
+                        "nmea_mode": "strict",
+                        "nmea_types": ["GGA", "RMC"],
+                    },
+                )
+                d = bc.load_preset("Strict bench")
+                self.assertEqual(d["nmea_mode"], "strict")
+                self.assertEqual(d["nmea_types"], ["GGA", "RMC"])
+                bc.save_preset(
+                    "Raw RTCM",
+                    {
+                        "com": "COM9",
+                        "baud": 115200,
+                        "udp_host": "0.0.0.0",
+                        "udp_port": 10110,
+                        "nmea_mode": "raw",
+                    },
+                )
+                self.assertEqual(bc.load_preset("Raw RTCM")["nmea_mode"], "raw")
+
     def test_legacy_desk_migrates_to_named(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             user_path = Path(tmp) / "path_presets.json"
@@ -106,6 +136,18 @@ class TestPathPresets(unittest.TestCase):
                     self.assertEqual(bc.list_preset_names(), ["Alpha", "Bravo", "Charlie"])
                     self.assertTrue(bc.reorder_preset_names(["Charlie", "Alpha", "Bravo"]))
                     self.assertEqual(bc.list_preset_names(), ["Charlie", "Alpha", "Bravo"])
+
+    def test_builtin_norbit_dct_preset(self) -> None:
+        builtins = bc._builtin_presets()
+        self.assertIn("NORBIT DCT", builtins)
+        d = builtins["NORBIT DCT"]
+        self.assertEqual(d["pc_ip"], "192.168.1.4")
+        self.assertEqual(d["ins_ip"], "192.168.1.150")
+        self.assertEqual(d["udp_port"], 40810)
+        self.assertIn("APPLANIX", d.get("notes", "").upper())
+        self.assertIn("40810", d.get("notes", ""))
+        self.assertIn("192.168.1.8", d.get("notes", ""))
+        self.assertIn("127.0.0.1", d.get("notes", ""))
 
 
 if __name__ == "__main__":

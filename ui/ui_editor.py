@@ -1,11 +1,10 @@
 """Workspace UI editor — top bar tiles, Connect sections, and main tabs."""
 from __future__ import annotations
 
-from typing import Optional
+from typing import Callable, Optional
 
-from PySide6 import QtCore, QtWidgets
+from PySide6 import QtCore, QtGui, QtWidgets
 
-from ui.collapsible import enable_dialog_content_fit, reflow_window
 from ui.connect_panels import (
     CONNECT_TOOLBAR_KEYS,
     CONNECT_TOOLBAR_LABELS,
@@ -24,7 +23,6 @@ from ui.ui_prefs import (
     save_tab_order,
 )
 
-# Friendly names for top-bar chips (key → title).
 TOP_BAR_CHIP_LABELS: dict[str, str] = {
     "view": "View menu",
     "presets": "Presets",
@@ -39,44 +37,43 @@ TOP_BAR_CHIP_LABELS: dict[str, str] = {
     "ui_switch": "Layout (double-click toggles Standard / Field)",
 }
 
-# Short descriptions for main-window tabs (catalog stores tooltips, often empty at build).
 CONNECT_PANEL_HINTS: dict[str, str] = {
     "run": "Start/Stop",
-    "hint": "Intent / preset guidance line",
-    "quick_log": "Compact live log on Connect",
-    "quick_terminal": "Bench output on Connect",
-    "connection": "COM, baud, UDP/TCP listen",
-    "ntrip": "Optional caster corrections (mux to serial)",
+    "hint": "Intent / preset guidance",
+    "quick_log": "Compact live log",
+    "quick_terminal": "Bench script output",
+    "connection": "COM, baud, UDP/TCP",
 }
 CONNECT_TOOLBAR_HINTS: dict[str, str] = {
-    "ui_editor": "Open layout/visibility editor for tabs and Connect sections",
-    "expand_all": "Expand every Connect section",
-    "collapse_all": "Collapse every Connect section",
-    "reset_sizes": "Reset Connect splitter heights to defaults",
+    "ui_editor": "Open this layout editor",
+    "expand_all": "Expand all Connect sections",
+    "collapse_all": "Collapse all Connect sections",
 }
 
 MAIN_TAB_HINTS: dict[str, str] = {
-    "Connect": "COM, UDP/TCP, Start/Stop, collapsible panels",
-    "Log": "Live bridge log, presets, pause, clear, save",
-    "Presets": "Named COM/UDP presets and boat LAN reference",
-    "NMEA": "Passthrough, strict filter, or raw binary",
-    "Theme": "Colors, randomize, favorites, seed lock",
-    "Guide": "Transparent usage notes, strengths, and current limitations",
-    "Terminal": "Inject test NMEA to serial or network",
-    "Diagnostics": "File log, bench/boat checklists, layout tools",
+    "Connect": "COM, UDP/TCP, Start/Stop",
+    "Log": "Bridge log and filters",
+    "Tools": "Presets, Phone, NMEA, Theme, Guide",
+    "Presets": "Named COM/UDP presets",
+    "NMEA": "Passthrough, strict, or raw",
+    "Theme": "Colors and Connect section style",
+    "Guide": "UDP/TCP workflows",
+    "Phone": "Web API, token, QR",
+    "Terminal": "Inject test NMEA",
+    "Diagnostics": "Bench checks and file log",
 }
 
-# First-launch top bar: hide theme toys; keep editor visible.
 DEFAULT_TOPBAR_HIDDEN_CHIPS: frozenset[str] = frozenset(
     {"randomize_theme", "standardize_theme"}
 )
 
-_LIST_OBJECT = "uiEditorList"
-_ROW_MIN_H = 34
+_EDITOR_DIALOG_MIN_W = 680
+_EDITOR_DIALOG_MIN_H = 460
+_EDITOR_DIALOG_DEFAULT_W = 760
+_EDITOR_DIALOG_DEFAULT_H = 540
 
 
 def migrate_topbar_order(order: list[str]) -> list[str]:
-    """Drop removed chips; map legacy demo → ui_editor."""
     return normalize_topbar_order(order)
 
 
@@ -95,7 +92,6 @@ def build_main_tab_editor_rows(
     ui_mode: str = "standard",
     tabs_key: str = "main_tabs",
 ) -> list[tuple[str, str, str, bool, bool]]:
-    """Build list rows: (id, title, subtitle, visible, enabled)."""
     saved = load_tab_order(ui_mode, tabs_key)
     order = [n for n in saved if n in catalog]
     for name in catalog:
@@ -110,7 +106,6 @@ def build_main_tab_editor_rows(
 
 
 def build_connect_panel_editor_rows(ui_mode: str) -> list[tuple[str, str, str, bool, bool]]:
-    """Connect splitter sections: (id, title, subtitle, visible, enabled)."""
     prefs = load_connect_panel_prefs(ui_mode)
     order = [str(k).strip() for k in prefs.get("order", []) if str(k).strip() in CONNECT_PANEL_KEYS]
     for key in CONNECT_PANEL_KEYS:
@@ -145,21 +140,87 @@ def build_connect_toolbar_rows(ui_mode: str) -> list[tuple[str, str, str, bool, 
     return rows
 
 
-def _configure_editor_list(list_widget: QtWidgets.QListWidget) -> None:
-    list_widget.setObjectName(_LIST_OBJECT)
-    list_widget.setSpacing(2)
-    list_widget.setAlternatingRowColors(True)
-    list_widget.setMinimumHeight(160)
+class _EditorRow(QtWidgets.QFrame):
+    """One checklist row with ↑ ↓ reorder buttons."""
+
+    def __init__(
+        self,
+        key: str,
+        title: str,
+        subtitle: str,
+        *,
+        visible: bool,
+        hideable: bool,
+        on_move: Callable[[str, int], None],
+        parent: Optional[QtWidgets.QWidget] = None,
+    ) -> None:
+        super().__init__(parent)
+        self.setObjectName("uiEditorRow")
+        self._key = key
+        self._on_move = on_move
+        row_lay = QtWidgets.QHBoxLayout(self)
+        row_lay.setContentsMargins(8, 6, 8, 6)
+        row_lay.setSpacing(8)
+
+        self._chk = QtWidgets.QCheckBox()
+        self._chk.setChecked(visible)
+        self._chk.setEnabled(hideable)
+        if hideable:
+            self._chk.setToolTip(f"Show «{title}»")
+        else:
+            self._chk.setChecked(True)
+            self._chk.setToolTip("Always shown (reorder with ↑ ↓ only)")
+        row_lay.addWidget(self._chk, 0)
+
+        text_col = QtWidgets.QVBoxLayout()
+        text_col.setSpacing(2)
+        title_lbl = QtWidgets.QLabel(title)
+        title_lbl.setWordWrap(True)
+        title_lbl.setObjectName("uiEditorRowTitle")
+        text_col.addWidget(title_lbl)
+        if subtitle.strip():
+            sub_lbl = QtWidgets.QLabel(subtitle.strip())
+            sub_lbl.setWordWrap(True)
+            sub_lbl.setObjectName("tabNote")
+            text_col.addWidget(sub_lbl)
+        row_lay.addLayout(text_col, 1)
+
+        btn_col = QtWidgets.QVBoxLayout()
+        btn_col.setSpacing(2)
+        self._btn_up = QtWidgets.QToolButton()
+        self._btn_up.setText("↑")
+        self._btn_up.setToolTip("Move up")
+        self._btn_up.setFixedSize(32, 26)
+        self._btn_up.clicked.connect(lambda: self._on_move(self._key, -1))
+        self._btn_down = QtWidgets.QToolButton()
+        self._btn_down.setText("↓")
+        self._btn_down.setToolTip("Move down")
+        self._btn_down.setFixedSize(32, 26)
+        self._btn_down.clicked.connect(lambda: self._on_move(self._key, 1))
+        btn_col.addWidget(self._btn_up)
+        btn_col.addWidget(self._btn_down)
+        row_lay.addLayout(btn_col, 0)
+
+    def set_move_enabled(self, *, up: bool, down: bool) -> None:
+        self._btn_up.setEnabled(up)
+        self._btn_down.setEnabled(down)
+
+    @property
+    def key(self) -> str:
+        return self._key
+
+    def is_visible(self) -> bool:
+        return self._chk.isChecked()
 
 
 class _EditorListPage(QtWidgets.QWidget):
-    """Reorderable checklist with visible labels and optional subtitles."""
+    """Checklist page with ↑ ↓ reorder (replaces drag-and-drop list)."""
 
     def __init__(
         self,
         intro: str,
         *,
-        legend: str = "Drag rows to reorder. Checkbox = show in the UI.",
+        legend: str = "↑ ↓ reorder rows. Checkbox = visible in the app.",
         parent: Optional[QtWidgets.QWidget] = None,
     ) -> None:
         super().__init__(parent)
@@ -173,9 +234,55 @@ class _EditorListPage(QtWidgets.QWidget):
         legend_lbl.setWordWrap(True)
         legend_lbl.setObjectName("tabNote")
         lay.addWidget(legend_lbl)
-        self.list = QtWidgets.QListWidget()
-        _configure_editor_list(self.list)
-        lay.addWidget(self.list, 1)
+
+        scroll = QtWidgets.QScrollArea()
+        scroll.setObjectName("uiEditorScroll")
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QtWidgets.QFrame.Shape.StyledPanel)
+        scroll.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self._container = QtWidgets.QWidget()
+        self._container.setObjectName("uiEditorListHost")
+        self._list_lay = QtWidgets.QVBoxLayout(self._container)
+        self._list_lay.setContentsMargins(4, 4, 4, 4)
+        self._list_lay.setSpacing(4)
+        self._list_lay.addStretch(0)
+        scroll.setWidget(self._container)
+        scroll.setMinimumHeight(260)
+        lay.addWidget(scroll, 1)
+        self._rows: list[_EditorRow] = []
+
+    def _clear_rows(self) -> None:
+        for row in self._rows:
+            row.setParent(None)
+            row.deleteLater()
+        self._rows.clear()
+        while self._list_lay.count() > 1:
+            item = self._list_lay.takeAt(0)
+            if item is not None:
+                w = item.widget()
+                if w is not None:
+                    w.setParent(None)
+
+    def _move_row(self, key: str, delta: int) -> None:
+        keys = [r.key for r in self._rows]
+        try:
+            idx = keys.index(key)
+        except ValueError:
+            return
+        new_idx = idx + delta
+        if new_idx < 0 or new_idx >= len(self._rows):
+            return
+        self._rows[idx], self._rows[new_idx] = self._rows[new_idx], self._rows[idx]
+        self._relayout_rows()
+
+    def _relayout_rows(self) -> None:
+        while self._list_lay.count() > 1:
+            self._list_lay.takeAt(0)
+        n = len(self._rows)
+        for i, row in enumerate(self._rows):
+            self._list_lay.insertWidget(i, row)
+            row.set_move_enabled(up=i > 0, down=i < n - 1)
+        self._list_lay.addStretch(0)
 
     def set_rows(
         self,
@@ -184,28 +291,21 @@ class _EditorListPage(QtWidgets.QWidget):
         locked_keys: frozenset[str] = frozenset(),
         subtitles: dict[str, str] | None = None,
     ) -> None:
-        """rows: (id, label, checked, enabled). Optional subtitles keyed by id."""
-        self.list.clear()
+        self._clear_rows()
         subs = subtitles or {}
-        for key, label, checked, enabled in rows:
-            sub = subs.get(key, "").strip()
-            display = label if not sub else f"{label} — {sub}"
-            item = QtWidgets.QListWidgetItem(display)
-            item.setData(QtCore.Qt.ItemDataRole.UserRole, key)
-            flags = item.flags() | QtCore.Qt.ItemFlag.ItemIsUserCheckable
-            if key in locked_keys:
-                flags &= ~QtCore.Qt.ItemFlag.ItemIsUserCheckable
-                item.setToolTip("Always shown")
-            else:
-                item.setToolTip(sub or f"Show «{label}» in the UI")
-            item.setFlags(flags)
-            item.setCheckState(
-                QtCore.Qt.CheckState.Checked if checked else QtCore.Qt.CheckState.Unchecked
+        for key, label, checked, _enabled in rows:
+            self._rows.append(
+                _EditorRow(
+                    key,
+                    label,
+                    subs.get(key, ""),
+                    visible=checked,
+                    hideable=key not in locked_keys,
+                    on_move=self._move_row,
+                    parent=self._container,
+                )
             )
-            if not enabled:
-                item.setFlags(item.flags() & ~QtCore.Qt.ItemFlag.ItemIsEnabled)
-            item.setSizeHint(QtCore.QSize(0, _ROW_MIN_H + (12 if sub else 0)))
-            self.list.addItem(item)
+        self._relayout_rows()
 
     def set_tab_rows(
         self,
@@ -213,47 +313,27 @@ class _EditorListPage(QtWidgets.QWidget):
         *,
         locked_keys: frozenset[str] = frozenset(),
     ) -> None:
-        """rows: (id, title, subtitle, visible, enabled)."""
-        self.list.clear()
-        for key, title, subtitle, visible, enabled in rows:
-            display = title if not subtitle.strip() else f"{title} — {subtitle.strip()}"
-            item = QtWidgets.QListWidgetItem(display)
-            item.setData(QtCore.Qt.ItemDataRole.UserRole, key)
-            flags = item.flags() | QtCore.Qt.ItemFlag.ItemIsUserCheckable
-            if key in locked_keys:
-                flags &= ~QtCore.Qt.ItemFlag.ItemIsUserCheckable
-                item.setToolTip("Always shown")
-            else:
-                item.setToolTip(subtitle.strip() or f"Show the «{title}» tab")
-            item.setFlags(flags)
-            item.setCheckState(
-                QtCore.Qt.CheckState.Checked if visible else QtCore.Qt.CheckState.Unchecked
+        self._clear_rows()
+        for key, title, subtitle, visible, _enabled in rows:
+            self._rows.append(
+                _EditorRow(
+                    key,
+                    title,
+                    subtitle,
+                    visible=visible,
+                    hideable=key not in locked_keys,
+                    on_move=self._move_row,
+                    parent=self._container,
+                )
             )
-            if not enabled:
-                item.setFlags(item.flags() & ~QtCore.Qt.ItemFlag.ItemIsEnabled)
-            item.setSizeHint(QtCore.QSize(0, _ROW_MIN_H + (12 if subtitle.strip() else 0)))
-            self.list.addItem(item)
+        self._relayout_rows()
 
     def ordered_checked(self) -> tuple[list[str], set[str]]:
-        order: list[str] = []
-        hidden: set[str] = set()
-        for i in range(self.list.count()):
-            item = self.list.item(i)
-            if item is None:
-                continue
-            raw = item.data(QtCore.Qt.ItemDataRole.UserRole)
-            if raw is None:
-                continue
-            key = str(raw).strip()
-            if not key:
-                continue
-            order.append(key)
-            if item.checkState() != QtCore.Qt.CheckState.Checked:
-                hidden.add(key)
+        order = [r.key for r in self._rows]
+        hidden = {r.key for r in self._rows if not r.is_visible()}
         return order, hidden
 
 
-# Back-compat alias
 _CheckListPage = _EditorListPage
 
 
@@ -269,21 +349,25 @@ class UiEditorDialog(QtWidgets.QDialog):
         self.setObjectName("UiEditorDialog")
         self._win = win
         self.setWindowTitle("UI editor")
-        self.resize(520, 480)
+        self.setMinimumSize(_EDITOR_DIALOG_MIN_W, _EDITOR_DIALOG_MIN_H)
+        self.resize(_EDITOR_DIALOG_DEFAULT_W, _EDITOR_DIALOG_DEFAULT_H)
+
         ui_mode = getattr(win, "_ui_mode", "standard")
         root = QtWidgets.QVBoxLayout(self)
+        root.setContentsMargins(14, 12, 14, 12)
+        root.setSpacing(10)
+
         if ui_mode == "standard":
             intro_text = (
-                "Drag rows to reorder. Checkbox = show in the UI. "
-                "Standard layout: top bar, Connect sections, and main window tabs. "
-                "Click <b>OK</b> to apply; <b>Restore defaults</b> resets the current tab."
+                "Customize the <b>Standard</b> layout: survey top bar, Connect sections, "
+                "and main tabs. Use <b>↑ ↓</b> on each row to reorder; checkboxes show or hide. "
+                "<b>OK</b> applies. <b>Restore defaults</b> resets only the tab you are viewing."
             )
         else:
             intro_text = (
-                "Drag rows to reorder. Checkbox = show in the UI. "
-                "Field layout: top bar and Tools drawer tabs (Presets, NMEA, Terminal, …). "
-                "Connect sections are Standard-only. "
-                "Click <b>OK</b> to apply; <b>Restore defaults</b> resets the current tab."
+                "Customize the <b>Field</b> layout: survey top bar and Tools drawer tabs. "
+                "Connect section order is edited in Standard layout. "
+                "<b>↑ ↓</b> reorders; checkboxes show or hide. <b>OK</b> applies."
             )
         intro = QtWidgets.QLabel(intro_text)
         intro.setWordWrap(True)
@@ -291,6 +375,8 @@ class UiEditorDialog(QtWidgets.QDialog):
         root.addWidget(intro)
 
         self._tabs = QtWidgets.QTabWidget()
+        self._tabs.setDocumentMode(True)
+        self._tabs.setUsesScrollButtons(True)
         root.addWidget(self._tabs, 1)
 
         bar = getattr(win, "_survey_top_bar", None)
@@ -311,8 +397,9 @@ class UiEditorDialog(QtWidgets.QDialog):
                 bar_rows.append((key, title, key not in hidden_bar, True))
 
         self._topbar_page = _EditorListPage(
-            "Top bar quick tiles. You can also drag tiles on the live survey bar.",
-            legend="Checkbox = show on the survey top bar. View is always visible.",
+            "Tiles on the survey top bar (Presets, HUD, Layout, …). "
+            "You can also drag tiles on the live bar.",
+            legend="↑ ↓ reorder. Checkbox = show on the top bar. View cannot be hidden.",
         )
         self._topbar_page.set_rows(bar_rows, locked_keys=frozenset({"view"}))
         self._tabs.addTab(self._topbar_page, "Top bar")
@@ -323,24 +410,25 @@ class UiEditorDialog(QtWidgets.QDialog):
             ui_mode = getattr(win, "_ui_mode", "standard")
             connect_rows = build_connect_panel_editor_rows(ui_mode)
             self._connect_page = _EditorListPage(
-                "Connect tab sections (Standard layout). "
-                "Hide optional blocks you do not need; drag to reorder.",
-                legend="Checkbox = section visible. Run bridge and Serial & network always stay on.",
+                "Collapsible blocks on the Connect tab.",
+                legend="↑ ↓ reorder. Checkbox = show section. "
+                "Run bridge and Serial & network are always on.",
             )
             self._connect_page.set_tab_rows(
                 connect_rows,
                 locked_keys=REQUIRED_CONNECT_PANELS,
             )
             self._tabs.addTab(self._connect_page, "Connect")
+
             self._connect_toolbar_page = _EditorListPage(
-                "Connect toolbar buttons above the sections.",
-                legend="Drag rows to reorder button positions (all remain visible).",
+                "Buttons on the right above Connect (UI editor, Expand all, …).",
+                legend="↑ ↓ reorder button positions. All buttons stay visible.",
             )
             self._connect_toolbar_page.set_tab_rows(
                 build_connect_toolbar_rows(ui_mode),
                 locked_keys=frozenset(CONNECT_TOOLBAR_KEYS),
             )
-            self._tabs.addTab(self._connect_toolbar_page, "Connect toolbar")
+            self._tabs.addTab(self._connect_toolbar_page, "Toolbar")
 
         self._main_tabs_page: Optional[_EditorListPage] = None
         catalog = getattr(win, "_tab_catalog", {}).get("main_tabs", {})
@@ -351,9 +439,8 @@ class UiEditorDialog(QtWidgets.QDialog):
                 catalog, hidden_tabs, ui_mode=ui_mode, tabs_key=tabs_key
             )
             self._main_tabs_page = _EditorListPage(
-                "Main window tabs below the survey top bar. "
-                "Hide tabs you rarely use (e.g. Theme) to reduce clutter.",
-                legend="Checkbox = tab visible. At least one tab must stay on.",
+                "Tabs under the top bar: Connect, Log, Tools.",
+                legend="↑ ↓ reorder. Checkbox = show tab. At least one tab must stay on.",
             )
             self._main_tabs_page.set_tab_rows(tab_rows)
             self._tabs.addTab(self._main_tabs_page, "Main tabs")
@@ -367,16 +454,15 @@ class UiEditorDialog(QtWidgets.QDialog):
                 tools_catalog, hidden_tabs, ui_mode=ui_mode, tabs_key=tabs_key
             )
             self._tools_tabs_page = _EditorListPage(
-                "Tools drawer tabs (Field layout). "
-                "Hide tabs you rarely use to keep the drawer compact.",
-                legend="Checkbox = tab visible. At least one tab must stay on.",
+                "Tabs inside the Field Tools drawer.",
+                legend="↑ ↓ reorder. Checkbox = show tab. At least one tab must stay on.",
             )
             self._tools_tabs_page.set_tab_rows(tab_rows)
             self._tabs.addTab(self._tools_tabs_page, "Tools tabs")
 
         btn_row = QtWidgets.QHBoxLayout()
         btn_defaults = QtWidgets.QPushButton("Restore defaults")
-        btn_defaults.setToolTip("Reset this workspace to the recommended survey layout.")
+        btn_defaults.setToolTip("Reset the current tab to recommended defaults.")
         btn_defaults.clicked.connect(self._restore_defaults)
         btn_row.addWidget(btn_defaults)
         btn_row.addStretch(1)
@@ -389,7 +475,6 @@ class UiEditorDialog(QtWidgets.QDialog):
         btn_row.addWidget(buttons)
         root.addLayout(btn_row)
 
-        enable_dialog_content_fit(self, min_width=460)
         if 0 <= initial_tab < self._tabs.count():
             self._tabs.setCurrentIndex(initial_tab)
 
@@ -508,36 +593,57 @@ class UiEditorDialog(QtWidgets.QDialog):
                 return
             ui_mode = getattr(win, "_ui_mode", "standard")
             prefs = load_connect_panel_prefs(ui_mode)
-            save_connect_panel_prefs(
-                ui_mode,
-                [k for k in panel_order if k in CONNECT_PANEL_KEYS],
-                dict(prefs.get("collapsed", {})),
-                hidden=hidden_list,
-            )
-            try:
-                _rebuild_connect_panels(win)
-            except Exception as exc:
-                if hasattr(win, "_log_ui"):
-                    win._log_ui(f"[UI editor] Connect panel rebuild failed: {exc}")  # type: ignore[attr-defined]
+            from ui.connect_panels import connect_panel_layout_changed
+
+            if connect_panel_layout_changed(panel_order, hidden_list, prefs):
+                save_connect_panel_prefs(
+                    ui_mode,
+                    [k for k in panel_order if k in CONNECT_PANEL_KEYS],
+                    dict(prefs.get("collapsed", {})),
+                    sizes=dict(prefs.get("sizes", {})),
+                    hidden=hidden_list,
+                    toolbar_order=list(prefs.get("toolbar_order", [])),
+                )
+                try:
+                    _rebuild_connect_panels(win)
+                    from ui.connect_panels import (
+                        _schedule_connect_splitter_sizes,
+                        sync_connect_panel_layout,
+                    )
+                    from ui.connect_row_style import apply_connect_row_style
+
+                    apply_connect_row_style(win)
+                    sync_connect_panel_layout(win)
+                    _schedule_connect_splitter_sizes(win)
+                except Exception as exc:
+                    if hasattr(win, "_log_ui"):
+                        win._log_ui(
+                            f"[UI editor] Connect panel rebuild failed: {exc}"
+                        )  # type: ignore[attr-defined]
         if self._connect_toolbar_page is not None:
             toolbar_order, _unused_hidden = self._connect_toolbar_page.ordered_checked()
             ui_mode = getattr(win, "_ui_mode", "standard")
             prefs = load_connect_panel_prefs(ui_mode)
-            save_connect_panel_prefs(
-                ui_mode,
-                list(prefs.get("order", [])),
-                dict(prefs.get("collapsed", {})),
-                sizes=dict(prefs.get("sizes", {})),
-                hidden=list(prefs.get("hidden", [])),
-                toolbar_order=[k for k in toolbar_order if k in CONNECT_TOOLBAR_KEYS],
-            )
-            from ui.connect_panels import apply_connect_toolbar_order
+            from ui.connect_panels import connect_toolbar_order_changed
 
-            try:
-                apply_connect_toolbar_order(win)
-            except Exception as exc:
-                if hasattr(win, "_log_ui"):
-                    win._log_ui(f"[UI editor] Connect toolbar rebuild failed: {exc}")  # type: ignore[attr-defined]
+            if connect_toolbar_order_changed(toolbar_order, prefs):
+                save_connect_panel_prefs(
+                    ui_mode,
+                    list(prefs.get("order", [])),
+                    dict(prefs.get("collapsed", {})),
+                    sizes=dict(prefs.get("sizes", {})),
+                    hidden=list(prefs.get("hidden", [])),
+                    toolbar_order=[k for k in toolbar_order if k in CONNECT_TOOLBAR_KEYS],
+                )
+                from ui.connect_panels import apply_connect_toolbar_order
+
+                try:
+                    apply_connect_toolbar_order(win)
+                except Exception as exc:
+                    if hasattr(win, "_log_ui"):
+                        win._log_ui(
+                            f"[UI editor] Connect toolbar rebuild failed: {exc}"
+                        )  # type: ignore[attr-defined]
 
         if self._main_tabs_page is not None:
             tab_order, tab_hidden = self._main_tabs_page.ordered_checked()
@@ -578,17 +684,14 @@ def open_ui_editor(
     initial_tab: int = 0,
     focus: str = "",
 ) -> None:
-    """Show the checkbox UI editor (top bar, Connect sections, main tabs)."""
+    """Show the layout editor (top bar, Connect sections, main tabs)."""
     dlg = UiEditorDialog(win, initial_tab=initial_tab, parent=win)
     if focus == "connect":
         dlg.select_tab("Connect")
     elif focus == "tabs":
         dlg.select_tab("Main tabs")
-    dlg.show()
-    reflow_window(dlg)
     dlg.exec()
 
 
 def open_connect_panel_editor(win: QtWidgets.QWidget) -> None:
-    """Open UI editor on the Connect sections tab."""
     open_ui_editor(win, focus="connect")
