@@ -3,6 +3,11 @@
 High-level notes for **this fork / branch** (`feature/multi-ui-layouts-v0.5`).  
  Version = `version.py` / Git tag when you run `.\release.ps1` or tag manually.
 
+## v1.9.86
+
+- **Returning user (008 US1)** — Launch restores `last_preset` through one path in `_finalize_ui`; Field strip shows active preset and NMEA mode; tests for `last_preset` and recent-session apply.
+- **UI audit (008 US2)** — `docs/ui-audit-inventory.md` with all P0 closed; operator docs no longer mention removed **Reset sizes**; Phone tab auto-enables **Show QR** when a saved token exists; Standard default window 1200×720.
+
 ## v1.9.85
 
 - **Product Demo — session restore** — Opening **View → Product demo** snapshots your COM, network, NMEA, preset, and bridge run/stop state; closing the presenter restores it within a few seconds. Demo steps no longer write presets or recent sessions while presenting. Status banner shows **Demonstration** while the dialog is open. **Reset demo script** rewinds the presenter to Welcome without touching Connect.

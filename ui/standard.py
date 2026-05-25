@@ -35,8 +35,8 @@ class BridgeWindowStandard(BridgeLogicMixin, QtWidgets.QWidget):
         self._ui_mode = "standard"
         self.setStyleSheet(bridge_stylesheet(self._ui_mode, load_theme_choice()))
         self.setWindowTitle(f"Network ↔ COM Bridge v{__version__}")
-        self.resize(1100, 520)
-        self.setMinimumSize(900, 380)
+        self.resize(1200, 720)
+        self.setMinimumSize(960, 480)
         self._init_bridge_state()
         create_connection_controls(self)
 

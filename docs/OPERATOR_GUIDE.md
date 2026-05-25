@@ -91,7 +91,7 @@ On launch, connection fields load your **last-used named preset** (or the first 
 
 **Customize Connect:** survey bar or Connect toolbar **UI editor…** → drag sections (Run and Serial & network always stay on). Default order puts **Serial & network** directly under **Run** to reduce scrolling.
 
-**Resize Connect panels:** drag the green splitter handles between sections; **Reset sizes** on the Connect toolbar.
+**Connect layout:** use **UI editor…** on the Connect toolbar to show/hide and reorder sections. Panel heights follow the disclosure layout (no splitter **Reset sizes** control).
 
 ### Field layout
 

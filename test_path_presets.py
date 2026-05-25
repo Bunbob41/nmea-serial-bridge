@@ -137,6 +137,26 @@ class TestPathPresets(unittest.TestCase):
                     self.assertTrue(bc.reorder_preset_names(["Charlie", "Alpha", "Bravo"]))
                     self.assertEqual(bc.list_preset_names(), ["Charlie", "Alpha", "Bravo"])
 
+    def test_last_preset_tracks_save_for_startup_restore(self) -> None:
+        """US1: cold launch reads last_preset via last_preset_name()."""
+        with tempfile.TemporaryDirectory() as tmp:
+            user_path = Path(tmp) / "path_presets.json"
+            with mock.patch.object(bc, "USER_PRESETS_PATH", user_path):
+                bc.save_preset(
+                    "Boat / INS",
+                    {
+                        "com": "COM11",
+                        "baud": 115200,
+                        "udp_host": "0.0.0.0",
+                        "udp_port": 10110,
+                        "pc_ip": "192.168.1.4",
+                    },
+                    boat_style=True,
+                )
+                self.assertEqual(bc.last_preset_name(), "Boat / INS")
+                raw = json.loads(user_path.read_text(encoding="utf-8"))
+                self.assertEqual(raw.get("last_preset"), "Boat / INS")
+
     def test_builtin_norbit_dct_preset(self) -> None:
         builtins = bc._builtin_presets()
         self.assertIn("NORBIT DCT", builtins)

@@ -1184,15 +1184,23 @@ class BridgeLogicMixin:
         self.udp_host.setText(str(entry.get("udp_host", "0.0.0.0")))
         self.udp_port.setText(str(entry.get("udp_port", "10110")))
         nmea = str(entry.get("nmea_mode", "passthrough"))
-        if nmea == "raw" and getattr(self, "rb_nmea_raw", None):
-            self.rb_nmea_raw.setChecked(True)
-        elif nmea == "strict" and getattr(self, "rb_nmea_strict", None):
-            self.rb_nmea_strict.setChecked(True)
-        elif getattr(self, "rb_nmea_passthrough", None):
-            self.rb_nmea_passthrough.setChecked(True)
+        if hasattr(self, "_apply_preset_nmea_mode"):
+            payload: dict = {"nmea_mode": nmea}
+            types = entry.get("nmea_types")
+            if isinstance(types, list):
+                payload["nmea_types"] = types
+            self._apply_preset_nmea_mode(payload)
+        else:
+            if nmea == "raw" and getattr(self, "rb_nmea_raw", None):
+                self.rb_nmea_raw.setChecked(True)
+            elif nmea == "strict" and getattr(self, "rb_nmea_strict", None):
+                self.rb_nmea_strict.setChecked(True)
+            elif getattr(self, "rb_nmea_passthrough", None):
+                self.rb_nmea_passthrough.setChecked(True)
         self._sync_log_hex_toggle()
         self._refresh_nmea_status_chip()
-        self._log_ui(f"[UI] Loaded recent session: {com} @ {baud}")
+        baud_s = read_baud_widget(self.baud_edit)
+        self._log_ui(f"[UI] Loaded recent session: {com} @ {baud_s} · NMEA {nmea}")
 
     def _record_recent_session(self) -> None:
         if getattr(self, "_demo_session_active", False):
@@ -1898,6 +1906,11 @@ class BridgeLogicMixin:
                 normalize_phone_base_url(str(prefs.get("phone_base_url") or ""))
             )
             phone_edit.blockSignals(False)
+        chk_qr = getattr(self, "chk_web_show_qr", None)
+        if chk_qr is not None and str(prefs.get("token") or "").strip():
+            chk_qr.blockSignals(True)
+            chk_qr.setChecked(True)
+            chk_qr.blockSignals(False)
         self._refresh_phone_tab_qr()
 
     def _tools_nav_is_phone(self) -> bool:
@@ -2661,9 +2674,14 @@ class BridgeLogicMixin:
         hub = getattr(self, "connection_hub", None)
         sel = hub.selected_device_id() if hub else None
         sel_note = f" · hub: {sel}" if sel else ""
+        preset = (self._active_preset_name or "").strip()
+        preset_note = f" · preset: {preset}" if preset else ""
+        nmea = self._nmea_mode_label() if hasattr(self, "_nmea_mode_label") else ""
+        nmea_note = f" · NMEA {nmea}" if nmea else ""
         lbl.setText(
             f"{self.com_cb.currentText().strip()} @ {read_baud_widget(self.baud_edit)} · "
-            f"UDP {self.udp_host.text().strip()}:{self.udp_port.text().strip()}{sel_note}"
+            f"UDP {self.udp_host.text().strip()}:{self.udp_port.text().strip()}"
+            f"{preset_note}{nmea_note}{sel_note}"
         )
 
     def _on_hub_selection(self, device_id: str) -> None:
@@ -2794,7 +2812,12 @@ class BridgeLogicMixin:
         hub.set_quality(device_id, quality_from_bridge_stats(stats))
 
     def _apply_startup_connection_fields(self) -> None:
-        """Load last-used named preset (or built-in Desk test)."""
+        """Single launch-restore path: last preset → Connect fields (FR-201).
+
+        Called once from ``_finalize_ui`` after widgets exist. All layouts
+        (``bridge_gui.create_window`` → standard/field/minimal/logfirst) use
+        this path; do not duplicate preset load in ``_on_ui_ready`` subclasses.
+        """
         try:
             self._apply_preset_by_name(last_preset_name(), log=False)
         except KeyError:

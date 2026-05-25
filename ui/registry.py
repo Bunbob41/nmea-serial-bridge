@@ -66,5 +66,6 @@ def get_window_class(ui_id: str) -> Type[QtWidgets.QWidget]:
 
 
 def create_window(ui_id: str) -> QtWidgets.QWidget:
+    """Construct the main window; each class calls ``_finalize_ui()`` → launch preset restore."""
     cls = get_window_class(ui_id)
     return cls()

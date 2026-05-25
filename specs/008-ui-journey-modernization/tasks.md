@@ -23,9 +23,9 @@
 
 **Purpose**: Read design artifacts and prepare audit tracking
 
-- [ ] T001 Review [contracts/demo-state-isolation.md](./contracts/demo-state-isolation.md), [contracts/ui-audit-matrix.md](./contracts/ui-audit-matrix.md), and [contracts/returning-user-flow.md](./contracts/returning-user-flow.md)
-- [ ] T002 Create `docs/ui-audit-inventory.md` header and severity columns per [contracts/ui-audit-matrix.md](./contracts/ui-audit-matrix.md)
-- [ ] T003 [P] Confirm feature pointer in `.specify/feature.json` is `specs/008-ui-journey-modernization`
+- [x] T001 Review [contracts/demo-state-isolation.md](./contracts/demo-state-isolation.md), [contracts/ui-audit-matrix.md](./contracts/ui-audit-matrix.md), and [contracts/returning-user-flow.md](./contracts/returning-user-flow.md)
+- [x] T002 Create `docs/ui-audit-inventory.md` header and severity columns per [contracts/ui-audit-matrix.md](./contracts/ui-audit-matrix.md)
+- [x] T003 [P] Confirm feature pointer in `.specify/feature.json` is `specs/008-ui-journey-modernization`
 
 ---
 
@@ -35,9 +35,9 @@
 
 **⚠️ CRITICAL**: US3 demo modules do not block US1/US2, but prefs migration blocks reliable Connect launch geometry
 
-- [ ] T004 Verify `reset_sizes` removed from `CONNECT_TOOLBAR_KEYS` in `ui/connect_panels.py` and toolbar prefs strip in `ui/ui_prefs.py`
-- [ ] T005 [P] Extend `test_ui_prefs.py` to assert `reset_sizes` stripped from loaded `toolbar_order`
-- [ ] T006 [P] Verify `_MIN_VALID_SAVED_HEIGHT` applied on Connect rebuild in `ui/connect_panels.py` (no zero-height connection panel)
+- [x] T004 Verify `reset_sizes` removed from `CONNECT_TOOLBAR_KEYS` in `ui/connect_panels.py` and toolbar prefs strip in `ui/ui_prefs.py`
+- [x] T005 [P] Extend `test_ui_prefs.py` to assert `reset_sizes` stripped from loaded `toolbar_order`
+- [x] T006 [P] Verify `_MIN_VALID_SAVED_HEIGHT` applied on Connect rebuild in `ui/connect_panels.py` (no zero-height connection panel)
 
 **Checkpoint**: Prefs/layout migration stable — US1, US2, US4 can proceed; US3 can start in parallel from Phase 5
 
@@ -51,16 +51,16 @@
 
 ### Tests for User Story 1
 
-- [ ] T007 [P] [US1] Add launch-restore test for `last_preset` in `test_path_presets.py` or `test_ui_prefs.py`
-- [ ] T008 [P] [US1] Add recent-session apply sets `nmea_mode` test in `test_ui_prefs.py` or new `test_recent_sessions.py`
+- [x] T007 [P] [US1] Add launch-restore test for `last_preset` in `test_path_presets.py` or `test_ui_prefs.py`
+- [x] T008 [P] [US1] Add recent-session apply sets `nmea_mode` test in `test_ui_prefs.py` or new `test_recent_sessions.py`
 
 ### Implementation for User Story 1
 
-- [ ] T009 [US1] Audit single launch-restore path in `ui/mixin.py` (`_finalize_ui` / `_init_web_and_facade` / preset activation)
-- [ ] T010 [US1] Ensure all layout entry points call unified restore in `bridge_gui.py` and `ui/registry.py` window factories
-- [ ] T011 [P] [US1] Verify `_rebuild_recent_sessions_menu` label format in `ui/mixin.py` includes `nmea_mode`
-- [ ] T012 [US1] Confirm stop-first messaging when applying preset/recent while running in `ui/mixin.py` `_activate_preset_by_name` / `_apply_recent_session`
-- [ ] T013 [P] [US1] Verify Field strip summary reflects active preset in `ui/field.py` `_update_field_connect_summary`
+- [x] T009 [US1] Audit single launch-restore path in `ui/mixin.py` (`_finalize_ui` / `_init_web_and_facade` / preset activation)
+- [x] T010 [US1] Ensure all layout entry points call unified restore in `bridge_gui.py` and `ui/registry.py` window factories
+- [x] T011 [P] [US1] Verify `_rebuild_recent_sessions_menu` label format in `ui/mixin.py` includes `nmea_mode`
+- [x] T012 [US1] Confirm stop-first messaging when applying preset/recent while running in `ui/mixin.py` `_activate_preset_by_name` / `_apply_recent_session`
+- [x] T013 [P] [US1] Verify Field strip summary reflects active preset in `ui/field.py` `_update_field_connect_summary`
 
 **Checkpoint**: US1 independently testable — operator can resume and start within 60 s (manual SC-102)
 
@@ -74,14 +74,14 @@
 
 ### Implementation for User Story 2
 
-- [ ] T014 [US2] Populate audit rows for Connect + status bar in `docs/ui-audit-inventory.md` (STD/FIELD/MIN/LOG)
-- [ ] T015 [P] [US2] Populate Tools subtabs rows (Presets, Phone, NMEA, Guide, Diagnostics) in `docs/ui-audit-inventory.md`
-- [ ] T016 [P] [US2] Fix P0 placeholder: Phone QR when token present in `ui/mixin.py` `_refresh_phone_tab_qr` and `ui/connect_qr_overlay.py`
-- [ ] T017 [P] [US2] Fix P0 clip: Start/Stop and status chips at 1280×720 in `ui/standard.py` `ui/field.py` `ui/styles.py`
-- [ ] T018 [P] [US2] Fix P0 dead-control/docs: remove **Reset sizes** / splitter references in `docs/OPERATOR_GUIDE.md` and `docs/GETTING_STARTED.md`
-- [ ] T019 [P] [US2] Align Tools hints with operator guide in `ui/presets_panel.py` `ui/tool_tabs.py` `ui/controls.py`
-- [ ] T020 [P] [US2] Fix P0 `webPortSpin` step button visibility in `ui/styles.py` if still open in inventory
-- [ ] T021 [US2] Mark all P0 items **fixed** or **deferred** with release-note line in `docs/ui-audit-inventory.md`
+- [x] T014 [US2] Populate audit rows for Connect + status bar in `docs/ui-audit-inventory.md` (STD/FIELD/MIN/LOG)
+- [x] T015 [P] [US2] Populate Tools subtabs rows (Presets, Phone, NMEA, Guide, Diagnostics) in `docs/ui-audit-inventory.md`
+- [x] T016 [P] [US2] Fix P0 placeholder: Phone QR when token present in `ui/mixin.py` `_refresh_phone_tab_qr` and `ui/connect_qr_overlay.py`
+- [x] T017 [P] [US2] Fix P0 clip: Start/Stop and status chips at 1280×720 in `ui/standard.py` `ui/field.py` `ui/styles.py`
+- [x] T018 [P] [US2] Fix P0 dead-control/docs: remove **Reset sizes** / splitter references in `docs/OPERATOR_GUIDE.md` and `docs/GETTING_STARTED.md`
+- [x] T019 [P] [US2] Align Tools hints with operator guide in `ui/presets_panel.py` `ui/tool_tabs.py` `ui/controls.py`
+- [x] T020 [P] [US2] Fix P0 `webPortSpin` step button visibility in `ui/styles.py` if still open in inventory
+- [x] T021 [US2] Mark all P0 items **fixed** or **deferred** with release-note line in `docs/ui-audit-inventory.md`
 
 **Checkpoint**: US2 ship gate — zero open P0 (SC-101)
 

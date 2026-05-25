@@ -103,7 +103,7 @@ Collapsible sections (reorder/hide via **UI editor…** on the survey bar or Con
 | **Quick log** | Small live log on Connect (optional) |
 | **Quick terminal** | Bench script output (optional) |
 
-**Tip:** Put **Serial & network** directly under **Run** (default since v1.9.27). Drag green splitter handles to resize sections; **Reset sizes** on the Connect toolbar restores defaults.
+**Tip:** Put **Serial & network** directly under **Run** (default since v1.9.27). Use **UI editor…** on the Connect toolbar to reorder or hide optional sections.
 
 ### Tools → Diagnostics
 
