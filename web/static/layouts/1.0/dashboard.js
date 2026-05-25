@@ -204,7 +204,7 @@ async function copyTokenToClipboard() {
 async function copySetupLink() {
   const t = (document.getElementById("token-input")?.value || token || "").trim();
   if (!t) {
-    showAlert("run-alert", "No token yet — on the PC use Guide → Web & phone → Copy phone setup link.", "warn");
+    showAlert("run-alert", "No token yet — on the PC use Tools → Phone → Copy phone setup link.", "warn");
     return;
   }
   const url = buildSetupUrl(location.origin, t);
@@ -253,7 +253,7 @@ async function shareSetupLink() {
         text: "Open to save API token",
         url,
       });
-      showAlert("run-alert", "Share the link to your PC (email, Teams, etc.), then Paste setup link in Tools → Guide.", "ok");
+      showAlert("run-alert", "Share the link to your PC (email, Teams, etc.), then Paste setup link in Tools → Phone.", "ok");
       return;
     } catch (e) {
       if (e && e.name === "AbortError") return;
@@ -270,7 +270,7 @@ function updateTransferHint() {
   if (shareBtn) shareBtn.hidden = !navigator.share;
   if (mobile) {
     body.innerHTML =
-      "<strong>First time (get token from PC):</strong> On the survey PC open Tools → Guide → <strong>Web &amp; phone</strong> → " +
+      "<strong>First time (get token from PC):</strong> On the survey PC open <strong>Tools → Phone</strong> → " +
       "<strong>Copy phone setup link</strong>. Send that link to this iPhone (Messages, email). " +
       "Then either <strong>tap the link</strong> in Messages (best) or scroll to Tools here and tap <strong>Paste setup link</strong>. " +
       "Do not use Copy token on the phone until the field above already has a token.<br><br>" +
@@ -278,7 +278,7 @@ function updateTransferHint() {
   } else {
     body.innerHTML =
       "<strong>To phone:</strong> Copy setup link here → open on the phone once (or Paste setup link in phone Tools). " +
-      "<strong>From phone:</strong> Copy/Share setup link on the phone → <strong>Paste setup link</strong> here and in Tools → Guide on the PC app.";
+      "<strong>From phone:</strong> Copy/Share setup link on the phone → <strong>Paste setup link</strong> here and in Tools → Phone on the PC app.";
   }
 }
 
@@ -368,9 +368,15 @@ async function loadMeta() {
       if (inp) inp.value = token;
       if (!token) {
         const msg = isCoarseMobile()
-          ? "LAN mode: get a setup link from the PC (Tools → Guide → Copy phone setup link) and open it here, or Paste setup link below."
-          : "LAN mode: use Copy setup link / Paste setup link below, or Tools → Guide on the PC app.";
+          ? "LAN mode: get a setup link from the PC (Tools → Phone → Copy phone setup link) and open it here, or Paste setup link below."
+          : "LAN mode: use Copy setup link / Paste setup link below, or Tools → Phone on the PC app.";
         showAlert("run-alert", msg, "warn");
+      } else {
+        const runAlert = document.getElementById("run-alert");
+        if (runAlert && runAlert.classList.contains("warn")) {
+          runAlert.className = "alert ok";
+          runAlert.textContent = "";
+        }
       }
     }
     if (body.commands_ready === false) {
@@ -1066,7 +1072,7 @@ function updateQrDisplay() {
 function ensureCanMutate(focusAlertId) {
   if ((tokenRequired || lanBind) && !token) {
     const msg =
-      "Missing API token — on the PC use Tools → Guide → Copy phone setup link and open it on this device, or paste the token in Tools below.";
+      "Missing API token — on the PC use Tools → Phone → Copy phone setup link and open it on this device, or paste the token in Tools below.";
     showAlert("run-alert", msg, "warn");
     if (focusAlertId) showAlert(focusAlertId, msg, "warn");
     scrollAlertIntoView(focusAlertId || "run-alert");

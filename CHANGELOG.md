@@ -3,6 +3,10 @@
 High-level notes for **this fork / branch** (`feature/multi-ui-layouts-v0.5`).  
  Version = `version.py` / Git tag when you run `.\release.ps1` or tag manually.
 
+## v1.10.0
+
+- **UI journey modernization (008)** — Returning-user launch restore, UI audit inventory (zero P0), Product Demo session snapshot/restore, web dashboard handoff copy aligned with **Tools → Phone**, and `test_web_handoff.py` / `test_demo_snapshot.py` gates.
+
 ## v1.9.86
 
 - **Returning user (008 US1)** — Launch restores `last_preset` through one path in `_finalize_ui`; Field strip shows active preset and NMEA mode; tests for `last_preset` and recent-session apply.

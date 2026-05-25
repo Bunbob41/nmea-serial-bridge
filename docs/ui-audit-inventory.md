@@ -24,14 +24,12 @@
 | STD-TOOLS-DIAG-01 | standard | Tools / Diagnostics | copy | P1 | fixed | Bench scripts documented in operator guide |
 | STD-VIEW-DEMO-01 | standard | View / Demo | copy | P1 | fixed | Session restore on close (v1.9.85) |
 | STD-MENU-RECENT-01 | all | Survey bar / Recent | copy | P1 | fixed | Label includes `nmea_mode` suffix |
-| WEB-DASH-01 | web | dashboard | copy | P2 | deferred | US4 — dashboard empty-state vs desktop token (T037–T040) |
+| WEB-DASH-01 | web | dashboard | copy | P1 | fixed | Token hints point to **Tools → Phone**; no stale LAN warn when token in localStorage (v1.10.0) |
+| WEB-DASH-02 | web | dashboard | copy | P2 | fixed | `layouts/1.0` dashboard copy synced with `web/static/` |
 
 ## Verification log
 
 | Date | Layouts | Resolution | P0 open |
 |------|---------|------------|---------|
 | 2026-05-24 | STD, FIELD @ 1280×720 | Manual + `test_ui_prefs` toolbar migration | 0 |
-
-## Deferred (non-P0)
-
-- **WEB-DASH-01**: Phone handoff copy on static dashboard (Phase US4).
+| 2026-05-24 | Web dashboard | `test_web_handoff.py` + copy audit | 0 |

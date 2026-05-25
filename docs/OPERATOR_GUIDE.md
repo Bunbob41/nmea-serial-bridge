@@ -87,7 +87,9 @@ Older names **Minimal** / **Log-first** map to **Field** in the launcher (or sti
 └────────────────────────────────────────────────────────────────────────┘
 ```
 
-On launch, connection fields load your **last-used named preset** (or the first bench-style preset from `bench_defaults.json`).
+On launch, connection fields load your **last-used named preset** (or the first bench-style preset from `bench_defaults.json`). You can **Start** within about a minute without opening Tools first.
+
+**Recent sessions** (survey bar): last five COM + UDP + **NMEA mode** combos. Pick one while the bridge is **stopped**; if running, stop first then apply.
 
 **Customize Connect:** survey bar or Connect toolbar **UI editor…** → drag sections (Run and Serial & network always stay on). Default order puts **Serial & network** directly under **Run** to reduce scrolling.
 
@@ -320,6 +322,8 @@ Open **Demo** on Field layout or `python bridge_gui.py --ui field --demo`.
 - **Previous step** / **Next step** — walk the script at your pace (default).
 - **Auto-play script** — timed walkthrough (~6 s per beat); **Stop auto** returns to manual.
 - **Run selected step** — run one step’s bridge actions from the list.
+- **Reset demo script** — rewinds the presenter to Welcome; does not change your live COM/preset.
+- **Close** — restores the COM, network, NMEA, preset, and bridge run/stop state from before you opened the demo (within a few seconds). Demo steps do not save presets or recent sessions while presenting. Status banner shows **Demonstration** while the dialog is open.
 
 ---
 

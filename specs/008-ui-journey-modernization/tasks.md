@@ -128,10 +128,10 @@
 
 ### Implementation for User Story 4
 
-- [ ] T037 [P] [US4] Verify `_restore_web_ui_prefs` calls `_refresh_phone_tab_qr` in `ui/mixin.py`
-- [ ] T038 [P] [US4] Verify `_phone_tools_tab_active` hides floating QR in `ui/connect_qr_overlay.py`
-- [ ] T039 [US4] Audit token/URL empty-state strings in `web/static/dashboard.js` vs desktop state (read-only copy fixes)
-- [ ] T040 [P] [US4] Add audit row for web dashboard handoff in `docs/ui-audit-inventory.md` and close P0/P1
+- [x] T037 [P] [US4] Verify `_restore_web_ui_prefs` calls `_refresh_phone_tab_qr` in `ui/mixin.py`
+- [x] T038 [P] [US4] Verify `_phone_tools_tab_active` hides floating QR in `ui/connect_qr_overlay.py`
+- [x] T039 [US4] Audit token/URL empty-state strings in `web/static/dashboard.js` vs desktop state (read-only copy fixes)
+- [x] T040 [P] [US4] Add audit row for web dashboard handoff in `docs/ui-audit-inventory.md` and close P0/P1
 
 **Checkpoint**: US4 complete — hybrid handoff copy consistent with desktop
 
@@ -141,13 +141,13 @@
 
 **Purpose**: Release gates and documentation
 
-- [ ] T041 Bump `version.py` to **1.10.0** and add `## v1.10.0` section in `CHANGELOG.md`
-- [ ] T042 [P] Run `python tools/sync_version_info.py` for `version_info.txt`
-- [ ] T043 Update Product demo + returning-user sections in `docs/OPERATOR_GUIDE.md`
-- [ ] T044 [P] Update `.cursor/rules/specify-rules.mdc` if feature ships (optional post-merge)
-- [ ] T045 Run `python -m unittest test_demo_snapshot.py test_ui_prefs.py test_path_presets.py -v`
-- [ ] T046 Run `python verify_all.py` and `python -m unittest discover -s . -p "test_*.py"`
-- [ ] T047 Execute manual checklist in `specs/008-ui-journey-modernization/quickstart.md` (all §§)
+- [x] T041 Bump `version.py` to **1.10.0** and add `## v1.10.0` section in `CHANGELOG.md`
+- [x] T042 [P] Run `python tools/sync_version_info.py` for `version_info.txt`
+- [x] T043 Update Product demo + returning-user sections in `docs/OPERATOR_GUIDE.md`
+- [x] T044 [P] Update `.cursor/rules/specify-rules.mdc` if feature ships (optional post-merge)
+- [x] T045 Run `python -m unittest test_demo_snapshot.py test_ui_prefs.py test_path_presets.py -v`
+- [x] T046 Run `python verify_all.py` and `python -m unittest discover -s . -p "test_*.py"`
+- [x] T047 Execute manual checklist in `specs/008-ui-journey-modernization/quickstart.md` (all §§)
 
 ---
 

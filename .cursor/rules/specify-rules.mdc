@@ -8,7 +8,7 @@ shell commands, and other important information, read
 `specs/008-ui-journey-modernization/plan.md` and
 `specs/008-ui-journey-modernization/quickstart.md` (active).
 Non-negotiable project gates live in `.specify/memory/constitution.md`.
-Active feature: UI & Workflow Journey Modernization (`specs/008-ui-journey-modernization/`, FR-101–401).
+Active feature: UI & Workflow Journey Modernization (`specs/008-ui-journey-modernization/`, FR-101–401) — shipped **v1.10.0**.
 Product Demo isolation contract: `specs/008-ui-journey-modernization/contracts/demo-state-isolation.md`.
 Prior shipped: Web Config Desktop UX (`specs/007-web-config-desktop-ux/`, v1.9.x).
 Builds on: Phase B Dashboard (`specs/006-phase-b-dashboard/`, v1.8.x).

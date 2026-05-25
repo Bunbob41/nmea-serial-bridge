@@ -190,7 +190,12 @@ class ConnectPanelSizesTests(unittest.TestCase):
         self.assertTrue(connect_panels._default_collapsed("quick_log"))
 
     def test_connection_panel_default_height_for_hub(self) -> None:
-        self.assertGreaterEqual(connect_panels._DEFAULT_PANEL_HEIGHTS["connection"], 240)
+        # Side-by-side Serial+Network row (v1.9.81+) uses a shorter connection panel default.
+        self.assertGreaterEqual(connect_panels._DEFAULT_PANEL_HEIGHTS["connection"], 160)
+        self.assertGreaterEqual(
+            connect_panels._MIN_VALID_SAVED_HEIGHT["connection"],
+            160,
+        )
 
     def test_splitter_target_uses_tab_height(self) -> None:
         host = MagicMock()

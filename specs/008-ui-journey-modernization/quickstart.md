@@ -12,12 +12,14 @@
 
 ```powershell
 cd C:\Users\Morgan\Projects\udp-com-bridge
-python -m unittest test_demo_snapshot.py test_ui_prefs.py test_ui_editor.py -v
+python -m unittest test_demo_snapshot.py test_web_handoff.py test_ui_prefs.py test_path_presets.py test_recent_sessions.py -v
 python verify_all.py
 python -m unittest discover -s . -p "test_*.py"
 ```
 
-Expected: all tests pass; new demo snapshot tests cover restore and preset non-write.
+Expected: 008-targeted tests pass; demo snapshot + web handoff cover restore and preset non-write.
+
+**v1.10.0 gate (2026-05-24):** targeted 008 suite OK; `verify_all` bench scripts OK; full `unittest discover` may still report legacy Field-strip layout tests unrelated to 008 — triage before release zip.
 
 ## 2. Product Demo isolation (manual — SC-201/203)
 
