@@ -209,6 +209,13 @@ class TestWebApi(unittest.TestCase):
         if "text/html" in ct:
             self.assertIn(b"nmea", r.content.lower())
 
+    def test_static_subdirectory_serves_index_html(self) -> None:
+        """Nested static dirs (e.g. GridStack beta) must serve index.html with trailing slash."""
+        r = self.client.get("/static/layouts/gridstack/", follow_redirects=True)
+        self.assertEqual(r.status_code, 200, r.text)
+        self.assertIn("text/html", r.headers.get("content-type", ""))
+        self.assertIn(b"layout-gridstack", r.content)
+
     def test_token_qr_404_without_token(self) -> None:
         with patch("ui.ui_prefs.load_web_ui_prefs", return_value={"token": None}):
             r = self.client.get("/token-qr")

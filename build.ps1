@@ -15,7 +15,8 @@ python verify_all.py
 if ($LASTEXITCODE -ne 0) {
     throw "verify_all failed"
 }
-python -m unittest discover -s . -p "test_*.py" -v
+python tools\run_unittests.py
+if ($LASTEXITCODE -ne 0) { throw "unittest failed" }
 if (Test-Path "assets\app-icon.png") {
     python tools\make_app_icon.py
 }

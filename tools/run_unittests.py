@@ -2,6 +2,7 @@
 """Run unittest discover; normalize Windows Qt post-shutdown exit code."""
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -36,9 +37,14 @@ def main() -> int:
             "[run_unittests] NOTE: Qt shutdown fast-fail (0xC0000409) after all tests OK — treated as pass.",
             flush=True,
         )
+        if sys.platform == "win32":
+            os._exit(0)
         return 0
     return int(proc.returncode or 1)
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    code = main()
+    if sys.platform == "win32" and code == 0:
+        os._exit(0)
+    raise SystemExit(code)

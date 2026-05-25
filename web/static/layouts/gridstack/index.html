@@ -3,11 +3,13 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>NMEA Bridge Dashboard</title>
+  <title>NMEA Bridge Dashboard (Grid beta)</title>
   <link rel="stylesheet" href="/static/dashboard.css" />
   <link rel="stylesheet" href="/static/vendor/leaflet/leaflet.css" />
+  <link rel="stylesheet" href="/static/vendor/gridstack/gridstack.min.css" />
+  <link rel="stylesheet" href="/static/layouts/gridstack/gridstack-layout.css" />
 </head>
-<body>
+<body class="layout-gridstack">
   <!-- ═══════════════════════════════════════ HEADER ══════════════════════════════════════ -->
   <header class="app-header">
     <div class="header-row">
@@ -33,10 +35,12 @@
     <div class="inline-alert header-run-alert" id="run-alert" hidden role="status"></div>
   </header>
 
-  <main class="dashboard" id="dashboard-panels">
+  <p class="layout-beta-banner"><a href="/static/index.html">&larr; Standard layout</a> &middot; Customize tiles, then check <strong>Lock layout</strong> in the header. Blue bars resize; ⋯ or long-press for options. <button type="button" class="layout-beta-reset" id="btn-gridstack-reset">Reset layout</button></p>
+  <main class="dashboard layout-gridstack-main">
+  <div class="grid-stack" id="dashboard-panels">
 
     <!-- ═══════════════════════════════ COM & PORTS (mobile-first) ═════════════════════ -->
-    <section class="card com-setup-card dashboard-panel dashboard-panel-open" id="com-setup-card" data-panel="com-setup">
+    <div class="grid-stack-item" gs-id="com-setup" gs-x="0" gs-y="0" gs-w="6" gs-h="4"><div class="grid-stack-item-content"><section class="card com-setup-card dashboard-panel dashboard-panel-open" id="com-setup-card" data-panel="com-setup">
       <button type="button" class="dashboard-panel-toggle" aria-expanded="true"
               aria-controls="panel-body-com-setup" id="panel-toggle-com-setup">
         <span class="dashboard-chevron" aria-hidden="true">▼</span>
@@ -71,9 +75,10 @@
         </div>
       </div>
     </section>
+    </div></div>
 
     <!-- ══════════════════════════════════ STATUS CARD ══════════════════════════════════ -->
-    <section class="card status-card dashboard-panel dashboard-panel-open" id="status-card" data-panel="status">
+    <div class="grid-stack-item" gs-id="status" gs-x="6" gs-y="0" gs-w="6" gs-h="5"><div class="grid-stack-item-content"><section class="card status-card dashboard-panel dashboard-panel-open" id="status-card" data-panel="status">
       <button type="button" class="dashboard-panel-toggle" aria-expanded="true"
               aria-controls="panel-body-status" id="panel-toggle-status">
         <span class="dashboard-chevron" aria-hidden="true">▼</span>
@@ -160,9 +165,10 @@
       </div>
       </div>
     </section>
+    </div></div>
 
     <!-- ════════════════════════════════ POSITION MAP ═════════════════════════════════ -->
-    <section class="card map-card dashboard-panel" id="map-card" data-panel="map">
+    <div class="grid-stack-item" gs-id="map" gs-x="0" gs-y="5" gs-w="6" gs-h="4"><div class="grid-stack-item-content"><section class="card map-card dashboard-panel" id="map-card" data-panel="map">
       <button type="button" class="dashboard-panel-toggle" aria-expanded="false"
               aria-controls="panel-body-map" id="panel-toggle-map">
         <span class="dashboard-chevron" aria-hidden="true">▶</span>
@@ -185,9 +191,10 @@
         <p class="map-offline-note" id="map-offline-note" hidden>Map tiles need network access. Position text above still updates from /status.</p>
       </div>
     </section>
+    </div></div>
 
     <!-- ════════════════════════════════ CONFIGURATION ═════════════════════════════════ -->
-    <section class="card config-card dashboard-panel" id="config-card" data-panel="configuration">
+    <div class="grid-stack-item" gs-id="configuration" gs-x="6" gs-y="5" gs-w="6" gs-h="4"><div class="grid-stack-item-content"><section class="card config-card dashboard-panel" id="config-card" data-panel="configuration">
       <button type="button" class="dashboard-panel-toggle" aria-expanded="false"
               aria-controls="panel-body-configuration" id="panel-toggle-configuration">
         <span class="dashboard-chevron" aria-hidden="true">▶</span>
@@ -245,9 +252,10 @@
       <div class="inline-alert" id="config-alert" hidden></div>
       </div>
     </section>
+    </div></div>
 
     <!-- ════════════════════════════════ TOOLS / UNLOCK ══════════════════════════════════ -->
-    <section class="card tools-card dashboard-panel" id="tools-card" data-panel="tools">
+    <div class="grid-stack-item" gs-id="tools" gs-x="0" gs-y="9" gs-w="4" gs-h="4"><div class="grid-stack-item-content"><section class="card tools-card dashboard-panel" id="tools-card" data-panel="tools">
       <button type="button" class="dashboard-panel-toggle" aria-expanded="false"
               aria-controls="panel-body-tools" id="panel-toggle-tools">
         <span class="dashboard-chevron" aria-hidden="true">▶</span>
@@ -299,9 +307,10 @@
       </div>
       </div>
     </section>
+    </div></div>
 
     <!-- ═════════════════════════════════════ LIVE LOG ═══════════════════════════════════ -->
-    <section class="card log-card dashboard-panel" id="log-card" data-panel="log">
+    <div class="grid-stack-item" gs-id="log" gs-x="0" gs-y="13" gs-w="12" gs-h="6"><div class="grid-stack-item-content"><section class="card log-card dashboard-panel" id="log-card" data-panel="log">
       <button type="button" class="dashboard-panel-toggle" aria-expanded="false"
               aria-controls="panel-body-log" id="panel-toggle-log">
         <span class="dashboard-chevron" aria-hidden="true">▶</span>
@@ -357,9 +366,10 @@
       <p class="log-footnote" id="log-footnote">Mirrors the desktop live log (same filters as the app).</p>
       </div>
     </section>
+    </div></div>
 
     <!-- ═══════════════════════════════════ DISCOVERY ═══════════════════════════════════ -->
-    <section class="card discovery-card dashboard-panel" id="discovery-card" data-panel="discovery">
+    <div class="grid-stack-item" gs-id="discovery" gs-x="4" gs-y="9" gs-w="8" gs-h="4"><div class="grid-stack-item-content"><section class="card discovery-card dashboard-panel" id="discovery-card" data-panel="discovery">
       <button type="button" class="dashboard-panel-toggle" aria-expanded="false"
               aria-controls="panel-body-discovery" id="panel-toggle-discovery">
         <span class="dashboard-chevron" aria-hidden="true">▶</span>
@@ -390,7 +400,9 @@
       </div>
       </div>
     </section>
+    </div></div>
 
+  </div>
   </main>
 
   <div class="log-nmea-dialog-backdrop" id="log-nmea-dialog-backdrop" hidden>
@@ -418,6 +430,8 @@
   </footer>
 
   <script src="/static/vendor/leaflet/leaflet.js"></script>
+  <script src="/static/vendor/gridstack/gridstack-all.js"></script>
   <script src="/static/dashboard.js"></script>
+  <script src="/static/layouts/gridstack/gridstack-layout.js"></script>
 </body>
 </html>

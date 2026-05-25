@@ -1,6 +1,6 @@
 # nmea-serial-bridge
 
-**Current version:** see [`version.py`](version.py) (e.g. **v1.9.x**) — Windows desktop app that **bidirectionally bridges** traffic between **UDP/TCP** and a **serial COM port**. Primary use: **NMEA 0183 text** for survey / USV workflows — Ethernet GNSS or INS (e.g. Trimble R10) → bridge → physical COM destination.
+**Current version:** see [`version.py`](version.py) (e.g. **v1.13.x**) — Windows desktop app that **bidirectionally bridges** traffic between **UDP/TCP** and a **serial COM port**. Primary use: **NMEA 0183 text** for survey / USV workflows — Ethernet GNSS or INS (e.g. Trimble R10) → bridge → physical COM destination.
 
 **Spec Kit baseline**: [`specs/001-baseline-spec/spec.md`](specs/001-baseline-spec/spec.md) (as-built FR traceability).
 
@@ -41,7 +41,7 @@
 
 - **Survey workflow** — Survey HUD popout, **GNSS** status (GGA fix / sats / HDOP), product demo teleprompter, preflight menus, themes, recent sessions.
 - **Connection Hub (Standard Connect)** — card grid for GNSS COM + UDP listen + **LAN-discovered** hosts (Refresh discovery); **Unlock ports** for bench COM conflicts; live **QoS** on the active card; **Manual override** for TCP/advanced; optional **TCP sink mirror** (parallel egress with fan-out). Field strip adds Refresh/Unlock.
-- **Hybrid UI (v1.7+)** — Qt Designer shells; optional **Web API** + browser **operator dashboard** (`requirements-web.txt`) — status, config, discovery, start/stop — see `specs/005-hybrid-ui-webui/quickstart.md` and `specs/006-phase-b-dashboard/quickstart.md`.
+- **Hybrid UI (v1.7+)** — Qt Designer shells; optional **Web API** + browser **operator dashboard** (`requirements-web.txt`) — status, config, discovery, start/stop, log, map, Survey monitor; optional **GridStack beta** layout — see `specs/005-hybrid-ui-webui/quickstart.md` and `specs/006-phase-b-dashboard/quickstart.md`.
 - **Connect tab (Standard)** — collapsible panels (Serial & network defaults under Run), quick log/terminal, intent hint.
 - **Log tab** — full live log with presets, pause, save.
 - **Phone tab** (Tools) — Web API, token, QR, phone dashboard setup.

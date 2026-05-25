@@ -332,9 +332,12 @@ async function init() {
     updateQrDisplay();
     initMonitorSections();
     initDashboardPanels();
-    initDashboardPanelOrder();
+    if (!isGridstackLayoutPage()) {
+      initDashboardPanelOrder();
+    }
     initDashboardPanelReorder();
     initPositionMap();
+    initDashboardChromeMenus();
     initDeviceListClicks();
   } catch (e) {
     showAlert("run-alert", "Dashboard init error: " + e.message, "error");
@@ -345,6 +348,10 @@ async function init() {
     console.warn("Live log panel failed:", e);
   }
   startStatusPoll();
+  if (isGridstackLayoutPage() && typeof window.initGridstackDashboard === "function") {
+    window.initGridstackDashboard();
+  }
+  initLayoutLockControl();
 }
 
 function updateTokenSectionVisibility() {
@@ -499,12 +506,541 @@ function updateHeaderStatusChip(status) {
   chip.classList.add(status.running ? "chip-running" : "chip-stopped");
 }
 
+function isGridstackLayoutPage() {
+  return document.body.classList.contains("layout-gridstack");
+}
+
+// ── Right-click panel chrome (hide headers, log terminal-only, map focus) ─────
+const DASHBOARD_CHROME_KEY = "nmea-dashboard-chrome-v1";
+const LAYOUT_LOCK_KEY = "nmea-dashboard-layout-locked";
+
+function isDashboardLayoutLocked() {
+  return localStorage.getItem(LAYOUT_LOCK_KEY) === "1";
+}
+
+function initLayoutLockControl() {
+  const wrap = document.getElementById("layout-lock-wrap");
+  const chk = document.getElementById("layout-lock");
+  if (!wrap || !chk) return;
+  const onGrid = isGridstackLayoutPage();
+  wrap.hidden = !onGrid;
+  chk.checked = isDashboardLayoutLocked();
+  if (!chk.dataset.wired) {
+    chk.dataset.wired = "1";
+    chk.addEventListener("change", () => {
+      localStorage.setItem(LAYOUT_LOCK_KEY, chk.checked ? "1" : "0");
+      if (typeof window.applyGridstackLayoutLock === "function") {
+        window.applyGridstackLayoutLock(chk.checked);
+      }
+    });
+  }
+  if (onGrid && typeof window.applyGridstackLayoutLock === "function") {
+    window.applyGridstackLayoutLock(chk.checked);
+  }
+}
+const DASHBOARD_PANEL_IDS = [
+  "com-setup",
+  "status",
+  "map",
+  "configuration",
+  "tools",
+  "log",
+  "discovery",
+];
+
+let chromeMenuEl = null;
+/** Ignore outside-close until after open (blocks scroll/autoclick right after contextmenu). */
+let chromeMenuCloseGuardUntil = 0;
+
+const MONITOR_LAYOUT_MODES = ["rows", "columns", "simple"];
+
+function defaultChromePrefs() {
+  return {
+    hiddenHeaders: [],
+    logTerminalOnly: false,
+    mapPrioritized: false,
+    monitorLayout: "rows",
+    hideResizeGrips: false,
+  };
+}
+
+function loadChromePrefs() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(DASHBOARD_CHROME_KEY) || "{}");
+    const prefs = defaultChromePrefs();
+    if (Array.isArray(raw.hiddenHeaders)) {
+      prefs.hiddenHeaders = raw.hiddenHeaders.filter((id) => DASHBOARD_PANEL_IDS.includes(id));
+    }
+    prefs.logTerminalOnly = !!raw.logTerminalOnly;
+    prefs.mapPrioritized = !!raw.mapPrioritized;
+    const layout = raw.monitorLayout;
+    prefs.monitorLayout = MONITOR_LAYOUT_MODES.includes(layout) ? layout : "rows";
+    prefs.hideResizeGrips = !!raw.hideResizeGrips;
+    return prefs;
+  } catch (_) {
+    return defaultChromePrefs();
+  }
+}
+
+function saveChromePrefs(prefs) {
+  localStorage.setItem(DASHBOARD_CHROME_KEY, JSON.stringify(prefs));
+}
+
+function applyChromePrefs(prefs) {
+  DASHBOARD_PANEL_IDS.forEach((id) => {
+    const panel = document.querySelector(`.dashboard-panel[data-panel="${id}"]`);
+    if (!panel) return;
+    const hide = prefs.hiddenHeaders.includes(id);
+    panel.classList.toggle("chrome-header-hidden", hide);
+    if (hide && typeof setDashboardPanelOpen === "function") {
+      setDashboardPanelOpen(panel, true, false);
+    }
+    syncPanelChromeFab(panel);
+  });
+
+  const logCard = document.getElementById("log-card");
+  if (logCard) {
+    logCard.classList.toggle("log-terminal-only", prefs.logTerminalOnly);
+    if (prefs.logTerminalOnly && typeof setDashboardPanelOpen === "function") {
+      setDashboardPanelOpen(logCard, true, false);
+    }
+  }
+
+  const mapCard = document.getElementById("map-card");
+  if (mapCard) {
+    mapCard.classList.toggle("map-prioritized", prefs.mapPrioritized);
+    if (prefs.mapPrioritized) {
+      const chk = document.getElementById("map-enabled");
+      if (chk && !chk.checked) {
+        chk.checked = true;
+        localStorage.setItem(MAP_ENABLED_KEY, "1");
+      }
+      syncMapVisibility();
+      ensureBridgeMap();
+      setTimeout(() => mapInstance?.invalidateSize(), 150);
+    }
+  }
+
+  applyMonitorLayout(prefs.monitorLayout || "rows");
+
+  document.body.classList.toggle(
+    "layout-gridstack-hide-resize-grips",
+    isGridstackLayoutPage() && !!prefs.hideResizeGrips
+  );
+}
+
+function setHideResizeGrips(on) {
+  const prefs = loadChromePrefs();
+  prefs.hideResizeGrips = on;
+  saveChromePrefs(prefs);
+  applyChromePrefs(prefs);
+}
+
+/** Restores .stat-item shells after Columns table teardown. */
+const monitorGridItemStore = new WeakMap();
+
+function teardownMonitorColumnsTable(card) {
+  if (!card) return;
+  card.querySelectorAll(".monitor-grid[data-columns-table]").forEach((grid) => {
+    const shells = monitorGridItemStore.get(grid);
+    const labelRow = grid.querySelector(".monitor-table-labels");
+    const valueRow = grid.querySelector(".monitor-table-values");
+    const labels = labelRow ? [...labelRow.querySelectorAll(".stat-label")] : [];
+    const values = valueRow ? [...valueRow.querySelectorAll(".stat-value")] : [];
+    grid.replaceChildren();
+    if (shells?.length) {
+      shells.forEach((shell, i) => {
+        if (labels[i]) shell.appendChild(labels[i]);
+        if (values[i]) shell.appendChild(values[i]);
+        grid.appendChild(shell);
+      });
+    }
+    delete grid.dataset.columnsTable;
+    monitorGridItemStore.delete(grid);
+  });
+}
+
+function buildMonitorColumnsTable(card) {
+  if (!card) return;
+  card.querySelectorAll(".monitor-grid").forEach((grid) => {
+    if (grid.dataset.columnsTable) return;
+    const items = [...grid.querySelectorAll(":scope > .stat-item")];
+    if (!items.length) return;
+
+    monitorGridItemStore.set(
+      grid,
+      items.map((item) => {
+        const shell = document.createElement("div");
+        shell.className = item.className;
+        shell.dataset.statShell = item.dataset.panel || "";
+        if (item.id) shell.id = `${item.id}-shell`;
+        return shell;
+      })
+    );
+
+    const labelRow = document.createElement("div");
+    labelRow.className = "monitor-table-row monitor-table-labels";
+    const valueRow = document.createElement("div");
+    valueRow.className = "monitor-table-row monitor-table-values";
+
+    items.forEach((item) => {
+      const lab = item.querySelector(".stat-label");
+      const val = item.querySelector(".stat-value");
+      if (item.classList.contains("monitor-stat-gnss")) {
+        if (lab) lab.classList.add("monitor-table-gnss-label");
+        if (val) val.classList.add("monitor-table-gnss-value");
+      }
+      if (lab) labelRow.appendChild(lab);
+      if (val) valueRow.appendChild(val);
+      item.remove();
+    });
+
+    grid.append(labelRow, valueRow);
+    grid.dataset.columnsTable = "1";
+  });
+}
+
+function applyMonitorLayout(mode) {
+  const card = document.getElementById("status-card");
+  if (!card) return;
+  const layout = MONITOR_LAYOUT_MODES.includes(mode) ? mode : "rows";
+
+  if (card.classList.contains("monitor-layout-columns") && layout !== "columns") {
+    teardownMonitorColumnsTable(card);
+  }
+
+  card.classList.remove(
+    "monitor-layout-rows",
+    "monitor-layout-columns",
+    "monitor-layout-simple"
+  );
+  card.classList.add(`monitor-layout-${layout}`);
+
+  if (layout === "columns") {
+    buildMonitorColumnsTable(card);
+  } else if (layout !== "columns") {
+    teardownMonitorColumnsTable(card);
+  }
+
+  if (layout === "simple") {
+    teardownMonitorColumnsTable(card);
+    ["connection", "session"].forEach((id) => {
+      const sec = document.querySelector(`.monitor-section[data-section="${id}"]`);
+      if (sec) setMonitorSectionOpen(sec, true, false);
+    });
+  }
+}
+
+function setMonitorLayout(mode) {
+  const prefs = loadChromePrefs();
+  prefs.monitorLayout = mode;
+  saveChromePrefs(prefs);
+  applyMonitorLayout(mode);
+}
+
+function hideChromeMenu() {
+  if (chromeMenuEl) {
+    chromeMenuEl.hidden = true;
+    chromeMenuEl.innerHTML = "";
+  }
+}
+
+function armChromeMenuCloseGuard(ms = 450) {
+  chromeMenuCloseGuardUntil = Date.now() + ms;
+}
+
+function showChromeMenuAt(clientX, clientY, items) {
+  hideChromeMenu();
+  armChromeMenuCloseGuard();
+  if (!chromeMenuEl) {
+    chromeMenuEl = document.createElement("div");
+    chromeMenuEl.id = "dashboard-chrome-menu";
+    chromeMenuEl.className = "dashboard-chrome-menu";
+    chromeMenuEl.hidden = true;
+    document.body.appendChild(chromeMenuEl);
+  }
+  items.forEach((item) => {
+    if (item.separator) {
+      const hr = document.createElement("div");
+      hr.className = "dashboard-chrome-menu-sep";
+      hr.setAttribute("role", "separator");
+      chromeMenuEl.appendChild(hr);
+      return;
+    }
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "dashboard-chrome-menu-item";
+    btn.textContent = item.label;
+    if (item.disabled) btn.disabled = true;
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      hideChromeMenu();
+      item.action();
+    });
+    chromeMenuEl.appendChild(btn);
+  });
+  chromeMenuEl.hidden = false;
+  const pad = 8;
+  const rect = chromeMenuEl.getBoundingClientRect();
+  let left = clientX;
+  let top = clientY;
+  if (left + rect.width > window.innerWidth - pad) left = window.innerWidth - rect.width - pad;
+  if (top + rect.height > window.innerHeight - pad) top = window.innerHeight - rect.height - pad;
+  chromeMenuEl.style.left = `${Math.max(pad, left)}px`;
+  chromeMenuEl.style.top = `${Math.max(pad, top)}px`;
+}
+
+function openChromeMenuForPanel(panelId, anchor) {
+  if (!panelId || !DASHBOARD_PANEL_IDS.includes(panelId)) return;
+  const items = buildChromeMenuItems(panelId);
+  let x = window.innerWidth / 2;
+  let y = 72;
+  if (anchor && typeof anchor.clientX === "number") {
+    x = anchor.clientX;
+    y = anchor.clientY;
+  } else if (anchor && typeof anchor.getBoundingClientRect === "function") {
+    const r = anchor.getBoundingClientRect();
+    x = r.left;
+    y = r.bottom + 4;
+  }
+  showChromeMenuAt(x, y, items);
+}
+
+function syncPanelChromeFab(panel) {
+  const panelId = panel?.dataset?.panel;
+  if (!panelId) return;
+  const hidden = panel.classList.contains("chrome-header-hidden");
+  let fab = panel.querySelector(".panel-chrome-fab");
+  if (hidden) {
+    if (!fab) {
+      fab = document.createElement("button");
+      fab.type = "button";
+      fab.className = "panel-chrome-fab";
+      fab.setAttribute("aria-label", "Section options");
+      fab.title = "Section options";
+      fab.textContent = "⋯";
+      fab.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        openChromeMenuForPanel(panelId, fab);
+      });
+      panel.insertBefore(fab, panel.firstChild);
+    }
+    fab.hidden = false;
+  } else if (fab) {
+    fab.remove();
+  }
+}
+
+function ensurePanelChromeMenuButtons() {
+  document.querySelectorAll(".dashboard-panel[data-panel]").forEach((panel) => {
+    syncPanelChromeFab(panel);
+    const toggle = panel.querySelector(".dashboard-panel-toggle");
+    if (!toggle || toggle.querySelector(".panel-chrome-menu-btn")) return;
+    const panelId = panel.dataset.panel;
+    const menuBtn = document.createElement("button");
+    menuBtn.type = "button";
+    menuBtn.className = "panel-chrome-menu-btn";
+    menuBtn.setAttribute("aria-label", "Section options");
+    menuBtn.title = "Section options";
+    menuBtn.textContent = "⋯";
+    menuBtn.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      openChromeMenuForPanel(panelId, menuBtn);
+    });
+    toggle.appendChild(menuBtn);
+  });
+}
+
+let chromeLongPressTimer = null;
+let chromeLongPressPanelId = null;
+
+function findChromePanelFromTarget(target) {
+  let panel = target.closest(".dashboard-panel[data-panel]");
+  if (!panel && target.closest(".status-card .monitor-wrap, .status-card .monitor-section")) {
+    panel = document.getElementById("status-card");
+  }
+  return panel;
+}
+
+function clearChromeLongPress() {
+  if (chromeLongPressTimer) {
+    clearTimeout(chromeLongPressTimer);
+    chromeLongPressTimer = null;
+  }
+  chromeLongPressPanelId = null;
+}
+
+function initChromeLongPress() {
+  document.addEventListener(
+    "touchstart",
+    (e) => {
+      if (!isCoarseMobile()) return;
+      if (e.target.closest(".panel-chrome-menu-btn, .panel-chrome-fab, .dashboard-chrome-menu")) {
+        return;
+      }
+      const panel = findChromePanelFromTarget(e.target);
+      if (!panel) return;
+      const panelId = panel.dataset.panel;
+      if (!panelId || !DASHBOARD_PANEL_IDS.includes(panelId)) return;
+      const touch = e.touches[0];
+      if (!touch) return;
+      clearChromeLongPress();
+      chromeLongPressPanelId = panelId;
+      const tx = touch.clientX;
+      const ty = touch.clientY;
+      chromeLongPressTimer = window.setTimeout(() => {
+        chromeLongPressTimer = null;
+        openChromeMenuForPanel(panelId, { clientX: tx, clientY: ty });
+        if (navigator.vibrate) navigator.vibrate(12);
+      }, 550);
+    },
+    { passive: true }
+  );
+  document.addEventListener("touchend", clearChromeLongPress);
+  document.addEventListener("touchcancel", clearChromeLongPress);
+  document.addEventListener("touchmove", () => {
+    if (chromeLongPressTimer) clearChromeLongPress();
+  });
+}
+
+function setPanelHeaderHidden(panelId, hidden) {
+  const prefs = loadChromePrefs();
+  const set = new Set(prefs.hiddenHeaders);
+  if (hidden) set.add(panelId);
+  else set.delete(panelId);
+  prefs.hiddenHeaders = [...set];
+  saveChromePrefs(prefs);
+  applyChromePrefs(prefs);
+}
+
+function setAllPanelHeadersHidden(hidden) {
+  const prefs = loadChromePrefs();
+  prefs.hiddenHeaders = hidden ? [...DASHBOARD_PANEL_IDS] : [];
+  saveChromePrefs(prefs);
+  applyChromePrefs(prefs);
+}
+
+function setLogTerminalOnly(on) {
+  const prefs = loadChromePrefs();
+  prefs.logTerminalOnly = on;
+  saveChromePrefs(prefs);
+  applyChromePrefs(prefs);
+}
+
+function setMapPrioritized(on) {
+  const prefs = loadChromePrefs();
+  prefs.mapPrioritized = on;
+  saveChromePrefs(prefs);
+  applyChromePrefs(prefs);
+}
+
+function buildChromeMenuItems(panelId) {
+  const prefs = loadChromePrefs();
+  const headerHidden = prefs.hiddenHeaders.includes(panelId);
+  const items = [];
+
+  items.push({
+    label: headerHidden ? "Show section header" : "Hide section header",
+    action: () => setPanelHeaderHidden(panelId, !headerHidden),
+  });
+
+  const allHidden = DASHBOARD_PANEL_IDS.every((id) => prefs.hiddenHeaders.includes(id));
+  items.push({
+    label: allHidden ? "Show all section headers" : "Hide all section headers",
+    action: () => setAllPanelHeadersHidden(!allHidden),
+  });
+
+  if (panelId === "log") {
+    items.push({ separator: true });
+    items.push({
+      label: prefs.logTerminalOnly ? "Show log controls" : "Terminal only",
+      action: () => setLogTerminalOnly(!prefs.logTerminalOnly),
+    });
+  }
+
+  if (panelId === "map") {
+    items.push({ separator: true });
+    items.push({
+      label: prefs.mapPrioritized ? "Show map controls" : "Prioritize map",
+      action: () => setMapPrioritized(!prefs.mapPrioritized),
+    });
+  }
+
+  if (panelId === "status") {
+    const cur = prefs.monitorLayout || "rows";
+    items.push({ separator: true });
+    items.push({
+      label: cur === "rows" ? "✓ Rows (sections)" : "Rows (sections)",
+      action: () => setMonitorLayout("rows"),
+    });
+    items.push({
+      label: cur === "columns" ? "✓ Columns (table: labels then values)" : "Columns (table: labels then values)",
+      action: () => setMonitorLayout("columns"),
+    });
+    items.push({
+      label: cur === "simple" ? "✓ Simple (state · transport · GNSS)" : "Simple (state · transport · GNSS)",
+      action: () => setMonitorLayout("simple"),
+    });
+  }
+
+  if (isGridstackLayoutPage()) {
+    items.push({ separator: true });
+    items.push({
+      label: prefs.hideResizeGrips ? "Show resize bars" : "Hide resize bars",
+      action: () => setHideResizeGrips(!prefs.hideResizeGrips),
+    });
+  }
+
+  return items;
+}
+
+function onDashboardContextMenu(e) {
+  const toggle = e.target.closest(".dashboard-panel-toggle");
+  let panel = e.target.closest(".dashboard-panel[data-panel]");
+  if (!panel && e.target.closest(".status-card .monitor-wrap, .status-card .monitor-section")) {
+    panel = document.getElementById("status-card");
+  }
+  if (!toggle && !panel) return;
+
+  const panelId = panel?.dataset?.panel;
+  if (!panelId || !DASHBOARD_PANEL_IDS.includes(panelId)) return;
+
+  const inMenu = e.target.closest(".dashboard-chrome-menu");
+  if (inMenu) return;
+
+  e.preventDefault();
+  armChromeMenuCloseGuard();
+  showChromeMenuAt(e.clientX, e.clientY, buildChromeMenuItems(panelId));
+}
+
+function onChromeMenuOutsidePointer(e) {
+  if (!chromeMenuEl || chromeMenuEl.hidden) return;
+  if (Date.now() < chromeMenuCloseGuardUntil) return;
+  if (e.target.closest(".dashboard-chrome-menu")) return;
+  if (e.target.closest(".panel-chrome-menu-btn, .panel-chrome-fab")) return;
+  hideChromeMenu();
+}
+
+function initDashboardChromeMenus() {
+  applyChromePrefs(loadChromePrefs());
+  ensurePanelChromeMenuButtons();
+  initChromeLongPress();
+  document.addEventListener("contextmenu", onDashboardContextMenu);
+  document.addEventListener("pointerdown", onChromeMenuOutsidePointer, true);
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") hideChromeMenu();
+  });
+}
+
 const MONITOR_COLLAPSE_KEY = "nmea-monitor-collapse";
 const DASHBOARD_PANEL_COLLAPSE_KEY = "nmea-dashboard-panels";
 const DASHBOARD_PANEL_ORDER_KEY = "nmea-dashboard-order";
 const DASHBOARD_PANEL_DEFAULT_ORDER = [
   "com-setup",
   "status",
+  "map",
   "configuration",
   "tools",
   "log",
@@ -608,7 +1144,7 @@ function initDashboardPanels() {
     const btn = panel.querySelector(".dashboard-panel-toggle");
     if (btn) {
       btn.addEventListener("click", (e) => {
-        if (e.target.closest(".panel-nudge-btn")) return;
+        if (e.target.closest(".panel-nudge-btn, .panel-chrome-menu-btn, .panel-chrome-fab")) return;
         const nowOpen = !panel.classList.contains("dashboard-panel-open");
         setDashboardPanelOpen(panel, nowOpen, true);
       });
@@ -637,6 +1173,7 @@ function saveDashboardPanelOrder(order) {
 }
 
 function initDashboardPanelOrder() {
+  if (isGridstackLayoutPage()) return;
   const root = document.getElementById("dashboard-panels");
   if (!root) return;
   const order = loadDashboardPanelOrder();
@@ -649,15 +1186,21 @@ function initDashboardPanelOrder() {
 }
 
 function moveDashboardPanel(panelId, delta) {
+  if (isGridstackLayoutPage() && isDashboardLayoutLocked()) return;
   const order = loadDashboardPanelOrder();
   const idx = order.indexOf(panelId);
   if (idx < 0) return;
   const next = idx + delta;
   if (next < 0 || next >= order.length) return;
+  const otherId = order[next];
   order.splice(idx, 1);
   order.splice(next, 0, panelId);
   saveDashboardPanelOrder(order);
-  initDashboardPanelOrder();
+  if (isGridstackLayoutPage() && typeof window.swapGridstackTiles === "function") {
+    window.swapGridstackTiles(panelId, otherId);
+  } else {
+    initDashboardPanelOrder();
+  }
 }
 
 function ensureDashboardReorderControls() {
@@ -696,6 +1239,7 @@ function ensureDashboardReorderControls() {
 
 function initDashboardPanelReorder() {
   ensureDashboardReorderControls();
+  ensurePanelChromeMenuButtons();
 }
 
 async function refreshComPorts() {
@@ -735,6 +1279,9 @@ function setDashboardPanelOpen(panel, open, persist) {
     } catch (_) { /* ignore */ }
     saved[id] = open;
     localStorage.setItem(DASHBOARD_PANEL_COLLAPSE_KEY, JSON.stringify(saved));
+  }
+  if (isGridstackLayoutPage() && typeof window.syncGridstackPanelCollapse === "function") {
+    window.syncGridstackPanelCollapse(panel, open);
   }
 }
 
@@ -2093,6 +2640,10 @@ function ensureBridgeMap() {
   mapInstance.setView([20, 0], 2);
 }
 
+function invalidateDashboardMap() {
+  mapInstance?.invalidateSize();
+}
+
 function positionFixColor(status) {
   if (!status || status.position_stale || status.gnss_stream_idle) return "#f87171";
   const q = status.gnss_quality;
@@ -2174,6 +2725,8 @@ function updatePositionMap(status) {
     mapInstance.panTo(ll, { animate: true, duration: 0.35 });
   }
 }
+
+window.invalidateDashboardMap = invalidateDashboardMap;
 
 // ── Kick-off ──────────────────────────────────────────────────────────────────
 document.addEventListener("DOMContentLoaded", init);

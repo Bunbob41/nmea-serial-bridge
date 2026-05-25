@@ -253,7 +253,7 @@ async function shareSetupLink() {
         text: "Open to save API token",
         url,
       });
-      showAlert("run-alert", "Share the link to your PC (email, Teams, etc.), then Paste setup link in Tools → Phone.", "ok");
+      showAlert("run-alert", "Share the link to your PC (email, Teams, etc.), then Paste setup link in Tools → Phone on the PC.", "ok");
       return;
     } catch (e) {
       if (e && e.name === "AbortError") return;
@@ -278,7 +278,7 @@ function updateTransferHint() {
   } else {
     body.innerHTML =
       "<strong>To phone:</strong> Copy setup link here → open on the phone once (or Paste setup link in phone Tools). " +
-      "<strong>From phone:</strong> Copy/Share setup link on the phone → <strong>Paste setup link</strong> here and in Tools → Phone on the PC app.";
+      "<strong>From phone:</strong> Copy/Share setup link on the phone → <strong>Paste setup link</strong> here and in <strong>Tools → Phone</strong> on the PC app.";
   }
 }
 
@@ -332,8 +332,10 @@ async function init() {
     updateQrDisplay();
     initMonitorSections();
     initDashboardPanels();
-    initDashboardPanelOrder();
-    initDashboardPanelReorder();
+    if (!isGridstackLayoutPage()) {
+      initDashboardPanelOrder();
+      initDashboardPanelReorder();
+    }
     initPositionMap();
     initDeviceListClicks();
   } catch (e) {
@@ -345,6 +347,9 @@ async function init() {
     console.warn("Live log panel failed:", e);
   }
   startStatusPoll();
+  if (isGridstackLayoutPage() && typeof window.initGridstackDashboard === "function") {
+    window.initGridstackDashboard();
+  }
 }
 
 function updateTokenSectionVisibility() {
@@ -499,6 +504,10 @@ function updateHeaderStatusChip(status) {
   chip.classList.add(status.running ? "chip-running" : "chip-stopped");
 }
 
+function isGridstackLayoutPage() {
+  return document.body.classList.contains("layout-gridstack");
+}
+
 const MONITOR_COLLAPSE_KEY = "nmea-monitor-collapse";
 const DASHBOARD_PANEL_COLLAPSE_KEY = "nmea-dashboard-panels";
 const DASHBOARD_PANEL_ORDER_KEY = "nmea-dashboard-order";
@@ -614,7 +623,9 @@ function initDashboardPanels() {
       });
     }
   });
-  ensureDashboardReorderControls();
+  if (!isGridstackLayoutPage()) {
+    ensureDashboardReorderControls();
+  }
 }
 
 function loadDashboardPanelOrder() {
@@ -637,6 +648,7 @@ function saveDashboardPanelOrder(order) {
 }
 
 function initDashboardPanelOrder() {
+  if (isGridstackLayoutPage()) return;
   const root = document.getElementById("dashboard-panels");
   if (!root) return;
   const order = loadDashboardPanelOrder();
@@ -695,6 +707,7 @@ function ensureDashboardReorderControls() {
 }
 
 function initDashboardPanelReorder() {
+  if (isGridstackLayoutPage()) return;
   ensureDashboardReorderControls();
 }
 
@@ -1072,7 +1085,7 @@ function updateQrDisplay() {
 function ensureCanMutate(focusAlertId) {
   if ((tokenRequired || lanBind) && !token) {
     const msg =
-      "Missing API token — on the PC use Tools → Phone → Copy phone setup link and open it on this device, or paste the token in Tools below.";
+      "Missing API token — on the PC use Tools → Phone → Copy phone setup link and open it on this device, or paste the token below.";
     showAlert("run-alert", msg, "warn");
     if (focusAlertId) showAlert(focusAlertId, msg, "warn");
     scrollAlertIntoView(focusAlertId || "run-alert");

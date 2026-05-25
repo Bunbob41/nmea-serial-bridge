@@ -1,7 +1,89 @@
 # Changelog (personal progress)
 
-High-level notes for **this fork / branch** (`feature/multi-ui-layouts-v0.5`).  
+High-level notes for **this fork / branch** (`2034-ui-journey-modernization` and descendants).  
  Version = `version.py` / Git tag when you run `.\release.ps1` or tag manually.
+
+## v1.13.0
+
+**Release build** — Web operator dashboard + GridStack beta (v1.11–1.12) packaged in frozen `web/static` (standard UI at `GET /`, grid trial at `/static/layouts/gridstack/`). Field strip layout tests aligned with current compact strip sizes. Use `.\release.ps1` for zip + optional `gh release`.
+
+- **Web dashboard** — Status, config, discovery, start/stop, live log, position map, Survey monitor (Rows / Columns / Simple), section chrome menus (hide headers, terminal-only log, prioritize map), context menu stability.
+- **GridStack beta** — Drag/resize tiles, ▲▼ reorder, collapse shrink, Lock layout, touch **⋯** / long-press, iPhone resize bars, left-edge width bar, optional hide resize bars.
+- **Static routing** — Directory `index.html` served for layout folders (`html=True`).
+- **Qt** — UI journey modernization (008), returning-user launch restore, Product Demo snapshot (v1.10).
+- **Release tooling** — `build.ps1` uses `tools/run_unittests.py`; `verify_all` tolerates expected bridge test log tracebacks; `docs/RELEASE_CHECKLIST.md` added.
+
+## v1.12.8
+
+- **Survey monitor Columns** — True two-row table per section (all labels on one line, all values on the next); no stretched mini-columns. GNSS spans full width. Switching back to Rows restores normal stat cards.
+
+## v1.12.7
+
+- **Grid layout lock** — **Lock layout** checkbox in the header (grid beta page) saves tile positions/sizes/order; disables drag, resize, ▲▼ reorder, and resize bars until unchecked.
+
+## v1.12.6
+
+- **Survey monitor Columns layout** — Fixed Columns mode on grid/standard dashboard: true table per section (label row, value row) instead of looking identical to Rows.
+
+## v1.12.5
+
+- **Web dashboard context menu** — Options menu no longer closes every ~1–2 s from log autoscroll; removed global scroll-dismiss, added brief open guard, outside-tap/click to close.
+
+## v1.12.4
+
+- **GridStack resize bars** — Left-edge width bar added (mirrors right). **Hide resize bars** in ⋯ / long-press menu restores corner resize on desktop when hidden.
+
+## v1.12.3
+
+- **GridStack touch resize** — Full-width blue **bottom resize bar** on each tile (and right edge on phone) for reliable iPhone resize; disables tiny corner handles on coarse pointers. Live height/width updates while dragging.
+
+## v1.12.2
+
+- **Touch layout options** — **⋯** on each section header opens the same menu as right-click (hide header, terminal-only log, prioritize map, Survey monitor layouts). Long-press (~½ s) on a section also opens it on phone. When the header is hidden, a floating **⋯** appears on the tile.
+
+## v1.12.1
+
+- **GridStack iPhone resize** — Resize handles always visible with larger touch targets; fixes tile resize on iPhone after autohide/hover-only handles.
+
+## v1.12.0
+
+- **GridStack + standard controls** — Grid layout beta now has ▲▼ section reorder (swaps tile positions), plus existing drag/resize, collapse shrink, and right-click chrome (hide headers, terminal-only log, prioritize map, Survey monitor layouts). ▲▼ no longer starts a drag on grid tiles.
+
+## v1.11.8
+
+- **Survey monitor columns layout** — Fixed crushed vertical text; columns mode now shows labels on top and values below, left-to-right (e.g. State / Running · COM port / COM3 · Baud / 115200).
+
+## v1.11.7
+
+- **Survey monitor layouts** — Right-click Survey monitor (header or inside): **Rows** (default sections), **Columns** (table-style headers over values), **Simple** (state, transport, GNSS badge, sats, HDOP only; keeps green/red/blue GNSS and transport alerts).
+
+## v1.11.6
+
+- **GridStack collapse** — Collapsing a section (▶) now shrinks the tile to header height; expanding restores the previous tile size. Saved layout keeps expanded heights, not collapsed stubs.
+
+## v1.11.5
+
+- **Web dashboard chrome menus** — Right-click any section header (▼ label bar) to hide that header or all headers; right-click **Live log** for **Terminal only**; right-click **Position map** for **Prioritize map**. Choices persist in the browser. Works on standard and GridStack layouts.
+
+## v1.11.4
+
+- **GridStack beta** — Removed per-tile viewport fullscreen (⛶ / right-click restore); drag-resize grid only.
+
+## v1.11.3
+
+- **GridStack tile fullscreen** (reverted in v1.11.4) — Experimental overlay fullscreen per panel.
+
+## v1.11.2
+
+- **GridStack beta polish** — Default 12-column tile positions (COM + Survey top row, map/config second, tools/discovery, full-width log); disable CSS grid conflict on beta page; **Reset layout** button; layout storage key `v2` (clears old left-stacked saves).
+
+## v1.11.1
+
+- **Web static — directory index** — `StaticFiles` now uses `html=True` so `/static/layouts/gridstack/` (and other folders with `index.html`) return the page instead of FastAPI `{"detail":"Not Found"}`.
+
+## v1.11.0
+
+- **Web dashboard — GridStack beta** — Standard layout unchanged at `GET /`; optional trial at `/static/layouts/gridstack/` with vendored GridStack 10.3.1 (drag/resize tiles, layout in `localStorage`). Baseline snapshotted in `web/static/layouts/1.0/`. Footer link **Grid layout (beta)** on the standard page.
 
 ## v1.10.0
 

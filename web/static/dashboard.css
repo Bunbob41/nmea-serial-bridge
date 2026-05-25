@@ -108,6 +108,34 @@ body {
   color: var(--green);
 }
 
+.layout-lock-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  cursor: pointer;
+  user-select: none;
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.layout-lock-wrap:has(input:checked) {
+  color: var(--accent);
+  border-color: rgba(96, 165, 250, 0.45);
+  background: rgba(96, 165, 250, 0.1);
+}
+
+.layout-lock-wrap input {
+  width: 1rem;
+  height: 1rem;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
 .header-status-chip.chip-stopped {
   color: var(--text);
 }
@@ -592,6 +620,150 @@ body {
 
 .stat-item.stat-span-2 {
   grid-column: 1 / -1;
+}
+
+/* Survey monitor layout modes (right-click Survey monitor) */
+/* Rows = default: collapsible sections, each stat is label stacked above value */
+.status-card.monitor-layout-rows .monitor-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.status-card.monitor-layout-rows .monitor-grid,
+.status-card.monitor-layout-rows .monitor-grid-compact {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px 14px;
+}
+
+@media (min-width: 520px) {
+  .status-card.monitor-layout-rows .monitor-grid-compact {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+.status-card.monitor-layout-rows .stat-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+/* Columns = label row + value row (built in JS — two flex rows per section) */
+.status-card.monitor-layout-columns .monitor-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.status-card.monitor-layout-columns .monitor-grid,
+.status-card.monitor-layout-columns .monitor-grid-compact {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  width: 100%;
+}
+
+.status-card.monitor-layout-columns .monitor-table-row {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px 1.1rem;
+}
+
+.status-card.monitor-layout-columns .monitor-table-labels {
+  padding-bottom: 6px;
+  margin-bottom: 4px;
+  border-bottom: 1px solid var(--border);
+}
+
+.status-card.monitor-layout-columns .monitor-table-labels .stat-label {
+  flex: 0 0 auto;
+  min-width: 4.25rem;
+  max-width: 11rem;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 0.68rem;
+}
+
+.status-card.monitor-layout-columns .monitor-table-values .stat-value {
+  flex: 0 0 auto;
+  min-width: 4.25rem;
+  max-width: 11rem;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.status-card.monitor-layout-columns .monitor-table-gnss-label {
+  flex: 1 1 100%;
+  max-width: none;
+  text-align: left;
+}
+
+.status-card.monitor-layout-columns .monitor-table-gnss-value {
+  flex: 1 1 100%;
+  max-width: none;
+  text-align: left;
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+}
+
+.status-card.monitor-layout-simple .monitor-section[data-section="rates"],
+.status-card.monitor-layout-simple .monitor-section[data-section="backpressure"] {
+  display: none !important;
+}
+
+.status-card.monitor-layout-simple .monitor-section-toggle {
+  display: none;
+}
+
+.status-card.monitor-layout-simple .monitor-section {
+  display: contents;
+  border: none;
+  background: transparent;
+}
+
+.status-card.monitor-layout-simple .monitor-panel {
+  display: contents !important;
+  padding: 0;
+  border: none;
+}
+
+.status-card.monitor-layout-simple .monitor-panel[hidden] {
+  display: contents !important;
+}
+
+.status-card.monitor-layout-simple .monitor-wrap {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 10px 14px;
+}
+
+.status-card.monitor-layout-simple .monitor-stat-com,
+.status-card.monitor-layout-simple .monitor-stat-baud,
+.status-card.monitor-layout-simple .monitor-stat-udp,
+.status-card.monitor-layout-simple .monitor-stat-nmea,
+.status-card.monitor-layout-simple .monitor-stat-hz-down,
+.status-card.monitor-layout-simple .monitor-stat-hz-up,
+.status-card.monitor-layout-simple .monitor-stat-hz-inject,
+.status-card.monitor-layout-simple .monitor-stat-lines-down,
+.status-card.monitor-layout-simple .monitor-stat-lines-up {
+  display: none !important;
+}
+
+.status-card.monitor-layout-simple .monitor-stat-gnss {
+  grid-column: 1 / -1;
+}
+
+.status-card.monitor-layout-simple .monitor-stat-gnss .stat-value {
+  width: 100%;
+  text-align: left;
 }
 
 .stat-label {
@@ -1585,6 +1757,184 @@ body.dashboard-log-expanded .log-card .dashboard-panel-summary::after {
   font-size: 0.72rem;
   color: var(--text-muted);
   border-top: 1px solid var(--border);
+}
+
+/* ── Right-click chrome (hide headers, log/map focus) ─────────── */
+.dashboard-chrome-menu {
+  position: fixed;
+  z-index: 5000;
+  pointer-events: auto;
+  min-width: 12.5rem;
+  padding: 4px 0;
+  background: var(--bg-card, #1a2332);
+  border: 1px solid var(--border, #334155);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+}
+
+.dashboard-chrome-menu-item {
+  display: block;
+  width: 100%;
+  padding: 0.45rem 0.85rem;
+  text-align: left;
+  font: inherit;
+  font-size: 0.85rem;
+  color: var(--text, #e2e8f0);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+}
+
+.dashboard-chrome-menu-item:hover:not(:disabled) {
+  background: rgba(96, 165, 250, 0.15);
+}
+
+.dashboard-chrome-menu-item:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.dashboard-chrome-menu-sep {
+  height: 1px;
+  margin: 4px 0;
+  background: var(--border, #334155);
+}
+
+.panel-chrome-menu-btn {
+  flex: 0 0 auto;
+  margin-left: auto;
+  padding: 2px 10px;
+  font-size: 1.1rem;
+  line-height: 1.1;
+  color: var(--accent, #60a5fa);
+  background: transparent;
+  border: 1px solid rgba(96, 165, 250, 0.35);
+  border-radius: 6px;
+  cursor: pointer;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.panel-chrome-menu-btn:hover {
+  background: rgba(96, 165, 250, 0.12);
+}
+
+.panel-chrome-fab {
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  z-index: 40;
+  padding: 4px 12px;
+  font-size: 1.15rem;
+  line-height: 1.2;
+  color: var(--accent, #60a5fa);
+  background: var(--bg-card, #1a2332);
+  border: 1px solid rgba(96, 165, 250, 0.45);
+  border-radius: 8px;
+  cursor: pointer;
+  touch-action: manipulation;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+}
+
+.dashboard-panel.chrome-header-hidden {
+  position: relative;
+}
+
+@media (pointer: coarse) {
+  .panel-chrome-menu-btn {
+    min-width: 2.5rem;
+    min-height: 2rem;
+    padding: 6px 12px;
+  }
+
+  .panel-chrome-fab {
+    min-width: 2.75rem;
+    min-height: 2.25rem;
+  }
+}
+
+.dashboard-panel.chrome-header-hidden > .dashboard-panel-toggle {
+  display: none !important;
+}
+
+.dashboard-panel.chrome-header-hidden > .dashboard-panel-body {
+  border-top: none;
+}
+
+.dashboard-panel.chrome-header-hidden > .dashboard-panel-body[hidden] {
+  display: flex !important;
+}
+
+body.layout-gridstack .dashboard-panel.chrome-header-hidden {
+  cursor: grab;
+}
+
+body.layout-gridstack .dashboard-panel.chrome-header-hidden:active {
+  cursor: grabbing;
+}
+
+.log-card.log-terminal-only .log-card-header,
+.log-card.log-terminal-only .log-trial-note,
+.log-card.log-terminal-only .log-toolbar,
+.log-card.log-terminal-only .log-footnote {
+  display: none !important;
+}
+
+.log-card.log-terminal-only .dashboard-panel-body {
+  display: flex !important;
+  flex-direction: column;
+  padding-top: 0;
+  min-height: 0;
+}
+
+.log-card.log-terminal-only .log-panel-wrap {
+  flex: 1;
+  min-height: 120px;
+  display: flex;
+  flex-direction: column;
+}
+
+.log-card.log-terminal-only .log-panel {
+  flex: 1;
+  min-height: 0;
+}
+
+.map-card.map-prioritized .map-hint,
+.map-card.map-prioritized .map-enable-row,
+.map-card.map-prioritized .map-coords,
+.map-card.map-prioritized .map-attribution,
+.map-card.map-prioritized .map-offline-note {
+  display: none !important;
+}
+
+.map-card.map-prioritized .dashboard-panel-body {
+  display: flex !important;
+  flex-direction: column;
+  padding: 0;
+  gap: 0;
+  min-height: 0;
+  flex: 1;
+}
+
+.map-card.map-prioritized .map-frame {
+  flex: 1;
+  min-height: 160px;
+  display: flex !important;
+}
+
+.map-card.map-prioritized .map-frame[hidden] {
+  display: flex !important;
+}
+
+.map-card.map-prioritized .bridge-map {
+  flex: 1;
+  width: 100%;
+  min-height: 160px;
+}
+
+body.layout-gridstack .map-card.map-prioritized .grid-stack-item-content .dashboard-panel-body,
+body.layout-gridstack .log-card.log-terminal-only .grid-stack-item-content .dashboard-panel-body {
+  height: 100%;
 }
 
 /* ── Scrollbar ────────────────────────────────────────────────── */

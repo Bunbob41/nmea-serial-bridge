@@ -53,14 +53,13 @@ def unittest_output_indicates_ok(stdout: str, stderr: str) -> bool:
     combined = (stdout or "") + (stderr or "")
     if not combined.strip():
         return False
-    if "Traceback (most recent call last):" in combined:
-        return False
     if re.search(r"^FAILED\b", combined, re.MULTILINE):
         return False
     if re.search(r"^FAIL:", combined, re.MULTILINE):
         return False
     if re.search(r"FAILED \(", combined):
         return False
-    return bool(re.search(r"Ran \d+ tests\b", combined)) and re.search(
-        r"^OK\s*$", combined, re.MULTILINE
+    # Bridge tests log expected handler failures with logging.exception (traceback in stderr).
+    return bool(re.search(r"Ran \d+ tests\b", combined)) and bool(
+        re.search(r"^OK\s*$", combined, re.MULTILINE)
     )

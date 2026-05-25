@@ -171,11 +171,11 @@ $notes = @"
 Windows x64 one-folder build (PyInstaller).
 
 - Unzip and run ``nmea-serial-bridge.exe`` (keep the whole folder).
-- First launch: pick Standard or Field UI.
+- First launch: pick Standard or Field UI; choice persists under ``%USERPROFILE%\.cursor-udp-com-bridge\``.
+- **Web dashboard** (optional): Tools → Phone → Enable Web API → **Open dashboard** (`http://127.0.0.1:8765/`). Start/stop, config, discovery, live log, map, Survey monitor layouts.
+- **Grid layout (beta)**: ``/static/layouts/gridstack/`` — drag/resize tiles, Lock layout, touch **⋯** menu; standard dashboard unchanged at ``GET /``.
 - Bench preset uses ``bench_defaults.json`` beside the exe.
-- SmartScreen may warn (unsigned app).
-
-Source: branch feature/multi-ui-layouts-v0.5
+- SmartScreen may warn (unsigned app). See ``docs/OPERATOR_GUIDE.md`` in the zip folder or repo ``docs/``.
 "@
 
 $ErrorActionPreference = "SilentlyContinue"

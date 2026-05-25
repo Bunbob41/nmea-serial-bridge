@@ -1,0 +1,283 @@
+/* GridStack beta — same API/dashboard.js; different shell layout */
+body.layout-gridstack {
+  background: var(--bg, #0f1419);
+}
+
+.layout-beta-banner {
+  margin: 0.5rem 1rem 0;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.9rem;
+  background: rgba(56, 189, 248, 0.12);
+  border: 1px solid rgba(56, 189, 248, 0.35);
+  border-radius: 8px;
+}
+
+.layout-beta-banner a {
+  font-weight: 600;
+}
+
+.layout-beta-reset {
+  margin-left: 0.35rem;
+  padding: 0.15rem 0.5rem;
+  font: inherit;
+  font-size: 0.85rem;
+  color: var(--accent, #38bdf8);
+  background: transparent;
+  border: 1px solid rgba(56, 189, 248, 0.45);
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.layout-beta-reset:hover {
+  background: rgba(56, 189, 248, 0.15);
+}
+
+/* Do not apply standard dashboard CSS grid — GridStack owns tile positions */
+body.layout-gridstack .layout-gridstack-main.dashboard {
+  display: block;
+  max-width: none;
+  padding: 0.75rem 1rem 1rem;
+}
+
+.layout-gridstack-main {
+  padding: 0;
+}
+
+.grid-stack#dashboard-panels {
+  min-height: 70vh;
+  width: 100%;
+}
+
+.grid-stack-item-content {
+  height: 100%;
+  overflow: hidden;
+  border-radius: 10px;
+  background: var(--card-bg, #1a2332);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+  z-index: 1;
+}
+
+.grid-stack-item.grid-tile-resizing .grid-stack-item-content {
+  pointer-events: none;
+}
+
+.grid-stack-item-content > .dashboard-panel {
+  margin: 0;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.grid-stack-item-content > .dashboard-panel:not(.dashboard-panel-open) {
+  height: auto;
+  min-height: 0;
+}
+
+.grid-stack-item-content
+  > .dashboard-panel:not(.dashboard-panel-open)
+  > .dashboard-panel-toggle {
+  border-bottom: none;
+}
+
+.grid-stack-item-content .dashboard-panel-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+.grid-stack-item-content .dashboard-panel-toggle {
+  flex-wrap: nowrap;
+  gap: 6px;
+  padding-right: 8px;
+}
+
+body.layout-gridstack .dashboard-panel-label {
+  flex: 0 1 auto;
+  min-width: 4.5rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+body.layout-gridstack .dashboard-panel-summary {
+  flex: 1 1 0;
+  min-width: 3rem;
+  font-size: 0.75rem;
+}
+
+body.layout-gridstack .dashboard-panel:not(.dashboard-panel-open) .dashboard-panel-summary {
+  display: block;
+}
+
+/* Touch resize grips (primary on phone; GridStack corner handles are backup on desktop) */
+.grid-tile-resize-grip {
+  position: absolute;
+  z-index: 80;
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.grid-tile-resize-grip-h {
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 2.75rem;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding-bottom: 6px;
+  cursor: ns-resize;
+  background: linear-gradient(
+    to top,
+    rgba(56, 189, 248, 0.35),
+    rgba(56, 189, 248, 0.08) 55%,
+    transparent
+  );
+}
+
+.grid-tile-resize-grip-h::after {
+  content: "";
+  display: block;
+  width: 3.5rem;
+  height: 5px;
+  border-radius: 3px;
+  background: rgba(56, 189, 248, 0.85);
+  box-shadow: 0 0 0 1px rgba(15, 20, 25, 0.5);
+}
+
+.grid-tile-resize-grip-w {
+  top: 15%;
+  left: 0;
+  bottom: 2.75rem;
+  width: 1.75rem;
+  cursor: ew-resize;
+  background: linear-gradient(
+    to right,
+    rgba(56, 189, 248, 0.3),
+    transparent
+  );
+}
+
+.grid-tile-resize-grip-w::after {
+  content: "";
+  position: absolute;
+  left: 5px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 5px;
+  height: 2.5rem;
+  border-radius: 3px;
+  background: rgba(56, 189, 248, 0.75);
+}
+
+.grid-tile-resize-grip-e {
+  top: 15%;
+  right: 0;
+  bottom: 2.75rem;
+  width: 1.75rem;
+  cursor: ew-resize;
+  background: linear-gradient(
+    to left,
+    rgba(56, 189, 248, 0.3),
+    transparent
+  );
+}
+
+.grid-tile-resize-grip-e::after {
+  content: "";
+  position: absolute;
+  right: 5px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 5px;
+  height: 2.5rem;
+  border-radius: 3px;
+  background: rgba(56, 189, 248, 0.75);
+}
+
+body.layout-gridstack-hide-resize-grips .grid-tile-resize-grip {
+  display: none !important;
+}
+
+/* Layout locked — no drag, resize, or ▲▼ reorder */
+body.layout-gridstack-locked .grid-stack {
+  cursor: default;
+}
+
+body.layout-gridstack-locked .grid-stack > .grid-stack-item > .ui-resizable-handle,
+body.layout-gridstack-locked .grid-tile-resize-grip {
+  display: none !important;
+  pointer-events: none !important;
+}
+
+body.layout-gridstack-locked .panel-nudge-group,
+body.layout-gridstack-locked .panel-nudge-btn {
+  opacity: 0.35;
+  pointer-events: none;
+}
+
+body.layout-gridstack-locked .dashboard-panel-toggle {
+  cursor: pointer;
+}
+
+body.layout-gridstack-locked .dashboard-panel.chrome-header-hidden {
+  cursor: default;
+}
+
+body.layout-gridstack .grid-stack > .grid-stack-item {
+  overflow: visible;
+}
+
+body.layout-gridstack .grid-stack > .grid-stack-item > .ui-resizable-handle {
+  z-index: 50;
+  touch-action: none;
+}
+
+@media (pointer: coarse) {
+  body.layout-gridstack .grid-stack > .grid-stack-item > .ui-resizable-handle {
+    display: none !important;
+  }
+
+  .grid-tile-resize-grip-h {
+    height: 3.25rem;
+  }
+
+  .grid-tile-resize-grip-e,
+  .grid-tile-resize-grip-w {
+    width: 2.25rem;
+  }
+}
+
+@media (pointer: fine) {
+  .grid-tile-resize-grip-h {
+    height: 1.75rem;
+    opacity: 0.85;
+  }
+
+  .grid-tile-resize-grip-e,
+  .grid-tile-resize-grip-w {
+    width: 1.25rem;
+    opacity: 0.85;
+  }
+}
+
+/* ▲▼ reorder — same controls as standard dashboard */
+body.layout-gridstack .panel-nudge-group {
+  margin-right: 6px;
+}
+
+body.layout-gridstack .panel-nudge-btn,
+body.layout-gridstack .panel-chrome-menu-btn {
+  min-width: 2.35rem;
+  min-height: 1.55rem;
+  padding: 6px 10px;
+  touch-action: manipulation;
+}
+
+@media (max-width: 768px) {
+  body.layout-gridstack .panel-nudge-btn {
+    min-width: 2.65rem;
+    min-height: 1.75rem;
+  }
+}

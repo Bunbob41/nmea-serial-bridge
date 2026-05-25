@@ -268,8 +268,12 @@ class TestUiTabs(unittest.TestCase):
         self._app.processEvents()
         win._refresh_intent_hint()
         self._app.processEvents()
-        self.assertTrue(win.intent_hint.text())
-        self.assertTrue(win.intent_hint.toolTip())
+        full = win.intent_hint.text()
+        self.assertTrue(full)
+        if getattr(win, "_compact_intent_hint", False):
+            self.assertEqual(win.intent_hint.toolTip(), full.strip())
+        else:
+            self.assertEqual(win.intent_hint.toolTip(), "")
 
     def test_nmea_strict_grid_disabled_by_default(self) -> None:
         from ui.standard import BridgeWindowStandard

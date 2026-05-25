@@ -44,6 +44,12 @@ def _step_success(
     *,
     tb_seen: bool,
 ) -> bool:
+    if code == 0 and tb_seen and name == "unittest" and unittest_output_indicates_ok(stdout, stderr):
+        print(
+            "[verify_all] NOTE: unittest logged expected handler tracebacks — treated as pass.",
+            flush=True,
+        )
+        return True
     if tb_seen:
         return False
     if code == 0:

@@ -349,7 +349,11 @@ def create_app(
     # ------------------------------------------------------------------ static dashboard
     static = _static_dir()
     if static is not None:
-        app.mount("/static", StaticFiles(directory=str(static)), name="static")
+        app.mount(
+            "/static",
+            StaticFiles(directory=str(static), html=True),
+            name="static",
+        )
 
         @app.get("/", include_in_schema=False)
         def dashboard() -> FileResponse:
