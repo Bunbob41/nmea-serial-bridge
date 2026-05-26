@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>NMEA Bridge Dashboard (Grid beta)</title>
+  <title>NMEA Bridge Dashboard (Grid)</title>
   <link rel="stylesheet" href="/static/dashboard.css" />
   <link rel="stylesheet" href="/static/vendor/leaflet/leaflet.css" />
   <link rel="stylesheet" href="/static/vendor/gridstack/gridstack.min.css" />
@@ -35,7 +35,7 @@
     <div class="inline-alert header-run-alert" id="run-alert" hidden role="status"></div>
   </header>
 
-  <p class="layout-beta-banner"><a href="/static/index.html">&larr; Standard layout</a> &middot; Customize tiles, then check <strong>Lock layout</strong> in the header. Blue bars resize; ⋯ or long-press for options. <button type="button" class="layout-beta-reset" id="btn-gridstack-reset">Reset layout</button></p>
+  <p class="layout-beta-banner"><a href="/static/index.html">&larr; Classic standard layout</a> &middot; Customize tiles, then check <strong>Lock layout</strong> in the header. Blue bars resize; ⋯ or long-press for options. <button type="button" class="layout-beta-reset" id="btn-gridstack-reset">Reset layout</button></p>
   <main class="dashboard layout-gridstack-main">
   <div class="grid-stack" id="dashboard-panels">
 
@@ -176,7 +176,7 @@
         <span class="dashboard-panel-summary mono" id="panel-sum-map">Off</span>
       </button>
       <div class="dashboard-panel-body" id="panel-body-map" hidden>
-        <p class="map-hint">Live fix from GGA/RMC on the bridge stream. Map tiles load from OpenStreetMap when this PC has internet (not bundled).</p>
+        <p class="map-hint">Live fix from GGA/RMC on the bridge stream. Choose <strong>Street</strong> or <strong>Satellite</strong> with the layer control on the map (internet required; tiles not bundled).</p>
         <label class="map-enable-row">
           <input type="checkbox" id="map-enabled" />
           Show map
@@ -426,12 +426,12 @@
 
   <footer class="app-footer">
     <span id="footer-note">NMEA Serial Bridge — Web Dashboard</span>
-    <span class="footer-layout-link"> · <a href="/static/layouts/gridstack/">Grid layout (beta)</a></span>
+    <span class="footer-layout-link"> · <a href="/static/index.html">Classic layout (backup)</a></span>
   </footer>
 
   <script src="/static/vendor/leaflet/leaflet.js"></script>
   <script src="/static/vendor/gridstack/gridstack-all.js"></script>
-  <script src="/static/dashboard.js"></script>
+  <script src="/static/dashboard.js?v=1.13.14"></script>
   <script src="/static/layouts/gridstack/gridstack-layout.js"></script>
 </body>
 </html>

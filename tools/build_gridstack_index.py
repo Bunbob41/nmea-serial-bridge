@@ -2,9 +2,14 @@
 from __future__ import annotations
 
 import re
+import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1] / "web" / "static"
+REPO = Path(__file__).resolve().parents[1]
+if str(REPO) not in sys.path:
+    sys.path.insert(0, str(REPO))
+from tools.read_version import read_app_version
 # x, y, w, h on 12-column grid (survey-friendly 2-column default)
 GRID_ITEMS = {
     "com-setup": (0, 0, 6, 4),
@@ -18,11 +23,13 @@ GRID_ITEMS = {
 
 
 def main() -> None:
+    ver = read_app_version()
+    dash_src = f"/static/dashboard.js?v={ver}"
     html = (ROOT / "index.html").read_text(encoding="utf-8")
     html = html.replace("<body>", '<body class="layout-gridstack">', 1)
     html = html.replace(
         "<title>NMEA Bridge Dashboard</title>",
-        "<title>NMEA Bridge Dashboard (Grid beta)</title>",
+        "<title>NMEA Bridge Dashboard (Grid)</title>",
         1,
     )
     html = html.replace(
@@ -34,7 +41,7 @@ def main() -> None:
     )
     html = html.replace(
         '<main class="dashboard" id="dashboard-panels">',
-        '<p class="layout-beta-banner"><a href="/static/index.html">&larr; Standard layout</a> '
+        '<p class="layout-beta-banner"><a href="/static/index.html">&larr; Classic standard layout</a> '
         "&middot; Customize tiles, then check <strong>Lock layout</strong> in the header. "
         "Blue bars resize; ⋯ or long-press for options. "
         '<button type="button" class="layout-beta-reset" id="btn-gridstack-reset">Reset layout</button></p>\n'
@@ -83,13 +90,18 @@ def main() -> None:
 
     html = "\n".join(result)
     html = html.replace("  </main>", "  </div>\n  </main>", 1)
-    html = html.replace(
-        '<script src="/static/vendor/leaflet/leaflet.js"></script>\n'
-        "  <script src=\"/static/dashboard.js\"></script>",
+    html = re.sub(
+        r'<script src="/static/vendor/leaflet/leaflet\.js"></script>\s*<script src="/static/dashboard\.js[^"]*"></script>',
         '<script src="/static/vendor/leaflet/leaflet.js"></script>\n'
         '  <script src="/static/vendor/gridstack/gridstack-all.js"></script>\n'
-        '  <script src="/static/dashboard.js"></script>\n'
+        f'  <script src="{dash_src}"></script>\n'
         '  <script src="/static/layouts/gridstack/gridstack-layout.js"></script>',
+        html,
+        count=1,
+    )
+    html = html.replace(
+        '<span class="footer-layout-link"> · <a href="/">Grid dashboard (default)</a></span>',
+        '<span class="footer-layout-link"> · <a href="/static/index.html">Classic layout (backup)</a></span>',
         1,
     )
 

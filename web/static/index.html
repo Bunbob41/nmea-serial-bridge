@@ -170,7 +170,7 @@
         <span class="dashboard-panel-summary mono" id="panel-sum-map">Off</span>
       </button>
       <div class="dashboard-panel-body" id="panel-body-map" hidden>
-        <p class="map-hint">Live fix from GGA/RMC on the bridge stream. Map tiles load from OpenStreetMap when this PC has internet (not bundled).</p>
+        <p class="map-hint">Live fix from GGA/RMC on the bridge stream. Choose <strong>Street</strong> or <strong>Satellite</strong> with the layer control on the map (internet required; tiles not bundled).</p>
         <label class="map-enable-row">
           <input type="checkbox" id="map-enabled" />
           Show map
@@ -414,10 +414,10 @@
 
   <footer class="app-footer">
     <span id="footer-note">NMEA Serial Bridge — Web Dashboard</span>
-    <span class="footer-layout-link"> · <a href="/static/layouts/gridstack/">Grid layout (beta)</a></span>
+    <span class="footer-layout-link"> · <a href="/">Grid dashboard (default)</a></span>
   </footer>
 
   <script src="/static/vendor/leaflet/leaflet.js"></script>
-  <script src="/static/dashboard.js"></script>
+  <script src="/static/dashboard.js?v=1.13.6"></script>
 </body>
 </html>

@@ -4,8 +4,8 @@
 
 | URL (with Web API running) | Layout |
 |----------------------------|--------|
-| `http://127.0.0.1:8765/static/index.html` or `GET /` | **Standard** (production) |
-| `http://127.0.0.1:8765/static/layouts/gridstack/` | **GridStack beta** |
+| `http://127.0.0.1:8765/` or `/static/layouts/gridstack/` | **GridStack** (default — customizable tiles) |
+| `http://127.0.0.1:8765/static/index.html` | **Classic standard** (backup — single-page accordion layout) |
 
 ## What this is
 
@@ -18,6 +18,7 @@
 - **Resize:** blue bar on **bottom** (height), **left** and **right** edges (width). **Hide resize bars** via ⋯ or long-press menu (saved in browser).
 - **Layout options (phone):** tap **⋯** on the section header, or **long-press** the section (~½ second). Desktop: right-click still works.
 - Menu: hide header, hide all headers, **Terminal only** (log), **Prioritize map** (map), Survey monitor **Rows / Columns / Simple**. Tap again to restore.
+- **Map ⋯** — Center on fix, fit/clear track, show/hide track, refresh map size. **Log ⋯** — pause, auto-scroll, clear, expand. **Discovery / COM / Tools** — refresh and unlock shortcuts.
 
 ## Frozen baseline
 
@@ -34,6 +35,12 @@ If `web/static/index.html` changes, regenerate the grid page:
 ```powershell
 python tools/build_gridstack_index.py
 ```
+
+## Roadmap (grid-first)
+
+- **Resize-aware panels** — tune Survey monitor, log, and tools density when tiles are short vs tall.
+- **Map tile** — stronger small/medium/large tile behavior (track, zoom, invalidate on resize).
+- **More tile tools** — extend chrome menus and panel actions without changing the standard layout.
 
 ## Known limits
 

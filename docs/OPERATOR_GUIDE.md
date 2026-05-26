@@ -235,9 +235,9 @@ The bridge does not configure routers or VPN — only opens sockets on the Windo
 ### Web control plane (optional, v1.7+)
 
 - **Enable** — Tools → **Phone** → **Enable Web API on this PC** (default port **8765**, localhost only).
-- **Open dashboard** — Same tab → **Open dashboard in browser**, or `http://127.0.0.1:8765/` (token query param if configured).
+- **Open dashboard** — Same tab → **Open dashboard in browser**, or `http://127.0.0.1:8765/` (token query param if configured). **`GET /` opens the customizable grid layout**; classic single-column layout: `http://127.0.0.1:8765/static/index.html`.
 - **Operator dashboard (v1.8+)** — Start/stop bridge, unlock COM, discovery refresh, config patch, live log, position map, Survey monitor. Section **⋯** (or long-press on phone) opens layout options: hide header, terminal-only log, prioritize map, Survey monitor **Rows / Columns / Simple**.
-- **Grid layout (beta, v1.11+)** — Footer link **Grid layout (beta)** or `http://127.0.0.1:8765/static/layouts/gridstack/`. Drag/resize tiles; **Lock layout** freezes positions; **Reset layout** clears saved grid. Standard dashboard at `GET /` is unchanged.
+- **Grid layout (default at `/`, v1.11+)** — Drag/resize tiles; **Lock layout** freezes positions; **Reset layout** clears saved layout. **Classic layout (backup)** — `http://127.0.0.1:8765/static/index.html` (footer on grid links there too).
 - **Endpoints** — `GET /status`, `GET /config`, `PATCH /config`, `POST /bridge/start`, `POST /bridge/stop` (see `specs/005-hybrid-ui-webui/quickstart.md`).
 - **LAN access** — Off by default. Enabling **Allow LAN access** binds all interfaces; use Windows firewall and optional `token` in `%USERPROFILE%\.cursor-udp-com-bridge\ui_prefs.json` under `web_ui`.
 - **Dev install** — `python -m pip install -r requirements-web.txt` when running from source.

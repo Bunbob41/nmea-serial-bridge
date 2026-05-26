@@ -8,7 +8,7 @@ import time
 from pathlib import Path
 
 from bench_config import load_bench_defaults
-from py_interpreter import cli_python_executable
+from py_interpreter import subprocess_no_console_kwargs, subprocess_script_argv
 
 ROOT = Path(__file__).resolve().parent
 
@@ -21,7 +21,6 @@ def main() -> int:
     p.add_argument("--pause", type=float, default=0.35, help="Pause between cycles (COM settle)")
     args = p.parse_args()
 
-    py = cli_python_executable()
     com = str(d["com"])
     baud = str(d["baud"])
     port = str(d["udp_port"])
@@ -33,26 +32,32 @@ def main() -> int:
     for i in range(1, args.cycles + 1):
         print(f"\n[bench_stress] cycle {i}/{args.cycles}")
         code = subprocess.call(
-            [
-                py,
-                str(ROOT / "bridge_headless.py"),
-                "--com",
-                com,
-                "--baud",
-                baud,
-                "--udp-port",
-                port,
-                "--seconds",
-                str(args.seconds),
-            ],
+            subprocess_script_argv(
+                ROOT / "bridge_headless.py",
+                [
+                    "--com",
+                    com,
+                    "--baud",
+                    baud,
+                    "--udp-port",
+                    port,
+                    "--seconds",
+                    str(args.seconds),
+                ],
+            ),
             cwd=ROOT,
+            **subprocess_no_console_kwargs(),
         )
         if code != 0:
             print(f"[bench_stress] FAIL headless exit {code}")
             fails += 1
         code = subprocess.call(
-            [py, str(ROOT / "com_free.py"), "--com", com, "--baud", baud],
+            subprocess_script_argv(
+                ROOT / "com_free.py",
+                ["--com", com, "--baud", baud],
+            ),
             cwd=ROOT,
+            **subprocess_no_console_kwargs(),
         )
         if code != 0:
             print(f"[bench_stress] FAIL com_free exit {code}")

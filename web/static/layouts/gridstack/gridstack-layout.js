@@ -377,3 +377,121 @@ window.initGridstackDashboard = initGridstackDashboard;
 window.syncGridstackPanelCollapse = syncGridstackPanelCollapse;
 window.swapGridstackTiles = swapGridstackTiles;
 window.applyGridstackLayoutLock = applyGridstackLayoutLock;
+
+/** Inject map ⋯ items when an older cached dashboard.js is still loaded (frozen zip / browser cache). */
+function patchGridstackMapChromeMenu() {
+  if (typeof buildChromeMenuItems !== "function") return;
+  if (buildChromeMenuItems.__gridMapChromePatch) return;
+  const orig = buildChromeMenuItems;
+  window.buildChromeMenuItems = function (panelId) {
+    const items = orig(panelId);
+    if (panelId !== "map") return items;
+    if (items.some((it) => it && it.label === "Center on fix")) return items;
+    const head = [];
+    if (typeof window.appendMapChromeMenuItems === "function" && typeof loadChromePrefs === "function") {
+      window.appendMapChromeMenuItems(head, loadChromePrefs());
+    } else {
+      gridstackMapChromeMenuFallback(head);
+    }
+    const banner = document.querySelector(".layout-beta-banner");
+    if (banner && !banner.querySelector(".grid-chrome-stale-hint")) {
+      const hint = document.createElement("span");
+      hint.className = "grid-chrome-stale-hint";
+      hint.textContent =
+        " · Map menu patched — restart the app or Ctrl+Shift+R to load dashboard.js v1.13.5+";
+      banner.appendChild(hint);
+    }
+    return head.concat([{ separator: true }], items);
+  };
+  window.buildChromeMenuItems.__gridMapChromePatch = true;
+}
+
+function gridstackMapChromeMenuFallback(items) {
+  const prefs =
+    typeof loadChromePrefs === "function"
+      ? loadChromePrefs()
+      : { mapShowTrack: true, mapPrioritized: false };
+  const mapOn = !!document.getElementById("map-enabled")?.checked;
+  const status =
+    typeof window.nmeaGetDashboardStatus === "function"
+      ? window.nmeaGetDashboardStatus()
+      : null;
+  const hasFix =
+    status &&
+    !status.gnss_stream_idle &&
+    status.position_lat != null &&
+    status.position_lon != null;
+  const trackLen =
+    typeof mapTrackPoints !== "undefined" && Array.isArray(mapTrackPoints)
+      ? mapTrackPoints.length
+      : 0;
+
+  items.push({
+    label: mapOn ? "✓ Show map" : "Show map",
+    action: () => {
+      const chk = document.getElementById("map-enabled");
+      if (!chk) return;
+      chk.checked = !chk.checked;
+      chk.dispatchEvent(new Event("change", { bubbles: true }));
+    },
+  });
+  items.push({
+    label: "Center on fix",
+    disabled: !hasFix,
+    action: () => {
+      if (typeof centerMapOnFix === "function") centerMapOnFix();
+      else if (typeof updatePositionMap === "function" && status) {
+        const chk = document.getElementById("map-enabled");
+        if (chk && !chk.checked) {
+          chk.checked = true;
+          chk.dispatchEvent(new Event("change", { bubbles: true }));
+        }
+        updatePositionMap(status);
+        if (typeof invalidateDashboardMap === "function") invalidateDashboardMap();
+      }
+    },
+  });
+  items.push({
+    label: "Fit track in view",
+    disabled: trackLen < 2 && !hasFix,
+    action: () => {
+      if (typeof fitMapToTrack === "function") fitMapToTrack();
+      else if (typeof centerMapOnFix === "function") centerMapOnFix();
+    },
+  });
+  items.push({
+    label: trackLen ? `Clear track (${trackLen} pts)` : "Clear track",
+    disabled: trackLen === 0,
+    action: () => {
+      if (typeof clearMapTrack === "function") clearMapTrack();
+      else if (typeof mapTrackPoints !== "undefined" && typeof mapTrackLine !== "undefined") {
+        mapTrackPoints.length = 0;
+        if (mapTrackLine && mapTrackLine.setLatLngs) mapTrackLine.setLatLngs([]);
+      }
+    },
+  });
+  items.push({
+    label: prefs.mapShowTrack !== false ? "✓ Show position track" : "Show position track",
+    action: () => {
+      if (typeof setMapShowTrack === "function") setMapShowTrack(!prefs.mapShowTrack);
+    },
+  });
+  items.push({
+    label: prefs.mapPrioritized ? "Show map controls" : "Prioritize map",
+    action: () => {
+      if (typeof setMapPrioritized === "function") setMapPrioritized(!prefs.mapPrioritized);
+    },
+  });
+  items.push({
+    label: "Refresh map size",
+    disabled: !mapOn,
+    action: () => {
+      if (typeof ensureBridgeMap === "function") ensureBridgeMap();
+      if (typeof invalidateDashboardMap === "function") invalidateDashboardMap();
+    },
+  });
+}
+
+document.addEventListener("DOMContentLoaded", () => {
+  patchGridstackMapChromeMenu();
+});

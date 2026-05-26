@@ -3,9 +3,93 @@
 High-level notes for **this fork / branch** (`2034-ui-journey-modernization` and descendants).  
  Version = `version.py` / Git tag when you run `.\release.ps1` or tag manually.
 
+## v1.14.5
+
+- **Web position map — Satellite layer** — **Street** (OpenStreetMap) or **Satellite** (Esri imagery + place labels) via the map’s layer control (top-right); choice persists in the browser. Right-click **Position map** for the same shortcuts.
+
+## v1.14.4
+
+- **Web Survey monitor — Rows vs Columns** — **Rows** uses bordered metric tiles inside collapsible sections; **Columns** uses a true aligned grid table (header row + value row, column borders) per section so the two modes read clearly different.
+
+## v1.14.3
+
+- **Web Survey monitor — Simple layout** — Flattens nested section grids (fixes vertical letter-stacking and cramped tiles); clean 3×2 stat grid + GNSS strip; UDP shows port only (`10110`); nowrap values and tighter labels.
+
+## v1.14.2
+
+- **Tools → Terminal (typing)** — Backspace sends Windows BS (`0x08`) instead of DEL; PTY writes run on a background I/O thread so keys do not block the UI; small shell echo is painted immediately (bulk output still batched).
+
+## v1.14.1
+
+- **Tools → Terminal (smoothness)** — Batched PTY output (~28 ms) so the UI does not repaint on every byte; larger reads; debounced window resize; no outer scroll wrapper (terminal fills the pane); PowerShell starts with `-NoProfile` for less startup noise. Click **New session** to start (no auto-spawn on tab open).
+
+## v1.14.0
+
+- **Tools → Terminal** — Embedded local shell (PowerShell / cmd via optional **pywinpty** on Windows); **Open external…** when pywinpty is missing. Use for bench scripts and COM tools, not bridge traffic.
+- **Tools → Inject** — Former “Terminal” NMEA inject tab moved here; saved tab order migrates `Send` / old `Terminal` → **Inject**. Product demo and Connect quick **Send→COM** unchanged.
+
+## v1.13.14
+
+- **PassThru label** — NMEA passthrough shows as **PassThru** on status chips and web Survey monitor (internal mode unchanged).
+- **Survey monitor Simple** — Flat 2-column stat cards (state, transport, COM, UDP port, NMEA, Hz, GNSS) matching Rows styling; hides backpressure/extra Hz/line counters for narrow tiles.
+
+## v1.13.13
+
+- **Tools → Phone port/status** — Wider port spin box (left-aligned value, no `max-width` squeeze); **This PC** URL on two lines with full-width wrap; both cards min-width 320px.
+
+## v1.13.12
+
+- **Tools → Phone** — Extra spacing and top alignment for the **This PC** dashboard URL row so it no longer crowds the port spin box.
+
+## v1.13.11
+
+- **Phone port spin box** — Removed custom QSS “triangle” arrows on `webPortSpin`; uses standard Qt up/down step buttons (still gated by unlock).
+
+## v1.13.10
+
+- **Tools → Phone — Server card alignment** — Every row uses a real label (`Web API`, `Port`, `This PC`, …); field hosts span the column so checkboxes and buttons stay left-aligned with the port spin (fixes centered Enable/Open). Local dashboard URL on its own labeled row below port.
+
+## v1.13.9
+
+- **Tools → Phone — Server card** — Same `QFormLayout` rows as Phone Pairing: port controls on their own row, dashboard URL/status on the next row (no overlap), checkboxes aligned in the field column. Inline actions use `QStyle` icons (`SP_BrowserReload`, `SP_FileIcon`, etc.) with `webIconRole` for optional custom SVG.
+
+## v1.13.8
+
+- **Tools → Phone panel alignment** — Strict `QFormLayout` columns (right-aligned labels, left-aligned fields), left-aligned checkboxes, text-only inline action buttons (no broken theme icons), listen URL under port with dimmed `webListenStatus` styling.
+
+## v1.13.7
+
+- **Tools → Phone panel UX** — Two cards (**Server & Network** / **Phone Pairing**), inline icon actions beside URL and token fields, lock/unlock port control with status text, subtle dark styling (no yellow port highlight), tooltips and **?** help on labels instead of paragraph copy.
+
+## v1.13.6
+
+- **Web default = grid layout** — `GET /` serves the GridStack dashboard; classic accordion UI remains at `/static/index.html` (linked from grid banner/footer). Fixed `build_gridstack_index.py` script injection when `dashboard.js` uses `?v=` query (grid page was missing GridStack JS).
+
+## v1.13.5
+
+- **Grid map ⋯ menu (stale script fix)** — `gridstack-layout.js` patches the menu when an old cached `dashboard.js` is loaded (typical with frozen v1.13.0 zip). Map actions: center on fix, clear/fit track, etc. Web API serves `.js` with `Cache-Control: no-store`.
+
+## v1.13.4
+
+- **Web map context menu** — Map right-click / ⋯ now lists center on fix, track, and related actions first; clicks on the Leaflet map resolve to the map panel. `dashboard.js?v=` cache bust so browsers load the latest script.
+
+## v1.13.3
+
+- **Web dashboard ⋯ chrome menus** — Panel-specific actions: **Map** — center on fix, fit/clear track, show/hide track, toggle map, refresh size; **Log** — pause, auto-scroll, clear, expand; **Survey monitor** — expand all sections; **COM / Discovery / Tools** — refresh, unlock, copy setup link.
+
+## v1.13.2
+
+- **Removed Layout 2.0 beta** — Dropped `/static/layouts/v2/` trial; **GridStack** remains the customizable web layout (`/static/layouts/gridstack/`). Focus next: tile resize–aware panels and map/tools enhancements on the grid.
+
+## v1.13.1
+
+- **Fix: frozen build console storms** — Diagnostics and verify scripts no longer spawn system `python.exe` windows (use bundled `nmea-serial-bridge.exe --run-helper …`). `arp`/`ipconfig`/`netstat`/`bench_stress` subprocesses use `CREATE_NO_WINDOW` on Windows. **Do not use v1.13.0** if you see flashing blank terminals.
+
 ## v1.13.0
 
 **Release build** — Web operator dashboard + GridStack beta (v1.11–1.12) packaged in frozen `web/static` (standard UI at `GET /`, grid trial at `/static/layouts/gridstack/`). Field strip layout tests aligned with current compact strip sizes. Use `.\release.ps1` for zip + optional `gh release`.
+
+**Known issue:** v1.13.0 may flash many console windows when Diagnostics or LAN discovery runs — replaced by v1.13.1.
 
 - **Web dashboard** — Status, config, discovery, start/stop, live log, position map, Survey monitor (Rows / Columns / Simple), section chrome menus (hide headers, terminal-only log, prioritize map), context menu stability.
 - **GridStack beta** — Drag/resize tiles, ▲▼ reorder, collapse shrink, Lock layout, touch **⋯** / long-press, iPhone resize bars, left-edge width bar, optional hide resize bars.

@@ -56,7 +56,7 @@ METRIC_IDS = (
 METRIC_LABELS = {
     "hz_dn": "Into COM (Hz)",
     "hz_up": "From COM (Hz)",
-    "hz_inj": "Inject (Send tab)",
+    "hz_inj": "Inject (Tools → Inject)",
     "sess_dn": "Toward COM (total)",
     "sess_up": "Toward network (total)",
     "health": "Transport",

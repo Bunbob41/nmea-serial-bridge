@@ -14,7 +14,7 @@ from pathlib import Path
 
 from bench_config import load_bench_defaults
 from bench_udp_test import port_has_listener
-from py_interpreter import cli_python_executable, subprocess_no_console_kwargs
+from py_interpreter import cli_python_executable, subprocess_no_console_kwargs, subprocess_script_argv
 from ui.qt_test_harness import is_windows_qt_shutdown_exit, unittest_output_indicates_ok
 
 ROOT = Path(__file__).resolve().parent
@@ -73,8 +73,10 @@ def _step_success(
 
 def run(name: str, args: list[str], *, echo_output: bool = True) -> tuple[int, bool]:
     print(f"\n>> {name}: {' '.join(args)}", flush=True)
+    script = args[0]
+    script_args = args[1:]
     proc = subprocess.run(
-        [PY, *args],
+        subprocess_script_argv(ROOT / script, script_args),
         cwd=ROOT,
         capture_output=True,
         text=True,

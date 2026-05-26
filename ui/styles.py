@@ -63,63 +63,104 @@ QGroupBox#connectGroupBox::title {
 }
 QSpinBox#webPortSpin {
     min-height: 32px;
-    max-width: 118px;
-    padding: 4px 22px 4px 8px;
+    min-width: 152px;
+    padding: 4px 10px;
     background-color: #2a1d22;
-    border: 1px solid #c9a227;
+    border: 1px solid #4a5568;
     border-radius: 8px;
 }
 QSpinBox#webPortSpin[portLocked="true"] {
     color: #b8b0a8;
 }
-QSpinBox#webPortSpin::up-button {
-    subcontrol-origin: border;
-    subcontrol-position: top right;
-    width: 20px;
-    height: 15px;
-    background-color: #4d3f48;
-    border-left: 1px solid #c9a227;
-    border-bottom: 1px solid #6a5a40;
-    border-top-right-radius: 6px;
+QFrame#phoneDashboardCard {
+    background-color: rgba(32, 28, 34, 0.92);
+    border: 1px solid #4a5568;
+    border-radius: 10px;
 }
-QSpinBox#webPortSpin::down-button {
-    subcontrol-origin: border;
-    subcontrol-position: bottom right;
-    width: 20px;
-    height: 15px;
-    background-color: #4d3f48;
-    border-left: 1px solid #c9a227;
-    border-bottom-right-radius: 6px;
+QLabel#phoneCardTitle {
+    color: #e8e4de;
+    font-size: 10pt;
+    font-weight: 600;
+    padding-bottom: 2px;
 }
-QSpinBox#webPortSpin::up-button:hover,
-QSpinBox#webPortSpin::down-button:hover {
-    background-color: #6b5560;
+QLabel#webPortStatus {
+    color: #9aa3b0;
+    font-size: 9pt;
+    min-width: 72px;
 }
-QSpinBox#webPortSpin::up-arrow {
-    image: none;
-    width: 0px;
-    height: 0px;
-    border-left: 5px solid transparent;
-    border-right: 5px solid transparent;
-    border-bottom: 6px solid #f6eee0;
+QLabel#webPortStatus[statusKind="open"] {
+    color: #7eb8e8;
 }
-QSpinBox#webPortSpin::down-arrow {
-    image: none;
-    width: 0px;
-    height: 0px;
-    border-left: 5px solid transparent;
-    border-right: 5px solid transparent;
-    border-top: 6px solid #f6eee0;
+QLabel#webListenStatus {
+    color: #8a919c;
+    font-size: 9pt;
+    padding: 0;
+    min-height: 0;
 }
-QSpinBox#webPortSpin[portLocked="true"]::up-button,
-QSpinBox#webPortSpin[portLocked="true"]::down-button {
+QFrame#phoneDashboardCard QCheckBox {
+    margin: 0;
+    padding: 0;
+    spacing: 6px;
+}
+QToolButton#webPortLockBtn {
+    min-width: 28px;
+    max-width: 28px;
+    min-height: 28px;
+    max-height: 28px;
+    padding: 2px;
+    border: 1px solid #4a5568;
+    border-radius: 8px;
     background-color: #322830;
 }
-QSpinBox#webPortSpin[portLocked="true"]::up-arrow {
-    border-bottom-color: #7a7268;
+QToolButton#webPortLockBtn:hover {
+    background-color: #3d4858;
+    border-color: #5b8fd4;
 }
-QSpinBox#webPortSpin[portLocked="true"]::down-arrow {
-    border-top-color: #7a7268;
+QToolButton#webPortLockBtn:checked {
+    background-color: rgba(91, 143, 212, 0.22);
+    border-color: #5b8fd4;
+}
+QToolButton#webInlineBtn {
+    padding: 2px;
+    border: 1px solid #4a5568;
+    border-radius: 0;
+    background-color: #322830;
+}
+QToolButton#webInlineBtn:hover {
+    background-color: #3d4858;
+    border-color: #5b8fd4;
+}
+QToolButton#webInlineBtn:pressed {
+    background-color: #2a2430;
+}
+QToolButton#webInlineActionBar QToolButton#webInlineBtn:first-child {
+    border-top-left-radius: 8px;
+    border-bottom-left-radius: 8px;
+}
+QToolButton#webInlineActionBar QToolButton#webInlineBtn:last-child {
+    border-top-right-radius: 8px;
+    border-bottom-right-radius: 8px;
+}
+QPushButton#webPrimaryBtn {
+    background-color: #3d5a80;
+    color: #f4f8fc;
+    border: 1px solid #5b8fd4;
+    border-radius: 8px;
+    padding: 6px 14px;
+    font-weight: 600;
+    min-height: 30px;
+}
+QPushButton#webPrimaryBtn:hover {
+    background-color: #4a6f9c;
+    border-color: #7eb8e8;
+}
+QPushButton#webPrimaryBtn:pressed {
+    background-color: #2f4666;
+}
+QLabel#webTokenQr {
+    background-color: #1e181c;
+    border: 1px solid #4a5568;
+    border-radius: 10px;
 }
 QComboBox#connectComCombo,
 QComboBox#connectBaudCombo {
@@ -291,63 +332,97 @@ QGroupBox#connectGroupBox::title {
 }
 QSpinBox#webPortSpin {
     min-height: 32px;
-    max-width: 118px;
-    padding: 4px 22px 4px 8px;
+    min-width: 152px;
+    padding: 4px 10px;
     background-color: #f8faf6;
-    border: 1px solid #6a5a40;
+    border: 1px solid #a8b4c4;
     border-radius: 8px;
 }
 QSpinBox#webPortSpin[portLocked="true"] {
     color: #6a6560;
 }
-QSpinBox#webPortSpin::up-button {
-    subcontrol-origin: border;
-    subcontrol-position: top right;
-    width: 20px;
-    height: 15px;
-    background-color: #e8efe4;
-    border-left: 1px solid #96aa86;
-    border-bottom: 1px solid #b0c0a4;
-    border-top-right-radius: 6px;
+QFrame#phoneDashboardCard {
+    background-color: rgba(248, 250, 252, 0.98);
+    border: 1px solid #c5ced8;
+    border-radius: 10px;
 }
-QSpinBox#webPortSpin::down-button {
-    subcontrol-origin: border;
-    subcontrol-position: bottom right;
-    width: 20px;
-    height: 15px;
-    background-color: #e8efe4;
-    border-left: 1px solid #96aa86;
-    border-bottom-right-radius: 6px;
+QLabel#phoneCardTitle {
+    color: #1e2834;
+    font-size: 10pt;
+    font-weight: 600;
+    padding-bottom: 2px;
 }
-QSpinBox#webPortSpin::up-button:hover,
-QSpinBox#webPortSpin::down-button:hover {
-    background-color: #d4e0cc;
+QLabel#webPortStatus {
+    color: #5a6472;
+    font-size: 9pt;
+    min-width: 72px;
 }
-QSpinBox#webPortSpin::up-arrow {
-    image: none;
-    width: 0px;
-    height: 0px;
-    border-left: 5px solid transparent;
-    border-right: 5px solid transparent;
-    border-bottom: 6px solid #253025;
+QLabel#webPortStatus[statusKind="open"] {
+    color: #2f6fad;
 }
-QSpinBox#webPortSpin::down-arrow {
-    image: none;
-    width: 0px;
-    height: 0px;
-    border-left: 5px solid transparent;
-    border-right: 5px solid transparent;
-    border-top: 6px solid #253025;
+QLabel#webListenStatus {
+    color: #5a6472;
+    font-size: 9pt;
+    padding: 0;
+    min-height: 0;
 }
-QSpinBox#webPortSpin[portLocked="true"]::up-button,
-QSpinBox#webPortSpin[portLocked="true"]::down-button {
-    background-color: #dce4d6;
+QFrame#phoneDashboardCard QCheckBox {
+    margin: 0;
+    padding: 0;
+    spacing: 6px;
 }
-QSpinBox#webPortSpin[portLocked="true"]::up-arrow {
-    border-bottom-color: #9a9488;
+QToolButton#webPortLockBtn {
+    min-width: 28px;
+    max-width: 28px;
+    min-height: 28px;
+    max-height: 28px;
+    padding: 2px;
+    border: 1px solid #c5ced8;
+    border-radius: 8px;
+    background-color: #eef2f6;
 }
-QSpinBox#webPortSpin[portLocked="true"]::down-arrow {
-    border-top-color: #9a9488;
+QToolButton#webPortLockBtn:hover {
+    background-color: #e0eaf4;
+    border-color: #4a8fd4;
+}
+QToolButton#webPortLockBtn:checked {
+    background-color: rgba(74, 143, 212, 0.14);
+    border-color: #4a8fd4;
+}
+QToolButton#webInlineBtn {
+    padding: 2px;
+    border: 1px solid #c5ced8;
+    border-radius: 0;
+    background-color: #eef2f6;
+}
+QToolButton#webInlineBtn:hover {
+    background-color: #e0eaf4;
+    border-color: #4a8fd4;
+    color: #1a3d66;
+}
+QToolButton#webInlineBtn:pressed {
+    background-color: #d8e2ec;
+}
+QPushButton#webPrimaryBtn {
+    background-color: #3d6ea8;
+    color: #ffffff;
+    border: 1px solid #4a8fd4;
+    border-radius: 8px;
+    padding: 6px 14px;
+    font-weight: 600;
+    min-height: 30px;
+}
+QPushButton#webPrimaryBtn:hover {
+    background-color: #4a7fb8;
+    border-color: #2f6fad;
+}
+QPushButton#webPrimaryBtn:pressed {
+    background-color: #2f5580;
+}
+QLabel#webTokenQr {
+    background-color: #ffffff;
+    border: 1px solid #c5ced8;
+    border-radius: 10px;
 }
 QComboBox#connectComCombo,
 QComboBox#connectBaudCombo {

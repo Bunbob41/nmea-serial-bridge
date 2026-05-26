@@ -20,6 +20,7 @@ from ui.controls import (
     create_nmea_controls,
     create_presets_tab,
     create_send_controls,
+    create_system_terminal_tab,
     create_theme_controls,
 )
 from ui.mixin import BridgeLogicMixin
@@ -127,8 +128,9 @@ class BridgeWindowStandard(BridgeLogicMixin, QtWidgets.QWidget):
             ("Presets", "Named COM/UDP presets"),
             ("Phone", "Web API, token, QR — phone dashboard (Tailscale/LAN)"),
             ("NMEA", "Passthrough, strict, or raw binary"),
-            ("Terminal", "Inject test NMEA"),
+            ("Terminal", "Local PowerShell / cmd on this PC"),
             ("Diagnostics", "Bench checks and file log"),
+            ("Inject", "Send test NMEA to serial / network"),
             ("Theme", "Appearance"),
             ("Guide", "UDP/TCP connection workflows"),
         )
@@ -141,10 +143,11 @@ class BridgeWindowStandard(BridgeLogicMixin, QtWidgets.QWidget):
         tools_stack.addWidget(create_presets_tab(self, include_advanced_net=False))  # 0
         tools_stack.addWidget(create_phone_dashboard_tab(self))                       # 1
         tools_stack.addWidget(create_nmea_controls(self))                             # 2
-        tools_stack.addWidget(create_send_controls(self))                             # 3
+        tools_stack.addWidget(create_system_terminal_tab(self))                       # 3
         tools_stack.addWidget(create_diagnostics_controls(self))                      # 4
-        tools_stack.addWidget(create_theme_controls(self))                            # 5
-        tools_stack.addWidget(create_guide_tab(self))                                 # 6
+        tools_stack.addWidget(create_send_controls(self))                             # 5
+        tools_stack.addWidget(create_theme_controls(self))                            # 6
+        tools_stack.addWidget(create_guide_tab(self))                                 # 7
 
         tools_nav.currentRowChanged.connect(self._on_tools_nav_row_changed)
         tools_nav.setCurrentRow(0)
@@ -172,7 +175,10 @@ class BridgeWindowStandard(BridgeLogicMixin, QtWidgets.QWidget):
         connect_tab.installEventFilter(self)
         tabs.setTabToolTip(0, "COM, UDP listen, advanced TCP/UDP, Start and Stop")
         tabs.setTabToolTip(1, "Live bridge log, filters, pause, clear, and save")
-        tabs.setTabToolTip(2, "Presets, NMEA mode, Terminal injection, Diagnostics, Theme, and Guide")
+        tabs.setTabToolTip(
+            2,
+            "Presets, NMEA mode, local shell (Terminal), Inject, Diagnostics, Theme, and Guide",
+        )
 
         self.statusBar = QtWidgets.QStatusBar()
         # Fixed vertical policy prevents the status bar from absorbing spare stretch.

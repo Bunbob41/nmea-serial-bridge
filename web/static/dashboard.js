@@ -8,7 +8,11 @@
 const TOKEN_KEY     = "nmea-bridge-web-token";
 const SHOW_QR_KEY   = "nmea-bridge-show-qr";
 const MAP_ENABLED_KEY = "nmea-bridge-map-enabled";
+const MAP_BASE_LAYER_KEY = "nmea-bridge-map-base-layer";
 const MAP_TRACK_MAX = 120;
+/** Bumped when dashboard.js changes — used for ?v= cache bust on script tags. */
+const DASHBOARD_SCRIPT_REV = "1.14.5";
+let lastDashboardStatus = null;
 // Keep in sync with ui/connection_fields.py BAUD_PRESETS
 const BAUD_PRESETS = [4800, 9600, 19200, 38400, 57600, 115200, 230400, 460800];
 const DEFAULT_BAUD = 115200;
@@ -446,8 +450,8 @@ function setOnline(status) {
   setBadgeClass("stat-state", status.running ? "running" : "stopped");
   setEl("stat-com", status.com_port || "—");
   setEl("stat-baud", status.baud != null ? String(status.baud) : "—");
-  setEl("stat-udp", `${status.udp_listen_host || ""}:${status.udp_listen_port || ""}`);
-  setEl("stat-nmea", status.nmea_mode || "—");
+  setEl("stat-udp", formatUdpBindDisplay(status));
+  setEl("stat-nmea", formatNmeaModeDisplay(status.nmea_mode));
 
   const transportOk = status.transport_ok !== false;
   setEl("stat-transport", transportOk ? "OK" : "Warn");
@@ -486,6 +490,7 @@ function setOnline(status) {
   updateMonitorSummaries(status);
   updateDashboardPanelSummaries(status);
   updateHeaderStatusChip(status);
+  lastDashboardStatus = status;
   updatePositionMap(status);
 }
 
@@ -559,6 +564,8 @@ function defaultChromePrefs() {
     hiddenHeaders: [],
     logTerminalOnly: false,
     mapPrioritized: false,
+    mapShowTrack: true,
+    mapBaseLayer: "street",
     monitorLayout: "rows",
     hideResizeGrips: false,
   };
@@ -573,6 +580,9 @@ function loadChromePrefs() {
     }
     prefs.logTerminalOnly = !!raw.logTerminalOnly;
     prefs.mapPrioritized = !!raw.mapPrioritized;
+    if (raw.mapShowTrack === false) prefs.mapShowTrack = false;
+    const base = raw.mapBaseLayer;
+    prefs.mapBaseLayer = base === "satellite" ? "satellite" : "street";
     const layout = raw.monitorLayout;
     prefs.monitorLayout = MONITOR_LAYOUT_MODES.includes(layout) ? layout : "rows";
     prefs.hideResizeGrips = !!raw.hideResizeGrips;
@@ -619,6 +629,7 @@ function applyChromePrefs(prefs) {
       ensureBridgeMap();
       setTimeout(() => mapInstance?.invalidateSize(), 150);
     }
+    syncMapTrackVisibility(prefs.mapShowTrack !== false);
   }
 
   applyMonitorLayout(prefs.monitorLayout || "rows");
@@ -639,19 +650,36 @@ function setHideResizeGrips(on) {
 /** Restores .stat-item shells after Columns table teardown. */
 const monitorGridItemStore = new WeakMap();
 
+function _clearMonitorTableCellStyle(el) {
+  el.classList.remove(
+    "monitor-table-head",
+    "monitor-table-body",
+    "monitor-table-gnss-head",
+    "monitor-table-gnss-body"
+  );
+  el.style.gridRow = "";
+  el.style.gridColumn = "";
+}
+
 function teardownMonitorColumnsTable(card) {
   if (!card) return;
   card.querySelectorAll(".monitor-grid[data-columns-table]").forEach((grid) => {
     const shells = monitorGridItemStore.get(grid);
-    const labelRow = grid.querySelector(".monitor-table-labels");
-    const valueRow = grid.querySelector(".monitor-table-values");
-    const labels = labelRow ? [...labelRow.querySelectorAll(".stat-label")] : [];
-    const values = valueRow ? [...valueRow.querySelectorAll(".stat-value")] : [];
+    const labels = [...grid.querySelectorAll(":scope > .stat-label")];
+    const values = [...grid.querySelectorAll(":scope > .stat-value")];
     grid.replaceChildren();
+    grid.classList.remove("monitor-data-table");
+    grid.style.removeProperty("--monitor-cols");
     if (shells?.length) {
       shells.forEach((shell, i) => {
-        if (labels[i]) shell.appendChild(labels[i]);
-        if (values[i]) shell.appendChild(values[i]);
+        if (labels[i]) {
+          _clearMonitorTableCellStyle(labels[i]);
+          shell.appendChild(labels[i]);
+        }
+        if (values[i]) {
+          _clearMonitorTableCellStyle(values[i]);
+          shell.appendChild(values[i]);
+        }
         grid.appendChild(shell);
       });
     }
@@ -672,31 +700,58 @@ function buildMonitorColumnsTable(card) {
       items.map((item) => {
         const shell = document.createElement("div");
         shell.className = item.className;
-        shell.dataset.statShell = item.dataset.panel || "";
         if (item.id) shell.id = `${item.id}-shell`;
         return shell;
       })
     );
 
-    const labelRow = document.createElement("div");
-    labelRow.className = "monitor-table-row monitor-table-labels";
-    const valueRow = document.createElement("div");
-    valueRow.className = "monitor-table-row monitor-table-values";
+    const regular = items.filter((item) => !item.classList.contains("monitor-stat-gnss"));
+    const gnssItems = items.filter((item) => item.classList.contains("monitor-stat-gnss"));
+    const cols = Math.max(regular.length, 1);
 
-    items.forEach((item) => {
+    grid.classList.add("monitor-data-table");
+    grid.dataset.columnsTable = "1";
+    grid.style.setProperty("--monitor-cols", String(cols));
+
+    let col = 1;
+    regular.forEach((item) => {
       const lab = item.querySelector(".stat-label");
       const val = item.querySelector(".stat-value");
-      if (item.classList.contains("monitor-stat-gnss")) {
-        if (lab) lab.classList.add("monitor-table-gnss-label");
-        if (val) val.classList.add("monitor-table-gnss-value");
+      if (lab) {
+        lab.classList.add("monitor-table-head");
+        lab.style.gridRow = "1";
+        lab.style.gridColumn = String(col);
+        grid.appendChild(lab);
       }
-      if (lab) labelRow.appendChild(lab);
-      if (val) valueRow.appendChild(val);
+      if (val) {
+        val.classList.add("monitor-table-body");
+        val.style.gridRow = "2";
+        val.style.gridColumn = String(col);
+        grid.appendChild(val);
+      }
       item.remove();
+      col += 1;
     });
 
-    grid.append(labelRow, valueRow);
-    grid.dataset.columnsTable = "1";
+    const gnssLabelRow = regular.length > 0 ? 3 : 1;
+    const gnssValueRow = gnssLabelRow + 1;
+    gnssItems.forEach((item) => {
+      const lab = item.querySelector(".stat-label");
+      const val = item.querySelector(".stat-value");
+      if (lab) {
+        lab.classList.add("monitor-table-head", "monitor-table-gnss-head");
+        lab.style.gridRow = String(gnssLabelRow);
+        lab.style.gridColumn = "1 / -1";
+        grid.appendChild(lab);
+      }
+      if (val) {
+        val.classList.add("monitor-table-body", "monitor-table-gnss-body");
+        val.style.gridRow = String(gnssValueRow);
+        val.style.gridColumn = "1 / -1";
+        grid.appendChild(val);
+      }
+      item.remove();
+    });
   });
 }
 
@@ -717,18 +772,21 @@ function applyMonitorLayout(mode) {
   card.classList.add(`monitor-layout-${layout}`);
 
   if (layout === "columns") {
+    teardownMonitorColumnsTable(card);
     buildMonitorColumnsTable(card);
-  } else if (layout !== "columns") {
+  } else {
     teardownMonitorColumnsTable(card);
   }
 
   if (layout === "simple") {
     teardownMonitorColumnsTable(card);
-    ["connection", "session"].forEach((id) => {
+    ["connection", "rates", "session"].forEach((id) => {
       const sec = document.querySelector(`.monitor-section[data-section="${id}"]`);
       if (sec) setMonitorSectionOpen(sec, true, false);
     });
   }
+  syncMonitorFieldLabels(layout);
+  if (lastDashboardStatus) setOnline(lastDashboardStatus);
 }
 
 function setMonitorLayout(mode) {
@@ -936,10 +994,197 @@ function setMapPrioritized(on) {
   applyChromePrefs(prefs);
 }
 
+function statusHasMapFix(status) {
+  if (!status || status.gnss_stream_idle) return false;
+  const lat = status.position_lat;
+  const lon = status.position_lon;
+  return (
+    lat != null &&
+    lon != null &&
+    Number.isFinite(Number(lat)) &&
+    Number.isFinite(Number(lon))
+  );
+}
+
+function ensureMapEnabledFromChrome() {
+  const chk = document.getElementById("map-enabled");
+  if (!chk || chk.checked) return;
+  chk.checked = true;
+  localStorage.setItem(MAP_ENABLED_KEY, "1");
+  syncMapVisibility();
+  ensureBridgeMap();
+}
+
+function syncMapTrackVisibility(show) {
+  if (!mapTrackLine || !mapInstance) return;
+  const onMap = mapInstance.hasLayer(mapTrackLine);
+  if (show && !onMap) mapTrackLine.addTo(mapInstance);
+  if (!show && onMap) mapTrackLine.remove();
+}
+
+function setMapShowTrack(on) {
+  const prefs = loadChromePrefs();
+  prefs.mapShowTrack = !!on;
+  saveChromePrefs(prefs);
+  syncMapTrackVisibility(prefs.mapShowTrack);
+}
+
+function clearMapTrack() {
+  mapTrackPoints = [];
+  if (mapTrackLine) mapTrackLine.setLatLngs([]);
+}
+
+function centerMapOnFix() {
+  ensureMapEnabledFromChrome();
+  ensureBridgeMap();
+  if (!mapInstance || !mapMarker || !statusHasMapFix(lastDashboardStatus)) return;
+  const lat = Number(lastDashboardStatus.position_lat);
+  const lon = Number(lastDashboardStatus.position_lon);
+  const ll = [lat, lon];
+  const stale = !!lastDashboardStatus.position_stale;
+  const zoom = stale ? Math.min(mapInstance.getZoom(), 14) : 16;
+  mapInstance.setView(ll, zoom, { animate: true });
+  mapMarker.setLatLng(ll);
+  setTimeout(() => mapInstance?.invalidateSize(), 80);
+}
+
+function fitMapToTrack() {
+  ensureMapEnabledFromChrome();
+  ensureBridgeMap();
+  if (!mapInstance || typeof L === "undefined") return;
+  if (mapTrackPoints.length >= 2) {
+    const bounds = L.latLngBounds(mapTrackPoints);
+    mapInstance.fitBounds(bounds, { padding: [24, 24], maxZoom: 17, animate: true });
+    setTimeout(() => mapInstance?.invalidateSize(), 80);
+    return;
+  }
+  centerMapOnFix();
+}
+
+function toggleMapEnabledFromChrome() {
+  const chk = document.getElementById("map-enabled");
+  if (!chk) return;
+  chk.checked = !chk.checked;
+  localStorage.setItem(MAP_ENABLED_KEY, chk.checked ? "1" : "0");
+  syncMapVisibility();
+  if (chk.checked) {
+    ensureBridgeMap();
+    setTimeout(() => mapInstance?.invalidateSize(), 120);
+  }
+}
+
+function setLogPauseFromChrome(on) {
+  logUiPaused = !!on;
+  const chk = document.getElementById("log-pause-ui");
+  if (chk) chk.checked = logUiPaused;
+  if (!logUiPaused) renderWebLog(true);
+  updateLogMeta();
+}
+
+function setLogAutoscrollFromChrome(on) {
+  logAutoscroll = !!on;
+  const chk = document.getElementById("log-autoscroll");
+  if (chk) chk.checked = logAutoscroll;
+  if (logAutoscroll) scrollLogToEnd();
+}
+
+function expandAllMonitorSections() {
+  document.querySelectorAll(".monitor-section").forEach((sec) => {
+    setMonitorSectionOpen(sec, true, false);
+  });
+}
+
+function resolveChromePanelFromEvent(e) {
+  const el = e.target;
+  if (!el || !el.closest) return null;
+  if (
+    el.closest(
+      "#map-card, .map-card, #map-frame, #bridge-map, .bridge-map, .leaflet-container, .leaflet-pane, .map-hint, .map-coords, .map-enable-row"
+    )
+  ) {
+    return document.getElementById("map-card");
+  }
+  if (el.closest("#log-card, .log-card, #log-panel, .log-panel, .log-toolbar, .log-view")) {
+    return document.getElementById("log-card");
+  }
+  if (el.closest("#status-card, .status-card, .monitor-wrap, .monitor-section")) {
+    return document.getElementById("status-card");
+  }
+  if (el.closest("#com-setup-card, .com-setup-card")) {
+    return document.getElementById("com-setup-card");
+  }
+  if (el.closest("#discovery-card, .discovery-card")) {
+    return document.getElementById("discovery-card");
+  }
+  if (el.closest("#tools-card, .tools-card")) {
+    return document.getElementById("tools-card");
+  }
+  if (el.closest("#config-card, .config-card")) {
+    return document.getElementById("config-card");
+  }
+  return el.closest(".dashboard-panel[data-panel]");
+}
+
+function appendMapChromeMenuItems(items, prefs) {
+  const mapOn = !!document.getElementById("map-enabled")?.checked;
+  const hasFix = statusHasMapFix(lastDashboardStatus);
+  const trackLen = mapTrackPoints.length;
+  items.push({
+    label: mapOn ? "✓ Show map" : "Show map",
+    action: () => toggleMapEnabledFromChrome(),
+  });
+  items.push({
+    label: "Center on fix",
+    disabled: !hasFix,
+    action: () => centerMapOnFix(),
+  });
+  items.push({
+    label: "Fit track in view",
+    disabled: trackLen < 2 && !hasFix,
+    action: () => fitMapToTrack(),
+  });
+  items.push({
+    label: trackLen ? `Clear track (${trackLen} pts)` : "Clear track",
+    disabled: trackLen === 0,
+    action: () => clearMapTrack(),
+  });
+  items.push({
+    label: prefs.mapShowTrack ? "✓ Show position track" : "Show position track",
+    action: () => setMapShowTrack(!prefs.mapShowTrack),
+  });
+  const mapBase = loadMapBaseLayer();
+  items.push({ separator: true });
+  items.push({
+    label: mapBase === "street" ? "✓ Map layer: Street" : "Map layer: Street",
+    action: () => setMapBaseLayer("street"),
+  });
+  items.push({
+    label: mapBase === "satellite" ? "✓ Map layer: Satellite" : "Map layer: Satellite",
+    action: () => setMapBaseLayer("satellite"),
+  });
+  items.push({
+    label: prefs.mapPrioritized ? "Show map controls" : "Prioritize map",
+    action: () => setMapPrioritized(!prefs.mapPrioritized),
+  });
+  items.push({
+    label: "Refresh map size",
+    disabled: !mapOn,
+    action: () => {
+      ensureBridgeMap();
+      invalidateDashboardMap();
+    },
+  });
+}
+
 function buildChromeMenuItems(panelId) {
   const prefs = loadChromePrefs();
   const headerHidden = prefs.hiddenHeaders.includes(panelId);
   const items = [];
+
+  if (panelId === "map") {
+    appendMapChromeMenuItems(items, prefs);
+    items.push({ separator: true });
+  }
 
   items.push({
     label: headerHidden ? "Show section header" : "Hide section header",
@@ -958,13 +1203,22 @@ function buildChromeMenuItems(panelId) {
       label: prefs.logTerminalOnly ? "Show log controls" : "Terminal only",
       action: () => setLogTerminalOnly(!prefs.logTerminalOnly),
     });
-  }
-
-  if (panelId === "map") {
-    items.push({ separator: true });
     items.push({
-      label: prefs.mapPrioritized ? "Show map controls" : "Prioritize map",
-      action: () => setMapPrioritized(!prefs.mapPrioritized),
+      label: logUiPaused ? "Resume log view" : "Pause log view",
+      action: () => setLogPauseFromChrome(!logUiPaused),
+    });
+    items.push({
+      label: logAutoscroll ? "✓ Auto-scroll" : "Auto-scroll",
+      action: () => setLogAutoscrollFromChrome(!logAutoscroll),
+    });
+    items.push({
+      label: "Clear log view",
+      action: () => clearWebLogView(),
+    });
+    const logExpanded = document.body.classList.contains("dashboard-log-expanded");
+    items.push({
+      label: logExpanded ? "✓ Expand log (full screen)" : "Expand log (full screen)",
+      action: () => setLogExpanded(!logExpanded),
     });
   }
 
@@ -972,16 +1226,48 @@ function buildChromeMenuItems(panelId) {
     const cur = prefs.monitorLayout || "rows";
     items.push({ separator: true });
     items.push({
-      label: cur === "rows" ? "✓ Rows (sections)" : "Rows (sections)",
+      label: "Expand all sections",
+      action: () => expandAllMonitorSections(),
+    });
+    items.push({
+      label: cur === "rows" ? "✓ Rows (metric tiles)" : "Rows (metric tiles)",
       action: () => setMonitorLayout("rows"),
     });
     items.push({
-      label: cur === "columns" ? "✓ Columns (table: labels then values)" : "Columns (table: labels then values)",
+      label: cur === "columns" ? "✓ Columns (aligned table)" : "Columns (aligned table)",
       action: () => setMonitorLayout("columns"),
     });
     items.push({
       label: cur === "simple" ? "✓ Simple (state · transport · GNSS)" : "Simple (state · transport · GNSS)",
       action: () => setMonitorLayout("simple"),
+    });
+  }
+
+  if (panelId === "com-setup") {
+    items.push({ separator: true });
+    items.push({
+      label: "Refresh COM ports",
+      action: () => refreshComPorts(),
+    });
+  }
+
+  if (panelId === "discovery") {
+    items.push({ separator: true });
+    items.push({
+      label: "Refresh discovery",
+      action: () => refreshDiscovery(),
+    });
+  }
+
+  if (panelId === "tools") {
+    items.push({ separator: true });
+    items.push({
+      label: "Unlock ports",
+      action: () => unlockPorts(),
+    });
+    items.push({
+      label: "Copy setup link",
+      action: () => copySetupLink(),
     });
   }
 
@@ -997,20 +1283,18 @@ function buildChromeMenuItems(panelId) {
 }
 
 function onDashboardContextMenu(e) {
+  const inMenu = e.target.closest(".dashboard-chrome-menu");
+  if (inMenu) return;
+
   const toggle = e.target.closest(".dashboard-panel-toggle");
-  let panel = e.target.closest(".dashboard-panel[data-panel]");
-  if (!panel && e.target.closest(".status-card .monitor-wrap, .status-card .monitor-section")) {
-    panel = document.getElementById("status-card");
-  }
-  if (!toggle && !panel) return;
+  let panel = resolveChromePanelFromEvent(e);
+  if (!panel && !toggle) return;
 
   const panelId = panel?.dataset?.panel;
   if (!panelId || !DASHBOARD_PANEL_IDS.includes(panelId)) return;
 
-  const inMenu = e.target.closest(".dashboard-chrome-menu");
-  if (inMenu) return;
-
   e.preventDefault();
+  e.stopPropagation();
   armChromeMenuCloseGuard();
   showChromeMenuAt(e.clientX, e.clientY, buildChromeMenuItems(panelId));
 }
@@ -1027,7 +1311,7 @@ function initDashboardChromeMenus() {
   applyChromePrefs(loadChromePrefs());
   ensurePanelChromeMenuButtons();
   initChromeLongPress();
-  document.addEventListener("contextmenu", onDashboardContextMenu);
+  document.addEventListener("contextmenu", onDashboardContextMenu, true);
   document.addEventListener("pointerdown", onChromeMenuOutsidePointer, true);
   document.addEventListener("keydown", (e) => {
     if (e.key === "Escape") hideChromeMenu();
@@ -1326,6 +1610,48 @@ function fmtCount(val) {
   return String(n);
 }
 
+function formatNmeaModeDisplay(mode) {
+  const m = String(mode ?? "").trim().toLowerCase();
+  if (m === "passthrough") return "PassThru";
+  if (m === "strict") return "Strict";
+  if (m === "raw") return "Raw";
+  const raw = String(mode ?? "").trim();
+  return raw || "—";
+}
+
+function getMonitorLayoutMode() {
+  const card = document.getElementById("status-card");
+  if (!card) return "rows";
+  for (const mode of MONITOR_LAYOUT_MODES) {
+    if (card.classList.contains(`monitor-layout-${mode}`)) return mode;
+  }
+  return "rows";
+}
+
+function formatUdpBindDisplay(status) {
+  const port =
+    status.udp_listen_port != null && status.udp_listen_port !== ""
+      ? String(status.udp_listen_port)
+      : "";
+  const host = (status.udp_listen_host || "").trim();
+  if (getMonitorLayoutMode() === "simple") {
+    return port || "—";
+  }
+  if (!host && !port) return "—";
+  return `${host}:${port}`;
+}
+
+function syncMonitorFieldLabels(layout) {
+  const mode = MONITOR_LAYOUT_MODES.includes(layout) ? layout : "rows";
+  const simple = mode === "simple";
+  const udpLabel = document.querySelector(".monitor-stat-udp .stat-label");
+  if (udpLabel) udpLabel.textContent = simple ? "UDP port" : "UDP bind";
+  const nmeaLabel = document.querySelector(".monitor-stat-nmea .stat-label");
+  if (nmeaLabel) nmeaLabel.textContent = simple ? "NMEA" : "NMEA mode";
+  const hzLabel = document.querySelector(".monitor-stat-hz-down .stat-label");
+  if (hzLabel) hzLabel.textContent = simple ? "Hz → COM" : "Hz net→COM";
+}
+
 function markWarnStat(id, val) {
   const n = Number(val ?? 0);
   setEl(id, String(n));
@@ -1358,6 +1684,7 @@ function setOffline() {
   const badgeEl = document.getElementById("stat-state");
   if (badgeEl) { badgeEl.textContent = "offline"; badgeEl.className = "stat-value state-badge"; }
   updateHeaderStatusChip(null);
+  lastDashboardStatus = null;
 }
 
 // ── Configuration form ────────────────────────────────────────────────────────
@@ -2572,10 +2899,69 @@ function clearWebLogView() {
 
 // ── Position map (GGA/RMC via /status; Survey HUD may share bridge.navigation_position()) ──
 let mapInstance = null;
+let mapStreetLayer = null;
+let mapSatelliteLayer = null;
+let mapLayerControl = null;
 let mapMarker = null;
 let mapTrackLine = null;
 let mapTrackPoints = [];
 let mapTilesOk = true;
+
+function loadMapBaseLayer() {
+  try {
+    const prefs = loadChromePrefs();
+    if (prefs.mapBaseLayer === "satellite") return "satellite";
+  } catch (_) {
+    /* ignore */
+  }
+  const saved = localStorage.getItem(MAP_BASE_LAYER_KEY);
+  return saved === "satellite" ? "satellite" : "street";
+}
+
+function saveMapBaseLayer(mode) {
+  const clean = mode === "satellite" ? "satellite" : "street";
+  localStorage.setItem(MAP_BASE_LAYER_KEY, clean);
+  const prefs = loadChromePrefs();
+  prefs.mapBaseLayer = clean;
+  saveChromePrefs(prefs);
+}
+
+function syncMapAttributionText(mode) {
+  const attr = document.getElementById("map-attribution");
+  if (!attr) return;
+  if (mode === "satellite") {
+    attr.innerHTML =
+      'Imagery © <a href="https://www.esri.com/" target="_blank" rel="noopener">Esri</a> · ' +
+      "Labels © Esri";
+  } else {
+    attr.innerHTML =
+      '© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors';
+  }
+}
+
+function _wireMapTileErrors(layer) {
+  layer.on("tileerror", () => {
+    mapTilesOk = false;
+    const note = document.getElementById("map-offline-note");
+    if (note) note.hidden = false;
+  });
+}
+
+function setMapBaseLayer(mode) {
+  ensureBridgeMap();
+  if (!mapInstance || !mapStreetLayer || !mapSatelliteLayer) return;
+  const wantSat = mode === "satellite";
+  if (wantSat) {
+    if (mapInstance.hasLayer(mapStreetLayer)) mapInstance.removeLayer(mapStreetLayer);
+    if (!mapInstance.hasLayer(mapSatelliteLayer)) mapSatelliteLayer.addTo(mapInstance);
+  } else {
+    if (mapInstance.hasLayer(mapSatelliteLayer)) mapInstance.removeLayer(mapSatelliteLayer);
+    if (!mapInstance.hasLayer(mapStreetLayer)) mapStreetLayer.addTo(mapInstance);
+  }
+  saveMapBaseLayer(wantSat ? "satellite" : "street");
+  syncMapAttributionText(wantSat ? "satellite" : "street");
+  invalidateDashboardMap();
+}
 
 function initPositionMap() {
   const chk = document.getElementById("map-enabled");
@@ -2614,17 +3000,42 @@ function ensureBridgeMap() {
     shadowUrl: "/static/vendor/leaflet/marker-shadow.png",
   });
   mapInstance = L.map(host, { zoomControl: true, attributionControl: true });
-  L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+
+  mapStreetLayer = L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
     maxZoom: 19,
-    attribution:
-      '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
-  })
-    .on("tileerror", () => {
-      mapTilesOk = false;
-      const note = document.getElementById("map-offline-note");
-      if (note) note.hidden = false;
-    })
+    attribution: "&copy; OpenStreetMap",
+  });
+  _wireMapTileErrors(mapStreetLayer);
+
+  const satImagery = L.tileLayer(
+    "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+    { maxZoom: 19, attribution: "&copy; Esri" }
+  );
+  const satLabels = L.tileLayer(
+    "https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}",
+    { maxZoom: 19, attribution: "&copy; Esri" }
+  );
+  _wireMapTileErrors(satImagery);
+  _wireMapTileErrors(satLabels);
+  mapSatelliteLayer = L.layerGroup([satImagery, satLabels]);
+
+  const base = loadMapBaseLayer();
+  if (base === "satellite") mapSatelliteLayer.addTo(mapInstance);
+  else mapStreetLayer.addTo(mapInstance);
+  syncMapAttributionText(base);
+
+  mapLayerControl = L.control
+    .layers(
+      { Street: mapStreetLayer, Satellite: mapSatelliteLayer },
+      null,
+      { position: "topright", collapsed: true }
+    )
     .addTo(mapInstance);
+  mapInstance.on("baselayerchange", (ev) => {
+    const mode = ev.name === "Satellite" ? "satellite" : "street";
+    saveMapBaseLayer(mode);
+    syncMapAttributionText(mode);
+  });
   mapMarker = L.circleMarker([0, 0], {
     radius: 9,
     weight: 2,
@@ -2636,7 +3047,8 @@ function ensureBridgeMap() {
     color: "#60a5fa",
     weight: 3,
     opacity: 0.65,
-  }).addTo(mapInstance);
+  });
+  syncMapTrackVisibility(loadChromePrefs().mapShowTrack !== false);
   mapInstance.setView([20, 0], 2);
 }
 
@@ -2705,17 +3117,20 @@ function updatePositionMap(status) {
     fillOpacity: stale ? 0.45 : 0.9,
   });
 
-  const last = mapTrackPoints[mapTrackPoints.length - 1];
-  if (
-    !last ||
-    Math.abs(last[0] - ll[0]) > 1e-7 ||
-    Math.abs(last[1] - ll[1]) > 1e-7
-  ) {
-    mapTrackPoints.push(ll);
-    if (mapTrackPoints.length > MAP_TRACK_MAX) {
-      mapTrackPoints = mapTrackPoints.slice(-MAP_TRACK_MAX);
+  const showTrack = loadChromePrefs().mapShowTrack !== false;
+  if (showTrack && mapTrackLine) {
+    const last = mapTrackPoints[mapTrackPoints.length - 1];
+    if (
+      !last ||
+      Math.abs(last[0] - ll[0]) > 1e-7 ||
+      Math.abs(last[1] - ll[1]) > 1e-7
+    ) {
+      mapTrackPoints.push(ll);
+      if (mapTrackPoints.length > MAP_TRACK_MAX) {
+        mapTrackPoints = mapTrackPoints.slice(-MAP_TRACK_MAX);
+      }
+      mapTrackLine.setLatLngs(mapTrackPoints);
     }
-    mapTrackLine.setLatLngs(mapTrackPoints);
   }
 
   const zoom = stale ? Math.min(mapInstance.getZoom(), 14) : 16;
@@ -2727,6 +3142,9 @@ function updatePositionMap(status) {
 }
 
 window.invalidateDashboardMap = invalidateDashboardMap;
+window.appendMapChromeMenuItems = appendMapChromeMenuItems;
+window.nmeaGetDashboardStatus = () => lastDashboardStatus;
+window.DASHBOARD_SCRIPT_REV = DASHBOARD_SCRIPT_REV;
 
 // ── Kick-off ──────────────────────────────────────────────────────────────────
 document.addEventListener("DOMContentLoaded", init);

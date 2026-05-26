@@ -75,7 +75,7 @@ class NoWheelSpinBox(QtWidgets.QSpinBox):
 
 
 class WebPortSpinBox(QtWidgets.QSpinBox):
-    """Phone dashboard Web API port — compact, no wheel, step buttons honor unlock checkbox."""
+    """Phone dashboard Web API port — compact, no wheel, step buttons honor port unlock control."""
 
     def __init__(self, parent: QtWidgets.QWidget | None = None) -> None:
         super().__init__(parent)
@@ -83,13 +83,14 @@ class WebPortSpinBox(QtWidgets.QSpinBox):
         self.setFocusPolicy(QtCore.Qt.FocusPolicy.ClickFocus)
         self.setButtonSymbols(QtWidgets.QAbstractSpinBox.ButtonSymbols.UpDownArrows)
         self.setAlignment(
-            QtCore.Qt.AlignmentFlag.AlignRight | QtCore.Qt.AlignmentFlag.AlignVCenter
+            QtCore.Qt.AlignmentFlag.AlignLeft | QtCore.Qt.AlignmentFlag.AlignVCenter
         )
         self.setSizePolicy(
             QtWidgets.QSizePolicy.Policy.Fixed,
             QtWidgets.QSizePolicy.Policy.Fixed,
         )
-        self.setFixedWidth(118)
+        # Wide enough for 5-digit ports + native step buttons (avoid arrow/text overlap).
+        self.setFixedWidth(152)
 
     def _unlock_checked(self) -> bool:
         win = self.window()
@@ -696,6 +697,12 @@ def create_send_controls(parent: QtWidgets.QWidget) -> QtWidgets.QWidget:
     return build_send_tab(parent)
 
 
+def create_system_terminal_tab(parent: QtWidgets.QWidget) -> QtWidgets.QWidget:
+    from ui.system_terminal import build_system_terminal_tab
+
+    return build_system_terminal_tab(parent)
+
+
 def create_diagnostics_controls(parent: QtWidgets.QWidget) -> QtWidgets.QWidget:
     from ui.tool_tabs import build_diagnostics_tab
 
@@ -835,7 +842,7 @@ def create_connect_quick_terminal(parent: QtWidgets.QWidget) -> QtWidgets.QWidge
     lay.setContentsMargins(0, 0, 0, 0)
     hint = QtWidgets.QLabel(
         "Preflight/diagnostic output and one-line Send→COM (bridge must be Running). "
-        "Full Terminal tab for multi-line inject."
+        "Multi-line inject: Tools → Inject."
     )
     hint.setWordWrap(True)
     hint.setObjectName("tabHint")
@@ -858,7 +865,9 @@ def create_connect_quick_terminal(parent: QtWidgets.QWidget) -> QtWidgets.QWidge
     parent.connect_terminal_input.setPlaceholderText("$GPGGA,...  Enter sends to COM")
     parent.connect_terminal_input.returnPressed.connect(parent._connect_terminal_send_line)
     parent.btn_connect_terminal_send = QtWidgets.QPushButton("Send→COM")
-    parent.btn_connect_terminal_send.setToolTip("Inject one NMEA line to serial (same as Terminal tab).")
+    parent.btn_connect_terminal_send.setToolTip(
+        "Inject one NMEA line to serial (same as Tools → Inject)."
+    )
     parent.btn_connect_terminal_send.clicked.connect(parent._connect_terminal_send_line)
     parent.btn_connect_terminal_clear = QtWidgets.QPushButton("Clear")
     parent.btn_connect_terminal_clear.clicked.connect(parent.connect_terminal_out.clear)

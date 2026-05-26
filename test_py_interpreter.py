@@ -91,13 +91,22 @@ class TestCliPythonExecutable(unittest.TestCase):
                 got = Path(py_interpreter.cli_python_executable())
             self.assertEqual(got.resolve(), py.resolve())
 
-    def test_frozen_app_uses_path_python_when_sys_executable_is_app(self) -> None:
+    def test_frozen_app_uses_bundled_exe_not_system_python(self) -> None:
         app = Path(r"C:\tmp\nmea-serial-bridge.exe")
         with mock.patch.object(sys, "executable", str(app)):
             with mock.patch.object(sys, "frozen", True, create=True):
-                with mock.patch.object(py_interpreter.shutil, "which", return_value=r"C:\Python314\python.exe"):
-                    got = Path(py_interpreter.cli_python_executable())
-        self.assertEqual(got, Path(r"C:\Python314\python.exe"))
+                got = Path(py_interpreter.cli_python_executable())
+        self.assertEqual(got.resolve(), app.resolve())
+
+    def test_subprocess_script_argv_frozen_uses_helper_flag(self) -> None:
+        app = Path(r"C:\tmp\nmea-serial-bridge.exe")
+        with mock.patch.object(sys, "executable", str(app)):
+            with mock.patch.object(sys, "frozen", True, create=True):
+                argv = py_interpreter.subprocess_script_argv("verify_all.py", ["--x"])
+        self.assertEqual(argv[0], str(app))
+        self.assertEqual(argv[1], py_interpreter.FROZEN_HELPER_FLAG)
+        self.assertEqual(argv[2], "verify_all.py")
+        self.assertEqual(argv[3], "--x")
 
 
 if __name__ == "__main__":

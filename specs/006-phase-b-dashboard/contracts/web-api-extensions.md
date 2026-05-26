@@ -71,7 +71,7 @@ Auth: same as 005 mutating routes when LAN + token.
 
 | Path | File |
 |------|------|
-| `GET /` | `web/static/index.html` |
+| `GET /` | `web/static/layouts/gridstack/index.html` (default); falls back to `web/static/index.html` if missing |
 | `GET /dashboard.css` | `web/static/dashboard.css` (or relative paths via static mount) |
 | `GET /dashboard.js` | `web/static/dashboard.js` |
 

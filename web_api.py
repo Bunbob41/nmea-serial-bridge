@@ -12,6 +12,7 @@ try:
     from fastapi.responses import FileResponse, Response
     from fastapi.staticfiles import StaticFiles
     from pydantic import BaseModel
+    from starlette.responses import Response as StarletteResponse
 except ImportError:  # pragma: no cover - optional dependency
     FastAPI = None  # type: ignore[misc, assignment]
     BaseModel = object  # type: ignore[misc, assignment]
@@ -152,6 +153,16 @@ class CommandResponse(BaseModel):
     error_code: Optional[str] = None
     state: str = "stopped"
     config: Optional[ConfigResponse] = None
+
+
+class _DevStaticFiles(StaticFiles):
+    """Avoid stale dashboard.js in browsers during grid/standard UI iteration."""
+
+    async def get_response(self, path: str, scope) -> StarletteResponse:
+        response = await super().get_response(path, scope)
+        if path.endswith((".js", ".css")):
+            response.headers["Cache-Control"] = "no-store, must-revalidate"
+        return response
 
 
 def _static_dir() -> Optional[Path]:
@@ -351,13 +362,17 @@ def create_app(
     if static is not None:
         app.mount(
             "/static",
-            StaticFiles(directory=str(static), html=True),
+            _DevStaticFiles(directory=str(static), html=True),
             name="static",
         )
 
+        grid_index = static / "layouts" / "gridstack" / "index.html"
+
         @app.get("/", include_in_schema=False)
         def dashboard() -> FileResponse:
-            return FileResponse(str(static / "index.html"), media_type="text/html")
+            # Default operator UI: customizable grid; classic single-page layout at /static/index.html
+            path = grid_index if grid_index.is_file() else static / "index.html"
+            return FileResponse(str(path), media_type="text/html")
     else:
         @app.get("/", response_model=ApiIndexResponse)
         def root() -> ApiIndexResponse:

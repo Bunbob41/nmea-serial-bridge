@@ -36,6 +36,8 @@ def main() -> int:
         try:
             import subprocess
 
+            from py_interpreter import subprocess_no_console_kwargs
+
             out = subprocess.check_output(
                 [
                     "powershell",
@@ -46,6 +48,7 @@ def main() -> int:
                 ],
                 text=True,
                 errors="replace",
+                **subprocess_no_console_kwargs(),
             )
             print(out if out.strip() else "  (none)")
         except Exception as ex:

@@ -52,7 +52,7 @@ from ui.log_view import (
 from ui.log_view_dialog import LogViewDialog
 from nmea_static_sample import SAMPLE_ALT_M, SAMPLE_LAT_DEG, SAMPLE_LON_DEG, build_gga
 from log_serial_coalesce import serial_timeout_line_suppress
-from py_interpreter import cli_python_gui_spawn, qprocess_attach_no_console
+from py_interpreter import cli_python_gui_spawn, frozen_helper_program_args, qprocess_attach_no_console
 from ui.bench_setup import extract_operator_guide_section, show_bench_setup_dialog
 from ui.stats_line import format_live_stats_line, stats_snapshot_from_merged
 from ui.stats_popout import SurveyStatsPopout
@@ -1011,7 +1011,9 @@ class BridgeLogicMixin:
             return
         from ui.controls import elide_status_label
 
-        mode = self._nmea_mode_label()
+        from ui.nmea_display import nmea_mode_display_label
+
+        mode = nmea_mode_display_label(self._nmea_mode_label())
         if self._is_bridge_running():
             elide_status_label(chip, f"NMEA: {mode} · running")
         elif self._starting:
@@ -1936,6 +1938,23 @@ class BridgeLogicMixin:
 
             schedule_refresh_connect_qr_overlay(self, delay_ms=0)
 
+    def _sync_web_port_unlock_chrome(self, unlocked: bool | None = None) -> None:
+        chk = getattr(self, "chk_web_port_unlock", None)
+        if unlocked is None:
+            unlocked = chk is not None and chk.isChecked()
+        if chk is not None:
+            chk.blockSignals(True)
+            chk.setChecked(unlocked)
+            chk.setText("🔓" if unlocked else "🔒")
+            chk.blockSignals(False)
+        lbl = getattr(self, "lbl_web_port_status", None)
+        if lbl is not None:
+            lbl.setText("Editable · 10s" if unlocked else "Locked")
+            lbl.setProperty("statusKind", "open" if unlocked else "locked")
+            lbl.style().unpolish(lbl)
+            lbl.style().polish(lbl)
+            lbl.update()
+
     def _sync_web_port_spin_locked(self) -> None:
         spin = getattr(self, "spin_web_port", None)
         if spin is None:
@@ -1948,6 +1967,7 @@ class BridgeLogicMixin:
         spin.style().unpolish(spin)
         spin.style().polish(spin)
         spin.update()
+        self._sync_web_port_unlock_chrome(unlocked)
 
     def _on_web_port_unlock_toggled(self, checked: bool) -> None:
         self._sync_web_port_spin_locked()
@@ -2006,18 +2026,37 @@ class BridgeLogicMixin:
             edit.setText(new_url)
             edit.blockSignals(False)
 
+    def _web_listen_label_text(self, headline: str, detail: str = "") -> str:
+        headline = headline.strip()
+        detail = detail.strip()
+        if detail:
+            return f"{headline}\n{detail}"
+        return headline
+
     def _update_web_listen_label(self, *, pending_restart: bool = False) -> None:
         lbl = getattr(self, "lbl_web_listen", None)
         if lbl is None:
             return
         enabled = getattr(self, "chk_web_enabled", None)
         if enabled is None or not enabled.isChecked():
-            lbl.setText("Web API off — enable above, then open the URL on this PC.")
+            lbl.setText(
+                self._web_listen_label_text(
+                    "Web API off",
+                    "Enable above, then open the dashboard URL on this PC.",
+                )
+            )
+            lbl.updateGeometry()
             return
         port_ui = self._web_port_from_ui()
         local = self._web_dashboard_local_url(port_ui)
         if pending_restart:
-            lbl.setText(f"Applying port {port_ui} — restarting API at {local}")
+            lbl.setText(
+                self._web_listen_label_text(
+                    f"Applying port {port_ui}",
+                    f"Restarting API at {local}",
+                )
+            )
+            lbl.updateGeometry()
             return
         server = getattr(self, "_web_server", None)
         if server is not None and server.running:
@@ -2025,12 +2064,19 @@ class BridgeLogicMixin:
             live = self._web_dashboard_local_url(live_port)
             if live_port != port_ui:
                 lbl.setText(
-                    f"Live: {live} (spin box shows {port_ui} — wait for restart to finish)"
+                    self._web_listen_label_text(
+                        f"Live on port {live_port} (spin shows {port_ui})",
+                        live,
+                    )
                 )
             else:
-                lbl.setText(f"This PC dashboard: {live}")
+                lbl.setText(
+                    self._web_listen_label_text("This PC dashboard", live)
+                )
+            lbl.updateGeometry()
             return
-        lbl.setText(f"Starting Web API on {local}")
+        lbl.setText(self._web_listen_label_text("Starting Web API", local))
+        lbl.updateGeometry()
 
     def _on_web_port_spin_changed(self, _value: int) -> None:
         chk = getattr(self, "chk_web_port_unlock", None)
@@ -4040,7 +4086,7 @@ class BridgeLogicMixin:
             "(rolling 1 s window). Matches what your simulator/INS sends after line assembly — "
             "not raw packet count.\n"
             "↑ Hz — Sentences per second from COM toward the network.\n"
-            "Send→COM …/s — Only when the Send tab is actively injecting at ≥ ~0.05/s "
+            "Send→COM …/s — Only when Tools → Inject is actively sending at ≥ ~0.05/s "
             "(rolling 1 s). Does not add to ↓ Hz.\n\n"
             "transport OK — No drops, no rejects, and no queue backlog "
             "(a few queued chunks while data is moving is normal).\n"
@@ -4234,7 +4280,7 @@ class BridgeLogicMixin:
 
         proc = QtCore.QProcess(self)
         proc.setProgram(exe)
-        proc.setArguments([str(rel), *args])
+        proc.setArguments(frozen_helper_program_args(str(rel), args))
         proc.setWorkingDirectory(str(_REPO_ROOT))
         # Ensure the subprocess can import project modules (bench_config, nmea_codec,
         # bridge_core, etc.) from the same directory the scripts live in.  In a frozen
@@ -4751,7 +4797,7 @@ class BridgeLogicMixin:
         raw = self.send_edit.toPlainText()
         if not raw.strip():
             self._log_ui(
-                "Send: box is empty — type/paste NMEA in tab 3, or click Insert sample GGA."
+                "Send: box is empty — type/paste NMEA in Tools → Inject, or click Insert sample GGA."
             )
             return
         self._send_raw_manual(where, raw)

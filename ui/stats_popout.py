@@ -974,7 +974,7 @@ class SurveyStatsPopout(QtWidgets.QWidget):
         )
         self._m_hz_dn = _HudMetric("Into COM", "per second", hero=True, tooltip=_TT_HZ_DOWN)
         self._m_hz_up = _HudMetric("From COM", "per second", hero=True, tooltip=_TT_HZ_UP)
-        self._m_hz_inj = _HudMetric("Inject", "Send tab only", hero=True, tooltip=_TT_HZ_INJ)
+        self._m_hz_inj = _HudMetric("Inject", "Tools → Inject only", hero=True, tooltip=_TT_HZ_INJ)
         sec_rates.set_metrics([self._m_hz_dn, self._m_hz_up, self._m_hz_inj], col_cap=3)
         self._register_metric("hz_dn", self._m_hz_dn)
         self._register_metric("hz_up", self._m_hz_up)

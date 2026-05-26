@@ -12,6 +12,7 @@ from ui.controls import (
     create_nmea_controls,
     create_presets_tab,
     create_send_controls,
+    create_system_terminal_tab,
     create_theme_controls,
 )
 from ui.log_view import PRESET_CUSTOM, PRESET_LABELS, TOOLBAR_PRESETS, LogViewState
@@ -89,7 +90,8 @@ class BridgeWindowLogFirst(BridgeLogicMixin, QtWidgets.QWidget):
         drawer_tabs.addTab(create_nmea_controls(self), "NMEA")
         drawer_tabs.addTab(create_theme_controls(self), "Theme")
         drawer_tabs.addTab(create_guide_tab(self), "Guide")
-        drawer_tabs.addTab(create_send_controls(self), "Terminal")
+        drawer_tabs.addTab(create_system_terminal_tab(self), "Terminal")
+        drawer_tabs.addTab(create_send_controls(self), "Inject")
         drawer_tabs.addTab(create_diagnostics_controls(self), "Diagnostics")
         self._setup_reorderable_tabs(drawer_tabs, "tools_tabs")
         drawer_tabs.setVisible(False)

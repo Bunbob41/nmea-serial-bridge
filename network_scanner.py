@@ -8,6 +8,8 @@ import time
 from dataclasses import dataclass
 from typing import Optional, Sequence
 
+from py_interpreter import subprocess_no_console_kwargs
+
 DEFAULT_SURVEY_PORTS: tuple[int, ...] = (10110, 4001, 10111)
 _PROBE_PAYLOAD = b"$PING\r\n"
 _ARP_LINE_IP_RE = re.compile(
@@ -45,6 +47,7 @@ def list_lan_hosts(*, arp_output: str | None = None) -> list[str]:
                 text=True,
                 timeout=3,
                 errors="replace",
+                **subprocess_no_console_kwargs(),
             )
             arp_output = proc.stdout or ""
         except (OSError, subprocess.TimeoutExpired):
@@ -86,6 +89,7 @@ def list_host_ipv4_interfaces(*, ipconfig_output: str | None = None) -> list[Hos
                 text=True,
                 timeout=4,
                 errors="replace",
+                **subprocess_no_console_kwargs(),
             )
             ipconfig_output = proc.stdout or ""
         except (OSError, subprocess.TimeoutExpired):

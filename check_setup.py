@@ -10,6 +10,10 @@ import sys
 
 import serial.tools.list_ports
 
+from py_interpreter import subprocess_no_console_kwargs
+
+_SUBPROC_KW = subprocess_no_console_kwargs()
+
 
 def list_com(expected_com: str = "") -> None:
     print("COM ports visible to Python:")
@@ -26,7 +30,9 @@ def list_com(expected_com: str = "") -> None:
 
 def _windows_pid_for_udp_port(port: int) -> list[int]:
     try:
-        out = subprocess.check_output(["netstat", "-ano"], text=True, errors="replace")
+        out = subprocess.check_output(
+            ["netstat", "-ano"], text=True, errors="replace", **_SUBPROC_KW
+        )
     except (OSError, subprocess.CalledProcessError):
         return []
     pids: list[int] = []
@@ -44,6 +50,7 @@ def _windows_process_name(pid: int) -> str:
             ["tasklist", "/FI", f"PID eq {pid}", "/FO", "CSV", "/NH"],
             text=True,
             errors="replace",
+            **_SUBPROC_KW,
         )
     except (OSError, subprocess.CalledProcessError):
         return "?"

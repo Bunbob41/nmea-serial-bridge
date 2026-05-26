@@ -59,7 +59,8 @@ MAIN_TAB_HINTS: dict[str, str] = {
     "Theme": "Colors and Connect section style",
     "Guide": "UDP/TCP workflows",
     "Phone": "Web API, token, QR",
-    "Terminal": "Inject test NMEA",
+    "Terminal": "Local PowerShell / cmd",
+    "Inject": "Send test NMEA to serial / network",
     "Diagnostics": "Bench checks and file log",
 }
 

@@ -350,7 +350,10 @@ def load_tab_order(ui_mode: str, key: str) -> list[str]:
         if not text:
             continue
         if text == "Send":
-            text = "Terminal"
+            text = "Inject"
+        elif text == "Terminal":
+            # v1.13.x: Terminal tab was NMEA inject; now Inject + shell Terminal.
+            text = "Inject"
         out.append(text)
     return out
 
@@ -384,8 +387,14 @@ def load_hidden_tabs(ui_mode: str, key: str) -> list[str]:
     out: list[str] = []
     for item in raw:
         text = str(item).strip()
-        if text:
-            out.append(text)
+        if not text:
+            continue
+        if text == "Send":
+            text = "Inject"
+        elif text == "Terminal":
+            # Hidden old inject tab → hide new Inject name.
+            text = "Inject"
+        out.append(text)
     return out
 
 

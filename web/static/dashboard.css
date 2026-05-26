@@ -643,78 +643,125 @@ body {
   }
 }
 
+.status-card.monitor-layout-rows .monitor-panel {
+  padding: 8px 10px 10px;
+}
+
 .status-card.monitor-layout-rows .stat-item {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  justify-content: space-between;
+  gap: 5px;
+  min-height: 3.25rem;
+  padding: 8px 10px;
+  background: rgba(255, 255, 255, 0.045);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: var(--radius-sm);
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.25);
 }
 
-/* Columns = label row + value row (built in JS — two flex rows per section) */
+.status-card.monitor-layout-rows .stat-label {
+  font-size: 0.68rem;
+  letter-spacing: 0.05em;
+}
+
+.status-card.monitor-layout-rows .stat-value {
+  font-size: 1rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.status-card.monitor-layout-rows .stat-item.stat-span-2 {
+  grid-column: 1 / -1;
+}
+
+.status-card.monitor-layout-rows .monitor-stat-gnss .stat-value {
+  white-space: normal;
+  line-height: 1.35;
+}
+
+/* Columns = aligned header row + value row (CSS grid table per section) */
 .status-card.monitor-layout-columns .monitor-wrap {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
 }
 
-.status-card.monitor-layout-columns .monitor-grid,
-.status-card.monitor-layout-columns .monitor-grid-compact {
-  display: flex;
-  flex-direction: column;
+.status-card.monitor-layout-columns .monitor-section {
+  border-radius: var(--radius-sm);
+}
+
+.status-card.monitor-layout-columns .monitor-panel {
+  padding: 0 0 6px;
+}
+
+.status-card.monitor-layout-columns .monitor-grid.monitor-data-table,
+.status-card.monitor-layout-columns .monitor-grid-compact.monitor-data-table {
+  display: grid;
+  grid-template-columns: repeat(var(--monitor-cols, 3), minmax(4.25rem, 1fr));
+  grid-auto-rows: auto;
   gap: 0;
   width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: rgba(0, 0, 0, 0.2);
 }
 
-.status-card.monitor-layout-columns .monitor-table-row {
-  display: flex;
-  flex-direction: row;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 6px 1.1rem;
-}
-
-.status-card.monitor-layout-columns .monitor-table-labels {
-  padding-bottom: 6px;
-  margin-bottom: 4px;
+.status-card.monitor-layout-columns .monitor-table-head {
+  margin: 0;
+  padding: 6px 8px;
+  font-size: 0.62rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-align: center;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  background: rgba(255, 255, 255, 0.07);
   border-bottom: 1px solid var(--border);
-}
-
-.status-card.monitor-layout-columns .monitor-table-labels .stat-label {
-  flex: 0 0 auto;
-  min-width: 4.25rem;
-  max-width: 11rem;
-  text-align: center;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  font-size: 0.68rem;
-}
-
-.status-card.monitor-layout-columns .monitor-table-values .stat-value {
-  flex: 0 0 auto;
-  min-width: 4.25rem;
-  max-width: 11rem;
-  text-align: center;
+  border-right: 1px solid rgba(255, 255, 255, 0.06);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-.status-card.monitor-layout-columns .monitor-table-gnss-label {
-  flex: 1 1 100%;
-  max-width: none;
+.status-card.monitor-layout-columns .monitor-table-body {
+  margin: 0;
+  padding: 8px 8px 10px;
+  font-size: 0.92rem;
+  font-weight: 600;
+  text-align: center;
+  line-height: 1.2;
+  border-right: 1px solid rgba(255, 255, 255, 0.05);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* GNSS footer rows inside a section table */
+.status-card.monitor-layout-columns .monitor-table-gnss-head {
   text-align: left;
+  border-top: 1px solid var(--border);
 }
 
-.status-card.monitor-layout-columns .monitor-table-gnss-value {
-  flex: 1 1 100%;
-  max-width: none;
+.status-card.monitor-layout-columns .monitor-table-gnss-body {
   text-align: left;
   white-space: normal;
   overflow: visible;
   text-overflow: clip;
+  font-size: 0.88rem;
+  font-weight: 500;
+  line-height: 1.35;
+  padding-bottom: 10px;
 }
 
-.status-card.monitor-layout-simple .monitor-section[data-section="rates"],
+/* Simple = one flat 3×2 grid + GNSS strip (no nested section grids) */
+.status-card.monitor-layout-simple .dashboard-panel-body {
+  padding: 8px 10px 10px;
+}
+
 .status-card.monitor-layout-simple .monitor-section[data-section="backpressure"] {
   display: none !important;
 }
@@ -739,31 +786,119 @@ body {
   display: contents !important;
 }
 
+.status-card.monitor-layout-simple .monitor-grid,
+.status-card.monitor-layout-simple .monitor-grid-compact {
+  display: contents;
+}
+
 .status-card.monitor-layout-simple .monitor-wrap {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
-  gap: 10px 14px;
+  grid-template-columns: repeat(3, minmax(5.5rem, 1fr));
+  gap: 6px;
+  padding: 0;
+  align-content: start;
 }
 
-.status-card.monitor-layout-simple .monitor-stat-com,
-.status-card.monitor-layout-simple .monitor-stat-baud,
-.status-card.monitor-layout-simple .monitor-stat-udp,
-.status-card.monitor-layout-simple .monitor-stat-nmea,
-.status-card.monitor-layout-simple .monitor-stat-hz-down,
-.status-card.monitor-layout-simple .monitor-stat-hz-up,
-.status-card.monitor-layout-simple .monitor-stat-hz-inject,
-.status-card.monitor-layout-simple .monitor-stat-lines-down,
-.status-card.monitor-layout-simple .monitor-stat-lines-up {
-  display: none !important;
+.status-card.monitor-layout-simple .stat-item {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 4px;
+  margin: 0;
+  min-height: 3.35rem;
+  min-width: 0;
+  padding: 7px 9px;
+  background: rgba(255, 255, 255, 0.045);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: var(--radius-sm);
 }
 
+.status-card.monitor-layout-simple .stat-label {
+  font-size: 0.62rem;
+  letter-spacing: 0.06em;
+  line-height: 1.15;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.status-card.monitor-layout-simple .stat-value {
+  font-size: 0.98rem;
+  font-weight: 600;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  word-break: normal;
+}
+
+.status-card.monitor-layout-simple .monitor-stat-state { order: 1; }
+.status-card.monitor-layout-simple .monitor-stat-com { order: 2; }
+.status-card.monitor-layout-simple .monitor-stat-udp { order: 3; }
+.status-card.monitor-layout-simple .monitor-stat-nmea { order: 4; }
+.status-card.monitor-layout-simple .monitor-stat-hz-down { order: 5; }
+.status-card.monitor-layout-simple .monitor-stat-transport { order: 6; }
 .status-card.monitor-layout-simple .monitor-stat-gnss {
+  order: 7;
   grid-column: 1 / -1;
+  min-height: 0;
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.status-card.monitor-layout-simple .monitor-stat-state .stat-value.state-badge {
+  align-self: flex-start;
+  display: inline-block;
+  max-width: 100%;
+  font-size: 0.78rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.status-card.monitor-layout-simple .monitor-stat-gnss .stat-label {
+  flex: 0 0 auto;
+  margin: 0;
 }
 
 .status-card.monitor-layout-simple .monitor-stat-gnss .stat-value {
-  width: 100%;
-  text-align: left;
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 0.88rem;
+  font-weight: 500;
+  line-height: 1.3;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.status-card.monitor-layout-simple .monitor-stat-baud,
+.status-card.monitor-layout-simple .monitor-stat-hz-up,
+.status-card.monitor-layout-simple .monitor-stat-hz-inject,
+.status-card.monitor-layout-simple .monitor-stat-lines-down,
+.status-card.monitor-layout-simple .monitor-stat-lines-up,
+.status-card.monitor-layout-simple .monitor-stat-sats,
+.status-card.monitor-layout-simple .monitor-stat-hdop {
+  display: none !important;
+}
+
+@media (max-width: 420px) {
+  .status-card.monitor-layout-simple .monitor-wrap {
+    grid-template-columns: repeat(2, minmax(4.75rem, 1fr));
+  }
+
+  .status-card.monitor-layout-simple .monitor-stat-gnss {
+    grid-column: 1 / -1;
+  }
+}
+
+.monitor-stat-udp .stat-value {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
 }
 
 .stat-label {
@@ -1748,6 +1883,33 @@ body.dashboard-log-expanded .log-card .dashboard-panel-summary::after {
 .leaflet-container {
   font-family: inherit;
   background: #0b0d12;
+}
+
+.leaflet-control-layers {
+  background: rgba(15, 20, 30, 0.92);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+}
+
+.leaflet-control-layers-expanded {
+  padding: 6px 8px 8px;
+}
+
+.leaflet-control-layers label {
+  font-size: 0.82rem;
+  margin-bottom: 4px;
+}
+
+.leaflet-control-layers-separator {
+  border-top-color: var(--border);
+  margin: 6px 0;
+}
+
+.leaflet-control-layers-toggle {
+  background-color: rgba(15, 20, 30, 0.92);
+  border: 1px solid var(--border);
 }
 
 /* ── Footer ───────────────────────────────────────────────────── */

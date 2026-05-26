@@ -35,7 +35,7 @@ python -m unittest discover -s . -p "test_*.py" -q
 ## 4. Smoke on clean folder (unzipped copy)
 
 - [ ] Launcher: Standard and Field open; Start/Stop visible
-- [ ] Tools → Phone → Enable Web API → Open dashboard (`http://127.0.0.1:8765/`)
+- [ ] `GET /` opens grid dashboard; `/static/index.html` is classic backup
 - [ ] Optional: Grid layout beta loads at `/static/layouts/gridstack/`
 - [ ] Bench preset loads; `check_setup.py` / Diagnostics checks usable
 

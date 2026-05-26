@@ -5,6 +5,13 @@ import argparse
 import os
 import sys
 
+from py_interpreter import run_frozen_helper_if_requested
+
+# Frozen one-folder build: run bundled Diagnostics helpers without spawning system python.exe.
+_helper_code = run_frozen_helper_if_requested()
+if _helper_code is not None:
+    raise SystemExit(_helper_code)
+
 from PySide6 import QtWidgets
 
 from bridge_core import (  # noqa: F401 — re-export for older scripts

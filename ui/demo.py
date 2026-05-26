@@ -96,8 +96,9 @@ def _open_tools(win: QtWidgets.QWidget, tab_title: str) -> None:
     _open_drawer(win)
     want = tab_title.lower().strip()
     aliases = {
-        "send": ("send", "terminal"),
-        "terminal": ("terminal", "send"),
+        "send": ("inject", "send"),
+        "inject": ("inject", "send"),
+        "terminal": ("terminal",),
         "diag": ("diag", "diagnostic"),
         "diagnostics": ("diag", "diagnostic"),
         "preset": ("preset",),
@@ -409,9 +410,9 @@ PRODUCT_DEMO_STEPS: tuple[DemoStep, ...] = (
     DemoStep(
         "send",
         "ops",
-        "Send tab",
-        "Point at: Tools — Send, sample GGA in the box.",
-        "Send tab injects test NMEA while the bridge is running.\n"
+        "Inject",
+        "Point at: Tools — Inject, sample GGA in the box.",
+        "Inject sends test NMEA while the bridge is running.\n"
         "On the bench, watch the paired COM — not the port the bridge owns.",
         DEMO_STEP_HOLD_MS,
         _send_sample,
