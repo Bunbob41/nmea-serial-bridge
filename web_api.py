@@ -165,13 +165,32 @@ class _DevStaticFiles(StaticFiles):
         return response
 
 
-def _static_dir() -> Optional[Path]:
+def resolve_static_dir() -> Optional[Path]:
+    """Dashboard assets (dev tree or PyInstaller ``web/static`` under ``_MEIPASS``)."""
+    candidates: list[Path] = []
     if getattr(sys, "frozen", False):
-        base = Path(sys._MEIPASS)  # type: ignore[attr-defined]
+        meipass = getattr(sys, "_MEIPASS", None)
+        if meipass:
+            candidates.append(Path(meipass))
+        exe_dir = Path(sys.executable).resolve().parent
+        candidates.append(exe_dir)
+        candidates.append(exe_dir / "_internal")
     else:
-        base = Path(__file__).parent
-    p = base / "web" / "static"
-    return p if p.is_dir() else None
+        candidates.append(Path(__file__).resolve().parent)
+    seen: set[str] = set()
+    for base in candidates:
+        key = str(base).lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        p = base / "web" / "static"
+        if p.is_dir():
+            return p
+    return None
+
+
+def _static_dir() -> Optional[Path]:
+    return resolve_static_dir()
 
 
 def _auth_ok(request: Request, token: Optional[str]) -> bool:

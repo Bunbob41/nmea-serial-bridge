@@ -28,7 +28,9 @@ python -m unittest discover -s . -p "test_*.py" -q
 ```
 
 - [ ] `dist\serial-link\serial-link.exe` exists
+- [ ] `python tools\check_frozen_web.py dist\serial-link` exit 0 (FastAPI/uvicorn + `web/static` in `_internal`)
 - [ ] `dist\serial-link\_internal\web\static\` includes dashboard + `layouts/gridstack/` + vendor (PyInstaller one-folder layout)
+- [ ] From the zip: enable Web API (Tools → Phone), open **http://127.0.0.1:8765/** — HTML dashboard, not JSON at `/`
 - [ ] `dist\serial-link-vX.Y.Z-win64.zip` created
 - [ ] Note zip size (~650 MB) and SHA256 in `dist\release-manifest-vX.Y.Z.json`
 

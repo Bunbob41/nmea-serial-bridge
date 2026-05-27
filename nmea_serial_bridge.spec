@@ -9,6 +9,39 @@ root = Path(SPECPATH)
 
 pyside_datas, pyside_binaries, pyside_hidden = collect_all("PySide6")
 
+WEB_PACKAGES = (
+    "fastapi",
+    "uvicorn",
+    "starlette",
+    "pydantic",
+    "pydantic_core",
+    "anyio",
+    "httptools",
+    "websockets",
+    "watchfiles",
+    "qrcode",
+    "httpx",
+    "h11",
+    "click",
+    "annotated_types",
+)
+web_datas: list = []
+web_binaries: list = []
+web_hidden: list = []
+for _pkg in WEB_PACKAGES:
+    try:
+        d, b, h = collect_all(_pkg)
+        web_datas += d
+        web_binaries += b
+        web_hidden += h
+    except Exception:
+        pass
+
+web_py_datas = [
+    (str(py_file), "web")
+    for py_file in sorted((root / "web").glob("*.py"))
+]
+
 HELPER_SCRIPTS = [
     "verify_all.py",
     "com_free.py",
@@ -73,8 +106,10 @@ APP_HIDDEN = [
 a = Analysis(
     ["bridge_gui.py"],
     pathex=[str(root)],
-    binaries=pyside_binaries,
+    binaries=pyside_binaries + web_binaries,
     datas=pyside_datas
+    + web_datas
+    + web_py_datas
     + [(str(root / "bench_defaults.json"), ".")]
     + helper_datas
     + docs_datas
@@ -92,9 +127,29 @@ a = Analysis(
     hiddenimports=[
         *APP_HIDDEN,
         *pyside_hidden,
+        *web_hidden,
         "app_facade",
         "web_api",
         "web_server",
+        "web.token_setup",
+        "web.phone_url",
+        "web.qr_svg",
+        "discovery_service",
+        "fastapi",
+        "uvicorn",
+        "uvicorn.logging",
+        "uvicorn.loops",
+        "uvicorn.loops.auto",
+        "uvicorn.protocols",
+        "uvicorn.protocols.http",
+        "uvicorn.protocols.http.auto",
+        "uvicorn.protocols.websockets",
+        "uvicorn.protocols.websockets.auto",
+        "uvicorn.lifespan",
+        "uvicorn.lifespan.on",
+        "starlette.routing",
+        "starlette.responses",
+        "pydantic",
     ],
     hookspath=[],
     hooksconfig={},

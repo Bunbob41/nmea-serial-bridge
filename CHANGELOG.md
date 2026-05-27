@@ -3,6 +3,10 @@
 High-level notes for **this fork / branch** (`2034-ui-journey-modernization` and descendants).  
  Version = `version.py` / Git tag when you run `.\release.ps1` or tag manually.
 
+## v1.17.37
+
+- **Frozen Web dashboard fix** — PyInstaller build now installs `requirements-web.txt` and bundles FastAPI, uvicorn, and `web/static` so **http://127.0.0.1:8765/** serves the operator UI from the `.exe` (was missing deps → server failed or JSON-only `/`). Post-build `tools/check_frozen_web.py` guards the zip.
+
 ## v1.17.36
 
 - **Windows font warning** — Terminal, log, and diagnostics use a DirectWrite-safe monospace font instead of legacy system fixed fonts (e.g. `8514oem`) that spam `qt.qpa.fonts: DirectWrite: CreateFontFaceFromHDC() failed` on startup.

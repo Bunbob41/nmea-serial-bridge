@@ -8,6 +8,7 @@ if (-not (Get-Command python -ErrorAction SilentlyContinue)) {
 
 python -m pip install --upgrade pip
 python -m pip install -r requirements.txt
+python -m pip install -r requirements-web.txt
 python -m pip install pyinstaller>=6.0
 
 python tools\sync_version_info.py
