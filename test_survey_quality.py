@@ -10,6 +10,8 @@ from survey_quality import (
     assess_navigation_quality,
     format_gnss_stats_segment,
     format_gnss_status_chip,
+    format_gnss_status_tooltip,
+    gnss_fix_label_hud_display,
     gnss_status_badge_quality,
     gnss_status_badge_stylesheet,
     nav_metrics_should_reset,
@@ -112,6 +114,17 @@ class SurveyQualityTests(unittest.TestCase):
         self.assertIn("#F8D7DA", ss)
         self.assertIn("#721C24", ss)
 
+    def test_hud_badge_stream_idle_short_label(self) -> None:
+        from survey_quality import gnss_status_hud_badge_text
+
+        self.assertEqual(gnss_status_hud_badge_text(stream_idle=True), "Idle")
+
+    def test_badge_stylesheet_hud_uses_compact_padding(self) -> None:
+        ss = gnss_status_badge_stylesheet(0, hud=True)
+        self.assertIn("padding: 0px 4px", ss)
+        self.assertNotIn("padding: 6px", ss)
+        self.assertIn("#fce8ea", ss)
+
     def test_badge_cleared_when_stopped(self) -> None:
         snap = update_nav_quality_from_line(_SAMPLE_RTK)
         self.assertEqual(gnss_status_badge_quality(snap, running=False), None)
@@ -133,6 +146,24 @@ class SurveyQualityTests(unittest.TestCase):
     def test_status_chip_raw_mode(self) -> None:
         text = format_gnss_status_chip(None, running=True, raw_mode=True)
         self.assertIn("n/a (raw)", text)
+
+    def test_status_tooltip_includes_fix_label(self) -> None:
+        snap = update_nav_quality_from_line(_SAMPLE_RTK)
+        assert snap is not None
+        tip = format_gnss_status_tooltip(snap, running=True)
+        self.assertIn("Fix: RTK fixed", tip)
+        self.assertIn("Satellites:", tip)
+        self.assertIn("HDOP:", tip)
+
+    def test_hud_compact_fix_label(self) -> None:
+        self.assertEqual(
+            gnss_fix_label_hud_display("RTK fixed", narrow=True),
+            "RTK-F",
+        )
+        self.assertEqual(
+            gnss_fix_label_hud_display("RTK fixed", narrow=False),
+            "RTK fixed",
+        )
 
 
 if __name__ == "__main__":

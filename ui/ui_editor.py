@@ -17,6 +17,7 @@ from ui.connect_panels import (
 )
 from ui.survey_top_bar import DEFAULT_TOPBAR_ORDER, TOPBAR_SHORT_LABEL, normalize_topbar_order
 from ui.ui_prefs import (
+    dedupe_preserve_order,
     load_connect_panel_prefs,
     load_tab_order,
     save_connect_panel_prefs,
@@ -56,7 +57,7 @@ MAIN_TAB_HINTS: dict[str, str] = {
     "Tools": "Presets, Phone, NMEA, Theme, Guide",
     "Presets": "Named COM/UDP presets",
     "NMEA": "Passthrough, strict, or raw",
-    "Theme": "Colors and Connect section style",
+    "Theme": "Optional colors (bench)",
     "Guide": "UDP/TCP workflows",
     "Phone": "Web API, token, QR",
     "Terminal": "Local PowerShell / cmd",
@@ -448,15 +449,20 @@ class UiEditorDialog(QtWidgets.QDialog):
 
         self._tools_tabs_page: Optional[_EditorListPage] = None
         tools_catalog = getattr(win, "_tab_catalog", {}).get("tools_tabs", {})
-        if tools_catalog and not catalog:
+        if tools_catalog:
             tabs_key = "tools_tabs"
             hidden_tabs = set(getattr(win, "_tab_hidden", {}).get(tabs_key, set()))
             tab_rows = build_main_tab_editor_rows(
                 tools_catalog, hidden_tabs, ui_mode=ui_mode, tabs_key=tabs_key
             )
+            tools_intro = (
+                "Sidebar inside the Tools main tab (Presets, Phone, NMEA, …)."
+                if ui_mode == "standard"
+                else "Tabs inside the Field Tools drawer."
+            )
             self._tools_tabs_page = _EditorListPage(
-                "Tabs inside the Field Tools drawer.",
-                legend="↑ ↓ reorder. Checkbox = show tab. At least one tab must stay on.",
+                tools_intro,
+                legend="↑ ↓ reorder. Checkbox = show in Tools. At least one item must stay on.",
             )
             self._tools_tabs_page.set_tab_rows(tab_rows)
             self._tabs.addTab(self._tools_tabs_page, "Tools tabs")
@@ -543,11 +549,28 @@ class UiEditorDialog(QtWidgets.QDialog):
             )
             return False
         win._tab_hidden[tabs_key] = hidden_labels  # type: ignore[attr-defined]
-        visible_order = [
-            lbl for lbl in tab_order if lbl in all_labels and lbl not in hidden_labels
-        ]
+        visible_order = dedupe_preserve_order(
+            [
+                lbl
+                for lbl in tab_order
+                if lbl in all_labels and lbl not in hidden_labels
+            ]
+        )
         if visible_order:
             save_tab_order(getattr(win, "_ui_mode", "standard"), tabs_key, visible_order)
+        if tabs_key == "tools_tabs" and getattr(win, "_tools_nav", None) is not None:
+            if hasattr(win, "_rebuild_tools_nav_from_state"):
+                try:
+                    win._rebuild_tools_nav_from_state(tabs_key)  # type: ignore[attr-defined]
+                    if hasattr(win, "_persist_tools_nav_state"):
+                        win._persist_tools_nav_state(tabs_key)  # type: ignore[attr-defined]
+                except Exception as exc:
+                    if hasattr(win, "_log_ui"):
+                        win._log_ui(
+                            f"[UI editor] Tools sidebar rebuild failed: {exc}"
+                        )  # type: ignore[attr-defined]
+                    return False
+            return True
         tabs = (
             getattr(win, "_main_tabs", None)
             if tabs_key == "main_tabs"
@@ -691,6 +714,8 @@ def open_ui_editor(
         dlg.select_tab("Connect")
     elif focus == "tabs":
         dlg.select_tab("Main tabs")
+    elif focus == "tools":
+        dlg.select_tab("Tools tabs")
     dlg.exec()
 
 

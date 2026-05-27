@@ -3,6 +3,128 @@
 High-level notes for **this fork / branch** (`2034-ui-journey-modernization` and descendants).  
  Version = `version.py` / Git tag when you run `.\release.ps1` or tag manually.
 
+## v1.17.21
+
+- **Survey HUD GNSS** — Idle stream shows **Idle** (not clipped “No stream”); tighter badge padding in the HUD; badge width follows label text. Full meaning stays in the hover tooltip.
+
+## v1.17.20
+
+- **Tools sidebar (Standard)** — Fix wrong page after UI editor reorder: legacy prefs mapped **Terminal** → **Inject** even when both tabs exist, duplicating **Inject** and scrambling the stacked pages. Order is deduped on load/save; nav rows store the correct stack index.
+
+## v1.17.19
+
+- **Standard layout** — Fix startup crash building Tools sidebar (Presets factory must accept the window like other tool tabs).
+
+## v1.17.18
+
+- **Tray Exit** — Restored `_stop_bridge()` as an alias of `stop_bridge()` so tray **Exit** cannot crash if an older `mixin.py` or cached copy still calls the legacy name.
+
+## v1.17.17
+
+- **UI editor (Standard)** — **Tools tabs** page reorders and hides Tools sidebar items (Presets, Phone, NMEA, Terminal, …); Field drawer tabs use the same editor page.
+
+## v1.17.16
+
+- **Auto-connect on GNSS** — Fix crash: auto-start now calls `_validate_before_start()` (was missing `_validate_start`).
+
+## v1.17.15
+
+- **Connect (Standard)** — **?** network guide beside Fan-out: popout explains Listen host/port, Fan-out, Extra TCP output, and Advanced network.
+
+## v1.17.14
+
+- **Connect** — Rename **TCP sink mirror** to **Extra TCP output**; clearer tooltip and operator guide notes.
+
+## v1.17.13
+
+- **Start / Stop** — Ignore double-clicks while starting or stopping; brief COM release delay after Stop before the next Start; reset UI if a background start was cancelled.
+
+## v1.17.12
+
+- **Tools → Terminal** — Fix doubled keystrokes on Windows (IME + keyPress dedupe); disable **PSReadLine** in embedded PowerShell so backspace and line editing work in the PTY.
+
+## v1.17.11
+
+- **Tools → Phone** — Short in-tab **API token** help: purpose, when required (LAN/Tailscale), **Generate** vs custom token / setup link.
+
+## v1.17.10
+
+- **Web dashboard map (grid)** — Map fills the tile height in grid layout; removed Leaflet layer-control square (Street/Satellite via right-click or map **⋯** menu).
+
+## v1.17.9
+
+- **Web grid dashboard** — Strip/remove legacy layout banner on load (fixes cached HTML showing banner text without the blue box). Dashboard HTML responses use `no-store` cache headers.
+
+## v1.17.8
+
+- **Web grid dashboard** — Removed the top blue layout banner; **Classic layout** link and **Reset layout** stay in the page footer. **Lock layout** remains in the header.
+
+## v1.17.7
+
+- **Survey HUD — Corner mode GNSS** — GNSS fix tile spans two columns; Corner uses a 2-column session grid; narrow tiles show **RTK-F** (etc.) with full **RTK fixed** on hover. Relayout after resize updates the label.
+
+## v1.17.6
+
+- **Survey HUD / status bar GNSS** — Hover shows full fix type (e.g. **RTK fixed**), satellites, HDOP, summary, and assessment — not only the short POSPac hint. HUD GNSS badge minimum width increased so labels clip less in compact layouts.
+
+## v1.17.5
+
+- **Tools → Guide** — Rewritten for current UI: **Start here** tab, correct Connect vs Presets paths, **Listen host/port** vs UDP remote **Host/Port**, exact Advanced network and Fan-out labels. Doc buttons unchanged; Phone/Web still pointed to **Tools → Phone**.
+- **Product demo removed** — Presenter teleprompter and `bridge_gui.py --demo` removed (stale script). Use Guide + **GETTING_STARTED.md** / **OPERATOR_GUIDE.md** instead.
+
+## v1.17.4
+
+- **Tray Exit / close** — Tray icon is torn down and `QApplication.quit()` runs so the process exits (no Task Manager zombie). Closing the window while the bridge is stopped also quits fully.
+
+## v1.17.3
+
+- **Tray Exit** — Fixed crash (`_stop_bridge` missing); tray **Stop bridge** and **Exit** now call `stop_bridge()` like the main UI.
+
+## v1.17.2
+
+- **Theme studio** — Zone-order swatches now reflect the selected built-in theme (Forest, Ocean, etc.), not a fixed generic palette. **Arctic Day** removed (saved `arctic_day` maps to Field Slate). **Standardize** button restored beside **Randomize** (same as survey-bar standardize theme).
+
+## v1.17.1
+
+- **Web API auto-start** — Dashboard defaults **on** for new/migrated prefs; server starts after the UI is ready with a one-shot retry if the port is slow to free. Bridge **Start** also re-checks the listener (fixes “had to toggle bridge” when launch bind raced).
+
+## v1.17.0
+
+- **Tray-first monitoring** — Closing the window while the bridge is running hides to the **system tray** (bridge keeps running). Tray menu: Show, Stop bridge, Exit; tooltip shows Serial | Network status.
+- **Less UI personalization** — Connect section style is fixed to **pill** cards (removed Theme studio picker). Theme tab copy defers to defaults for field use.
+
+## v1.16.2
+
+- **Tools → Terminal** — **Open external…** launches a visible console from the GUI build (Windows `CREATE_NEW_CONSOLE` + `cmd start` fallback; shows an error dialog if launch fails).
+
+## v1.16.1
+
+- **Tools → Terminal** — Compact Shell row; **Ping** host field with **Save…** presets, dropdown, and quick bubble buttons (first five presets). Runs in the embedded shell or subprocess when pywinpty is missing.
+
+## v1.16.0
+
+- **Public release defaults** — Shipped `bench_defaults.json` uses neutral placeholder COM/LAN values (no survey-site IPs in the zip). Optional `bench_defaults.local.json` (gitignored; see `bench_defaults.local.json.example`) overrides for your desk/boat without baking personal config into `serial-link.exe`.
+
+## v1.15.4
+
+- **Rotating file log** — **Keep old files: None** — single-file mode clears the log at roll size instead of keeping `.log.1` siblings (and removes stale rotated files when selected).
+
+## v1.15.3
+
+- **Diagnostics — Rotating file log** — Renamed **Backups** to **Keep old files** with clearer tooltips; retention hint explains `.log.1` rollover and disk total (not “cloud backup”).
+
+## v1.15.2
+
+- **App icon** — `make_app_icon.py` strips the white matte, composites on dark `#1a1d27` squircle (matches UI); optional `assets/app-icon-source.png` for re-exports.
+
+## v1.15.1
+
+- **Tagline** — **Ethernet ↔ serial** on Connect chrome, layout picker, web dashboard header, and Windows exe description (matches RJ-45 + DB-9 icon).
+
+## v1.15.0
+
+- **Rebrand: Serial Link** — Product name, window titles, web dashboard, and Windows build artifacts are now **Serial Link** (`serial-link.exe`, `serial-link-vX.Y.Z-win64.zip`). New DE-9 serial connector app icon. GitHub repo name unchanged.
+
 ## v1.14.5
 
 - **Web position map — Satellite layer** — **Street** (OpenStreetMap) or **Satellite** (Esri imagery + place labels) via the map’s layer control (top-right); choice persists in the browser. Right-click **Position map** for the same shortcuts.

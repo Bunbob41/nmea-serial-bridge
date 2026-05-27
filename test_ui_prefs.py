@@ -84,6 +84,53 @@ class TestUiPrefs(unittest.TestCase):
                 loaded = ui_prefs.load_tab_order("standard", "main_tabs")
                 self.assertEqual(loaded, ["Connect", "Theme", "Presets"])
 
+    def test_tab_order_terminal_kept_when_inject_present(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "ui_prefs.json"
+            with patch.object(ui_prefs, "CONFIG_PATH", path):
+                ui_prefs._write_json(
+                    {
+                        "tab_order": {
+                            "standard": {
+                                "tools_tabs": [
+                                    "Guide",
+                                    "Terminal",
+                                    "Inject",
+                                    "Theme",
+                                ]
+                            }
+                        }
+                    }
+                )
+                loaded = ui_prefs.load_tab_order("standard", "tools_tabs")
+                self.assertEqual(loaded, ["Guide", "Terminal", "Inject", "Theme"])
+
+    def test_tab_order_legacy_terminal_maps_to_inject(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "ui_prefs.json"
+            with patch.object(ui_prefs, "CONFIG_PATH", path):
+                ui_prefs._write_json(
+                    {
+                        "tab_order": {
+                            "standard": {"tools_tabs": ["Presets", "Terminal", "Theme"]}
+                        }
+                    }
+                )
+                loaded = ui_prefs.load_tab_order("standard", "tools_tabs")
+                self.assertEqual(loaded, ["Presets", "Inject", "Theme"])
+
+    def test_save_tab_order_dedupes(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "ui_prefs.json"
+            with patch.object(ui_prefs, "CONFIG_PATH", path):
+                ui_prefs.save_tab_order(
+                    "standard",
+                    "tools_tabs",
+                    ["Inject", "Theme", "Inject", "NMEA"],
+                )
+                loaded = ui_prefs.load_tab_order("standard", "tools_tabs")
+                self.assertEqual(loaded, ["Inject", "Theme", "NMEA"])
+
     def test_diag_card_sizes_roundtrip(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "ui_prefs.json"
@@ -130,6 +177,29 @@ class TestUiPrefs(unittest.TestCase):
                 ui_prefs.save_file_log_prefs(25, 10)
                 loaded = ui_prefs.load_file_log_prefs()
                 self.assertEqual(loaded, {"max_mb": 25, "backups": 10})
+
+    def test_web_ui_defaults_enabled(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "ui_prefs.json"
+            with patch.object(ui_prefs, "CONFIG_PATH", path):
+                loaded = ui_prefs.load_web_ui_prefs()
+                self.assertTrue(loaded["enabled"])
+
+    def test_web_ui_migration_enables_missing_block(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "ui_prefs.json"
+            path.write_text('{"schema_version": 2}', encoding="utf-8")
+            with patch.object(ui_prefs, "CONFIG_PATH", path):
+                loaded = ui_prefs.load_web_ui_prefs()
+                self.assertTrue(loaded["enabled"])
+
+    def test_file_log_prefs_accepts_zero_backups(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "ui_prefs.json"
+            with patch.object(ui_prefs, "CONFIG_PATH", path):
+                ui_prefs.save_file_log_prefs(50, 0)
+                loaded = ui_prefs.load_file_log_prefs()
+                self.assertEqual(loaded, {"max_mb": 50, "backups": 0})
 
     def test_connect_panel_prefs_roundtrip(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

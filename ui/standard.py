@@ -35,7 +35,7 @@ class BridgeWindowStandard(BridgeLogicMixin, QtWidgets.QWidget):
         self.setObjectName("BridgeRoot")
         self._ui_mode = "standard"
         self.setStyleSheet(bridge_stylesheet(self._ui_mode, load_theme_choice()))
-        self.setWindowTitle(f"Network ↔ COM Bridge v{__version__}")
+        self.setWindowTitle(f"Serial Link v{__version__}")
         self.resize(1200, 720)
         self.setMinimumSize(960, 480)
         self._init_bridge_state()
@@ -107,7 +107,7 @@ class BridgeWindowStandard(BridgeLogicMixin, QtWidgets.QWidget):
         )
         mount_connect_tab_chrome(
             self,
-            subtitle=f"v{__version__} — Network ↔ serial (UDP/TCP NMEA)",
+            subtitle=f"v{__version__} — Ethernet ↔ serial",
             banner=self.status_banner,
         )
         # --- Tools tab: sidebar nav (left) + stacked pages (right) ---
@@ -124,36 +124,26 @@ class BridgeWindowStandard(BridgeLogicMixin, QtWidgets.QWidget):
             QtWidgets.QSizePolicy.Policy.Fixed,
             QtWidgets.QSizePolicy.Policy.Expanding,
         )
-        _tools_nav_labels = (
-            ("Presets", "Named COM/UDP presets"),
-            ("Phone", "Web API, token, QR — phone dashboard (Tailscale/LAN)"),
-            ("NMEA", "Passthrough, strict, or raw binary"),
-            ("Terminal", "Local PowerShell / cmd on this PC"),
-            ("Diagnostics", "Bench checks and file log"),
-            ("Inject", "Send test NMEA to serial / network"),
-            ("Theme", "Appearance"),
-            ("Guide", "UDP/TCP connection workflows"),
-        )
-        for label, tip in _tools_nav_labels:
-            item = QtWidgets.QListWidgetItem(label)
-            item.setToolTip(tip)
-            tools_nav.addItem(item)
 
         tools_stack = QtWidgets.QStackedWidget()
-        tools_stack.addWidget(create_presets_tab(self, include_advanced_net=False))  # 0
-        tools_stack.addWidget(create_phone_dashboard_tab(self))                       # 1
-        tools_stack.addWidget(create_nmea_controls(self))                             # 2
-        tools_stack.addWidget(create_system_terminal_tab(self))                       # 3
-        tools_stack.addWidget(create_diagnostics_controls(self))                      # 4
-        tools_stack.addWidget(create_send_controls(self))                             # 5
-        tools_stack.addWidget(create_theme_controls(self))                            # 6
-        tools_stack.addWidget(create_guide_tab(self))                                 # 7
-
-        tools_nav.currentRowChanged.connect(self._on_tools_nav_row_changed)
-        tools_nav.setCurrentRow(0)
+        tools_catalog: dict[str, tuple[QtWidgets.QWidget, str]] = {}
+        _tools_page_defs = (
+            ("Presets", "Named COM/UDP presets", lambda w: create_presets_tab(w, include_advanced_net=False)),
+            ("Phone", "Web API, token, QR — phone dashboard (Tailscale/LAN)", create_phone_dashboard_tab),
+            ("NMEA", "Passthrough, strict, or raw binary", create_nmea_controls),
+            ("Terminal", "Local PowerShell / cmd on this PC", create_system_terminal_tab),
+            ("Diagnostics", "Bench checks and file log", create_diagnostics_controls),
+            ("Inject", "Send test NMEA to serial / network", create_send_controls),
+            ("Theme", "Appearance", create_theme_controls),
+            ("Guide", "UDP/TCP connection workflows", create_guide_tab),
+        )
+        for label, tip, factory in _tools_page_defs:
+            tools_catalog[label] = (factory(self), tip)
 
         self._tools_nav = tools_nav
         self._tools_stack = tools_stack
+        self._setup_reorderable_tools_nav(tools_nav, tools_stack, tools_catalog, "tools_tabs")
+        tools_nav.currentRowChanged.connect(self._on_tools_nav_row_changed)
 
         tools_h.addWidget(tools_nav)
         tools_h.addWidget(tools_stack, 1)
@@ -267,7 +257,17 @@ class BridgeWindowStandard(BridgeLogicMixin, QtWidgets.QWidget):
         uf.addRow("Listen host:", self.udp_host)
         uf.addRow("Listen port:", self.udp_port)
         nv.addLayout(uf)
-        nv.addWidget(self.chk_udp_fanout)
+        fanout_row = QtWidgets.QHBoxLayout()
+        fanout_row.setSpacing(8)
+        fanout_row.addWidget(self.chk_udp_fanout, 1)
+        from ui.network_help import create_network_help_button
+
+        fanout_row.addWidget(
+            create_network_help_button(self),
+            0,
+            QtCore.Qt.AlignmentFlag.AlignRight | QtCore.Qt.AlignmentFlag.AlignVCenter,
+        )
+        nv.addLayout(fanout_row)
         sink_row = QtWidgets.QHBoxLayout()
         sink_row.addWidget(self.chk_tcp_sink_enable)
         sink_row.addWidget(QtWidgets.QLabel("Port:"))

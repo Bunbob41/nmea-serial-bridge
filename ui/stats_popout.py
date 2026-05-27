@@ -75,7 +75,10 @@ _TT_SUB = "Show or hide subtitle lines on metric tiles."
 _TT_LOG = "Show live NMEA log panel on the right side."
 _TT_LOCK = "Lock HUD size (disable edge/corner resize) until unchecked."
 _TT_THEME = "Cycle HUD/app theme."
-_TT_CORNER = "One-click corner profile: 60%, 6 cols, Sub off, Row on."
+_TT_CORNER = (
+    "Corner profile: sections in a row, compact session grid, wide GNSS fix tile. "
+    "Hover the GNSS badge for full fix type (e.g. RTK fixed)."
+)
 _TT_READABLE = "One-click readable profile: 90%, Auto cols, Sub on, Row off."
 
 
@@ -643,9 +646,18 @@ class _HudSection(QtWidgets.QFrame):
             if w is not None:
                 self._body_grid.removeWidget(w)
         ncols = max(1, min(self._ncols, len(self._metric_order) or 1))
-        for i, m in enumerate(self._metric_order):
-            r, c = divmod(i, ncols)
-            self._body_grid.addWidget(m, r, c)
+        row, col = 0, 0
+        for m in self._metric_order:
+            mid = getattr(m, "_metric_id", "") or ""
+            span = 2 if mid == "gnss_q" and ncols >= 2 else 1
+            if col + span > ncols:
+                row += 1
+                col = 0
+            self._body_grid.addWidget(m, row, col, 1, span)
+            col += span
+            if col >= ncols:
+                row += 1
+                col = 0
         for c in range(ncols):
             self._body_grid.setColumnStretch(c, 1)
 
@@ -926,6 +938,7 @@ class SurveyStatsPopout(QtWidgets.QWidget):
         self._strip_layout_key: Optional[tuple[bool, tuple[str, ...]]] = None
         self._sections_strip_horizontal = False
         self._reorder_drag_from: str | None = None
+        self._gnss_hud_nav: Optional[dict[str, Any]] = None
 
         ROLES = ("nw", "n", "ne", "w", "e", "sw", "s", "se")
         self._resize_handles: dict[str, _HudResizeEdge] = {r: _HudResizeEdge(self, r) for r in ROLES}
@@ -990,6 +1003,11 @@ class SurveyStatsPopout(QtWidgets.QWidget):
         self._m_sess_up = _HudMetric("Toward network", "total lines", tooltip=_TT_SESS_UP)
         self._m_health = _HudMetric("Transport", "backpressure", tooltip=_TT_TRANSPORT)
         self._m_gnss_q = _HudMetric("GNSS", "GGA quality", tooltip=_TT_GNSS_Q)
+        self._m_gnss_q._val.setSizePolicy(
+            QtWidgets.QSizePolicy.Policy.MinimumExpanding,
+            QtWidgets.QSizePolicy.Policy.Minimum,
+        )
+        self._m_gnss_q._val.setMinimumWidth(72)
         self._m_gnss_sats = _HudMetric("Sats", "GGA count", tooltip=_TT_GNSS_SATS)
         self._m_gnss_hdop = _HudMetric("HDOP", "GGA dilution", tooltip=_TT_GNSS_HDOP)
         sec_sess.set_metrics(
@@ -1394,11 +1412,22 @@ class SurveyStatsPopout(QtWidgets.QWidget):
         cr = self._columns_for_band(uw, hero_tiles=True)
         cs = self._columns_for_band(uw, hero_tiles=False)
         cb = self._columns_for_band(uw, hero_tiles=False)
-        forced = 6
+        try:
+            forced = int(self._layout_cfg.get("forced_columns") or 0)
+        except (TypeError, ValueError):
+            forced = 0
+        sec_cols = self._layout_cfg.get("section_columns")
         if forced > 0:
             cr = max(1, min(3, forced))
             cs = max(1, min(3, forced))
             cb = max(1, min(6, forced))
+        if isinstance(sec_cols, dict):
+            if "rates" in sec_cols:
+                cr = max(1, min(3, int(sec_cols["rates"])))
+            if "session" in sec_cols:
+                cs = max(1, min(3, int(sec_cols["session"])))
+            if "backpressure" in sec_cols:
+                cb = max(1, min(6, int(sec_cols["backpressure"])))
         sig = (cr, cs, cb)
         if sig == self._responsive_cols:
             return
@@ -1600,6 +1629,11 @@ class SurveyStatsPopout(QtWidgets.QWidget):
     def _apply_corner_preset(self) -> None:
         self._layout_cfg["box_scale"] = 1.0
         self._layout_cfg["forced_columns"] = 6
+        self._layout_cfg["section_columns"] = {
+            "rates": 3,
+            "session": 2,
+            "backpressure": 4,
+        }
         self._layout_cfg["show_subtitles"] = False
         self._layout_cfg["show_nmea_log"] = True
         self._layout_cfg["sections_row"] = True
@@ -1614,6 +1648,7 @@ class SurveyStatsPopout(QtWidgets.QWidget):
     def _apply_readable_preset(self) -> None:
         self._layout_cfg["box_scale"] = 1.0
         self._layout_cfg["forced_columns"] = 6
+        self._layout_cfg.pop("section_columns", None)
         self._layout_cfg["show_subtitles"] = True
         self._layout_cfg["show_nmea_log"] = False
         self._layout_cfg["sections_row"] = False
@@ -1652,6 +1687,52 @@ class SurveyStatsPopout(QtWidgets.QWidget):
                 self._reset_sections_scroll_origin()
         finally:
             self._layout_reflow_in_progress = False
+        self._refresh_gnss_hud_fix_label()
+
+    def _gnss_hud_use_compact_label(self) -> bool:
+        """Corner / horizontal strip: tiles are narrow — use RTK-F style on the badge."""
+        if not bool(self._layout_cfg.get("sections_row", False)):
+            return False
+        uw = self._effective_metric_band_width()
+        cs = 3
+        if self._responsive_cols != (-1, -1, -1):
+            cs = max(1, self._responsive_cols[1])
+        sec_cols = self._layout_cfg.get("section_columns")
+        if isinstance(sec_cols, dict) and sec_cols.get("session") is not None:
+            try:
+                cs = max(1, min(3, int(sec_cols["session"])))
+            except (TypeError, ValueError):
+                pass
+        vis = sum(
+            1
+            for mid in ("sess_dn", "sess_up", "health", "gnss_q", "gnss_sats", "gnss_hdop")
+            if self._metrics.get(mid) is not None and self._metrics[mid].isVisible()
+        )
+        cols = max(1, min(cs, vis or cs))
+        gnss_span = 2 if cols >= 2 else 1
+        tile_w = max(40, (uw * gnss_span) // cols)
+        return tile_w < 112
+
+    def _fit_gnss_hud_badge_width(self, text: str) -> None:
+        val = self._m_gnss_q._val
+        fm = QtGui.QFontMetrics(val.font())
+        pad = 8 if self._gnss_hud_use_compact_label() else 12
+        val.setMinimumWidth(max(56, fm.horizontalAdvance(text) + pad))
+
+    def _refresh_gnss_hud_fix_label(self) -> None:
+        nav = self._gnss_hud_nav
+        if nav is None or not self._m_gnss_q.isVisible():
+            return
+        from survey_quality import gnss_status_hud_badge_text
+
+        fix = str(nav.get("fix_label") or "—")
+        narrow = self._gnss_hud_use_compact_label()
+        text = gnss_status_hud_badge_text(fix_label=fix, narrow=narrow)
+        nav_stale = bool(nav.get("nav_stale"))
+        nav_level = str(nav.get("level", ""))
+        nav_alert = nav_stale or nav_level in ("warn", "bad")
+        self._m_gnss_q.set_value(text, alert=nav_alert)
+        self._fit_gnss_hud_badge_width(text)
 
     def _normalize_sections_canvas(self) -> None:
         vp = self._sections_scroll.viewport()
@@ -1739,21 +1820,34 @@ class SurveyStatsPopout(QtWidgets.QWidget):
         nav_level = str(d.get("level", ""))
         nav_alert = nav_stale or nav_level in ("warn", "bad")
         stream_idle = bool(d.get("stream_idle")) or str(d.get("summary") or "") == "No Data Stream"
-        from survey_quality import gnss_status_badge_quality, gnss_status_badge_stylesheet
+        from survey_quality import (
+            format_gnss_status_tooltip,
+            gnss_status_badge_quality,
+            gnss_status_badge_stylesheet,
+            gnss_status_hud_badge_text,
+        )
 
         badge_q = gnss_status_badge_quality(d, running=True, raw_mode=False)
-        gnss_badge_ss = gnss_status_badge_stylesheet(badge_q)
+        gnss_badge_ss = gnss_status_badge_stylesheet(badge_q, hud=True)
+        gnss_tip = format_gnss_status_tooltip(d, running=True, raw_mode=False)
         if self._m_gnss_q.isVisible():
+            narrow = self._gnss_hud_use_compact_label()
             if stream_idle:
-                self._m_gnss_q.set_value("No Data Stream", alert=True)
-                self._m_gnss_q.setToolTip(str(d.get("detail") or _TT_GNSS_Q))
+                badge_text = gnss_status_hud_badge_text(stream_idle=True, narrow=narrow)
+                self._m_gnss_q.set_value(badge_text, alert=True)
+                self._gnss_hud_nav = None
             elif nav_stale or not d.get("summary"):
-                self._m_gnss_q.set_value("Stale", alert=True)
-                self._m_gnss_q.setToolTip("No GGA in the last ~2 seconds.")
+                badge_text = gnss_status_hud_badge_text(nav_stale=True, narrow=narrow)
+                self._m_gnss_q.set_value(badge_text, alert=True)
+                self._gnss_hud_nav = None
             else:
-                short = str(d.get("fix_label", "—"))
-                self._m_gnss_q.set_value(short, alert=nav_alert)
-                self._m_gnss_q.setToolTip(str(d.get("detail") or _TT_GNSS_Q))
+                fix = str(d.get("fix_label", "—"))
+                self._gnss_hud_nav = dict(d)
+                badge_text = gnss_status_hud_badge_text(fix_label=fix, narrow=narrow)
+                self._m_gnss_q.set_value(badge_text, alert=nav_alert)
+            self._fit_gnss_hud_badge_width(self._m_gnss_q._last_text)
+            self._m_gnss_q.setToolTip(gnss_tip)
+            self._m_gnss_q._val.setToolTip(gnss_tip)
             self._m_gnss_q._val.setStyleSheet(gnss_badge_ss)
         if self._m_gnss_sats.isVisible():
             if stream_idle:

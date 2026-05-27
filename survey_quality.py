@@ -260,6 +260,43 @@ def nav_metrics_should_reset(
 
 
 _GNSS_BADGE_STYLE = "padding: 6px; border-radius: 4px; font-weight: bold;"
+_GNSS_BADGE_STYLE_HUD = "padding: 0px 4px; border-radius: 3px; font-weight: bold;"
+
+# Compact HUD tile labels (Corner / horizontal strip); full text in tooltip.
+_GNSS_FIX_HUD_SHORT: dict[str, str] = {
+    "No fix": "No fix",
+    "GPS": "GPS",
+    "DGPS": "DGPS",
+    "PPS": "PPS",
+    "RTK fixed": "RTK-F",
+    "RTK float": "RTK-FL",
+    "Estimated": "Est.",
+    "Manual": "Man.",
+    "Simulation": "Sim.",
+}
+
+
+def gnss_fix_label_hud_display(fix_label: str, *, narrow: bool) -> str:
+    """Survey HUD GNSS badge text — short form when the tile is too narrow."""
+    label = (fix_label or "—").strip()
+    if not narrow:
+        return label
+    return _GNSS_FIX_HUD_SHORT.get(label, label[:10] if len(label) > 10 else label)
+
+
+def gnss_status_hud_badge_text(
+    *,
+    stream_idle: bool = False,
+    nav_stale: bool = False,
+    fix_label: str = "",
+    narrow: bool = False,
+) -> str:
+    """Survey HUD GNSS value — short idle/stale labels; hover tooltip has full detail."""
+    if stream_idle:
+        return "Idle"
+    if nav_stale:
+        return "Stale"
+    return gnss_fix_label_hud_display(fix_label, narrow=narrow)
 
 
 def gnss_status_badge_quality(
@@ -290,15 +327,68 @@ def gnss_status_badge_quality(
         return 0
 
 
-def gnss_status_badge_stylesheet(quality: Optional[int]) -> str:
+def gnss_status_badge_stylesheet(quality: Optional[int], *, hud: bool = False) -> str:
     """Polished status-bar / HUD badge colors from NMEA fix quality."""
     if quality is None:
         return ""
+    frame = _GNSS_BADGE_STYLE_HUD if hud else _GNSS_BADGE_STYLE
     if quality in (4, 5):
-        return f"background-color: #D4EDDA; color: #155724; {_GNSS_BADGE_STYLE}"
+        if hud:
+            return f"background-color: #2d5a38; color: #d8f5e0; {frame}"
+        return f"background-color: #D4EDDA; color: #155724; {frame}"
     if quality in (1, 2):
-        return f"background-color: #CCE5FF; color: #004085; {_GNSS_BADGE_STYLE}"
-    return f"background-color: #F8D7DA; color: #721C24; {_GNSS_BADGE_STYLE}"
+        if hud:
+            return f"background-color: #1e3f66; color: #d6ebff; {frame}"
+        return f"background-color: #CCE5FF; color: #004085; {frame}"
+    if hud:
+        return f"background-color: #5c2a32; color: #fce8ea; {frame}"
+    return f"background-color: #F8D7DA; color: #721C24; {frame}"
+
+
+def format_gnss_status_tooltip(
+    nav: Optional[dict[str, Any]],
+    *,
+    running: bool = True,
+    raw_mode: bool = False,
+) -> str:
+    """Full GNSS status for hover (HUD tile, status bar chip) when the label is clipped."""
+    if not running:
+        return "GNSS quality appears while the bridge is Running."
+    if raw_mode:
+        return (
+            "Raw binary mode — no GGA parsing.\n"
+            "Use Passthrough or Strict for live fix, satellites, and HDOP."
+        )
+    if not nav:
+        return "No GGA in the last ~2 seconds.\nCheck INS output, cable, and NMEA filter."
+    if nav.get("stream_idle") or str(nav.get("summary", "")) == "No Data Stream":
+        return "No NMEA stream on the wire.\nStart the bridge and confirm traffic on Connect / Log."
+    if nav_quality_stale(nav):
+        return (
+            f"No fresh GGA in the last ~{NAV_STALE_S:.0f} s.\n"
+            "Check INS output and that strict mode is not dropping all sentences."
+        )
+    fix = str(nav.get("fix_label") or GGA_FIX_LABELS.get(int(nav.get("quality", -1)), "—"))
+    lines = [f"Fix: {fix}"]
+    sats = nav.get("num_sats")
+    if sats is not None:
+        lines.append(f"Satellites: {sats}")
+    hdop = nav.get("hdop")
+    if hdop is not None:
+        try:
+            lines.append(f"HDOP: {float(hdop):.1f}")
+        except (TypeError, ValueError):
+            lines.append(f"HDOP: {hdop}")
+    summary = str(nav.get("summary") or "").strip()
+    if summary:
+        lines.append(summary)
+    detail = str(nav.get("detail") or "").strip()
+    if detail and detail not in lines:
+        lines.append(detail)
+    level = str(nav.get("level") or "").strip()
+    if level and level not in ("good", ""):
+        lines.append(f"Assessment: {level}")
+    return "\n".join(lines)
 
 
 def format_gnss_status_chip(

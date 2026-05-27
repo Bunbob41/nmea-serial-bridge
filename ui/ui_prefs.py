@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 from typing import Any, Optional
 
@@ -83,6 +84,21 @@ def _migrate_schema(raw: dict[str, Any]) -> tuple[dict[str, Any], bool]:
                     changed = True
                 connect_raw[str(key)] = mode_map
             data["connect_panels"] = connect_raw
+    if ver < 3:
+        ver = 3
+        changed = True
+        if "web_ui" not in data:
+            data["web_ui"] = {
+                "enabled": True,
+                "host": "127.0.0.1",
+                "port": 8765,
+                "lan_bind": False,
+            }
+        else:
+            raw_web = data.get("web_ui")
+            if isinstance(raw_web, dict) and "enabled" not in raw_web:
+                raw_web["enabled"] = True
+                data["web_ui"] = raw_web
     if "schema_version" not in data or data.get("schema_version") != ver:
         changed = True
     data["schema_version"] = ver
@@ -333,6 +349,19 @@ def save_diag_card_states(ui_mode: str, states: dict[str, bool]) -> None:
     _write_json(data)
 
 
+def dedupe_preserve_order(names: list[str]) -> list[str]:
+    """Drop duplicate labels while keeping the first occurrence."""
+    seen: set[str] = set()
+    out: list[str] = []
+    for name in names:
+        text = str(name).strip()
+        if not text or text in seen:
+            continue
+        seen.add(text)
+        out.append(text)
+    return out
+
+
 def load_tab_order(ui_mode: str, key: str) -> list[str]:
     data = _read_json()
     all_tabs = data.get("tab_order")
@@ -344,6 +373,12 @@ def load_tab_order(ui_mode: str, key: str) -> list[str]:
     raw = mode_map.get(key)
     if not isinstance(raw, list):
         return []
+    raw_labels = [str(item).strip() for item in raw if str(item).strip()]
+    raw_set = set(raw_labels)
+    # v1.13.x: lone "Terminal" tab was NMEA inject; modern layouts have Inject + shell Terminal.
+    legacy_terminal_is_inject = (
+        "Terminal" in raw_set and "Inject" not in raw_set and "Send" not in raw_set
+    )
     out: list[str] = []
     for item in raw:
         text = str(item).strip()
@@ -351,15 +386,14 @@ def load_tab_order(ui_mode: str, key: str) -> list[str]:
             continue
         if text == "Send":
             text = "Inject"
-        elif text == "Terminal":
-            # v1.13.x: Terminal tab was NMEA inject; now Inject + shell Terminal.
+        elif text == "Terminal" and legacy_terminal_is_inject:
             text = "Inject"
         out.append(text)
-    return out
+    return dedupe_preserve_order(out)
 
 
 def save_tab_order(ui_mode: str, key: str, order: list[str]) -> None:
-    clean = [str(x).strip() for x in order if str(x).strip()]
+    clean = dedupe_preserve_order([str(x).strip() for x in order if str(x).strip()])
     data = _read_json()
     all_tabs = data.get("tab_order")
     if not isinstance(all_tabs, dict):
@@ -548,7 +582,7 @@ def load_file_log_prefs() -> dict[str, int]:
         backups = 5
     if max_mb not in (10, 25, 50, 100):
         max_mb = 10
-    if backups not in (3, 5, 10):
+    if backups not in (0, 3, 5, 10):
         backups = 5
     return {"max_mb": max_mb, "backups": backups}
 
@@ -869,7 +903,7 @@ def save_discovery_scan_prefs(*, background_enabled: bool, background_interval_s
 
 
 _WEB_UI_DEFAULTS = {
-    "enabled": False,
+    "enabled": True,
     "host": "127.0.0.1",
     "port": 8765,
     "lan_bind": False,
@@ -892,7 +926,7 @@ def load_web_ui_prefs() -> dict[str, Any]:
     phone_base = raw.get("phone_base_url")
     phone_s = str(phone_base).strip() if phone_base else None
     return {
-        "enabled": bool(raw.get("enabled", False)),
+        "enabled": bool(raw.get("enabled", True)),
         "host": str(raw.get("host", "127.0.0.1")).strip() or "127.0.0.1",
         "port": max(1024, min(65535, port_i)),
         "lan_bind": bool(raw.get("lan_bind", False)),
@@ -1056,3 +1090,110 @@ def save_qr_overlay_prefs(
         payload["float_pos_pixels"] = pix_out
     data["qr_overlay"] = payload
     _write_json(data)
+
+
+_TERMINAL_PING_KEY = "terminal_ping"
+_TERMINAL_PING_PRESETS_KEY = "presets"
+_TERMINAL_PING_ORDER_KEY = "order"
+_TERMINAL_PING_PRESET_MAX = 32
+_TERMINAL_PING_BUBBLE_MAX = 5
+_PING_NAME_RE = re.compile(r"^[\w][\w \-./()]{0,31}$")
+
+
+def _terminal_ping_block() -> dict[str, Any]:
+    data = _read_json()
+    raw = data.get(_TERMINAL_PING_KEY)
+    if not isinstance(raw, dict):
+        return {_TERMINAL_PING_PRESETS_KEY: {}, _TERMINAL_PING_ORDER_KEY: []}
+    presets = raw.get(_TERMINAL_PING_PRESETS_KEY)
+    order = raw.get(_TERMINAL_PING_ORDER_KEY)
+    if not isinstance(presets, dict):
+        presets = {}
+    clean_presets: dict[str, str] = {}
+    for name, host in presets.items():
+        n = str(name).strip()
+        h = str(host).strip()
+        if n and h:
+            clean_presets[n] = h
+    if not isinstance(order, list):
+        order = []
+    clean_order: list[str] = []
+    seen: set[str] = set()
+    for item in order:
+        n = str(item).strip()
+        if n in clean_presets and n not in seen:
+            clean_order.append(n)
+            seen.add(n)
+    for n in clean_presets:
+        if n not in seen:
+            clean_order.append(n)
+    return {_TERMINAL_PING_PRESETS_KEY: clean_presets, _TERMINAL_PING_ORDER_KEY: clean_order}
+
+
+def _write_terminal_ping_block(block: dict[str, Any]) -> None:
+    data = _read_json()
+    data[_TERMINAL_PING_KEY] = block
+    _write_json(data)
+
+
+def validate_terminal_ping_preset_name(name: str) -> Optional[str]:
+    n = str(name or "").strip()
+    if not n:
+        return "Enter a preset name."
+    if len(n) > 32:
+        return "Name must be 32 characters or fewer."
+    if not _PING_NAME_RE.match(n):
+        return "Use letters, numbers, spaces, and - _ . / ( ) only."
+    return None
+
+
+def list_terminal_ping_preset_names() -> list[str]:
+    block = _terminal_ping_block()
+    return list(block[_TERMINAL_PING_ORDER_KEY])
+
+
+def terminal_ping_host(preset_name: str) -> Optional[str]:
+    block = _terminal_ping_block()
+    return block[_TERMINAL_PING_PRESETS_KEY].get(str(preset_name).strip())
+
+
+def save_terminal_ping_preset(name: str, host: str) -> Optional[str]:
+    """Returns error message, or None on success."""
+    err = validate_terminal_ping_preset_name(name)
+    if err:
+        return err
+    h = str(host or "").strip()
+    if not h:
+        return "Enter an IP address or hostname."
+    clean_name = str(name).strip()
+    block = _terminal_ping_block()
+    presets: dict[str, str] = dict(block[_TERMINAL_PING_PRESETS_KEY])
+    order: list[str] = list(block[_TERMINAL_PING_ORDER_KEY])
+    is_new = clean_name not in presets
+    presets[clean_name] = h
+    if is_new:
+        order.append(clean_name)
+    if len(presets) > _TERMINAL_PING_PRESET_MAX:
+        return f"At most {_TERMINAL_PING_PRESET_MAX} ping presets."
+    block[_TERMINAL_PING_PRESETS_KEY] = presets
+    block[_TERMINAL_PING_ORDER_KEY] = order
+    _write_terminal_ping_block(block)
+    return None
+
+
+def delete_terminal_ping_preset(name: str) -> bool:
+    clean_name = str(name).strip()
+    block = _terminal_ping_block()
+    presets: dict[str, str] = dict(block[_TERMINAL_PING_PRESETS_KEY])
+    if clean_name not in presets:
+        return False
+    del presets[clean_name]
+    order = [n for n in block[_TERMINAL_PING_ORDER_KEY] if n != clean_name]
+    block[_TERMINAL_PING_PRESETS_KEY] = presets
+    block[_TERMINAL_PING_ORDER_KEY] = order
+    _write_terminal_ping_block(block)
+    return True
+
+
+def terminal_ping_bubble_names() -> list[str]:
+    return list_terminal_ping_preset_names()[:_TERMINAL_PING_BUBBLE_MAX]

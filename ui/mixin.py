@@ -9,6 +9,7 @@ from typing import Deque, Optional
 import asyncio
 import json
 import sys
+import time
 import serial.tools.list_ports
 from PySide6 import QtCore, QtGui, QtWidgets
 
@@ -151,6 +152,20 @@ _DEFAULT_DIAG_CARD_ORDER = [
     "automated_checks",
 ]
 
+# Let Windows release the COM handle after Stop before Start (avoids “stuck until restart”).
+START_AFTER_STOP_COOLDOWN_S = 0.35
+
+
+def _start_cooldown_remaining_s(
+    last_stop_mono: float,
+    now: float,
+    *,
+    cooldown: float = START_AFTER_STOP_COOLDOWN_S,
+) -> float:
+    if last_stop_mono <= 0:
+        return 0.0
+    return max(0.0, cooldown - (now - last_stop_mono))
+
 
 class BridgeLogicMixin:
     """Shared bridge GUI logic; subclasses must create widgets before _finalize_ui()."""
@@ -175,6 +190,8 @@ class BridgeLogicMixin:
         self._presets_menu_pending: Optional[str] = None
         self._preset_list_syncing = False
         self._starting = False
+        self._bridge_stop_mono = 0.0
+        self._start_defer_pending = False
         self._stop_guard_timer = QtCore.QTimer(self)
         self._stop_guard_timer.setSingleShot(True)
         self._stop_guard_timer.timeout.connect(self._stop_timeout_guard)
@@ -235,6 +252,7 @@ class BridgeLogicMixin:
 
         self._app_facade = BridgeAppFacade(self)
         self._web_server = None
+        self._web_start_retry_gen = 0
 
     def _reset_ui_log_serial_coalesce(self) -> None:
         self._ui_log_serial_dup_last = None
@@ -268,8 +286,12 @@ class BridgeLogicMixin:
         self._refresh_preset_list()
         self._sync_preset_action_buttons()
         self._apply_theme(self._theme_id, persist=False)
-        self._sync_connect_row_style_combo()
+        self._apply_fixed_connect_row_style()
         apply_app_icon(self)
+        self._force_quit = False
+        from ui.tray_support import install_tray_icon
+
+        self._tray_icon = install_tray_icon(self)
         self._restore_file_log_prefs_ui()
         self._restore_auto_discover_pref()
         self._log_startup_self_check()
@@ -328,12 +350,6 @@ class BridgeLogicMixin:
         act_ui_editor.setStatusTip(self._ui_editor_status_tip())
         act_ui_editor.triggered.connect(self._open_ui_editor)
         view_menu.addAction(act_ui_editor)
-        act_demo = QtGui.QAction("Product demo…", self)
-        act_demo.setStatusTip(
-            "Scripted walkthrough: presets, UDP, HUD, TCP map motion, Terminal, Diagnostics"
-        )
-        act_demo.triggered.connect(self._open_product_demo)
-        view_menu.addAction(act_demo)
         act_bench = QtGui.QAction("Bench pair setup…", self)
         act_bench.setStatusTip(
             "Open the bench/com0com guide and run com_free + check_setup (same as preflight_bench.bat)"
@@ -665,6 +681,104 @@ class BridgeLogicMixin:
             "Open the Connect, NMEA, Terminal, or Diagnostics tabs in this layout.",
         )
 
+    def _setup_reorderable_tools_nav(
+        self,
+        nav: QtWidgets.QListWidget,
+        stack: QtWidgets.QStackedWidget,
+        catalog: dict[str, tuple[QtWidgets.QWidget, str]],
+        key: str = "tools_tabs",
+    ) -> None:
+        """Standard Tools tab: sidebar list + stacked pages (UI editor reorders this)."""
+        self._tab_catalog[key] = dict(catalog)
+        self._tab_hidden[key] = set(load_hidden_tabs(getattr(self, "_ui_mode", "standard"), key))
+        self._rebuild_tools_nav_from_state(key)
+        nav.setToolTip(
+            "Tools sidebar — order and visibility are set in View → UI editor → Tools tabs."
+        )
+
+    def _visible_tools_tab_names(self, key: str) -> list[str]:
+        catalog = self._tab_catalog.get(key, {})
+        if not catalog:
+            return []
+        hidden = self._tab_hidden.get(key, set())
+        from ui.ui_prefs import dedupe_preserve_order
+
+        saved = load_tab_order(getattr(self, "_ui_mode", "standard"), key)
+        visible_saved = dedupe_preserve_order(
+            [name for name in saved if name in catalog and name not in hidden]
+        )
+        visible_names = list(visible_saved)
+        for name in catalog.keys():
+            if name not in hidden and name not in visible_names:
+                visible_names.append(name)
+        visible_names = dedupe_preserve_order(visible_names)
+        if (
+            key == "tools_tabs"
+            and "Phone" in catalog
+            and "Phone" not in hidden
+            and "Phone" not in visible_names
+        ):
+            if "Presets" in visible_names:
+                visible_names.insert(visible_names.index("Presets") + 1, "Phone")
+            else:
+                visible_names.insert(0, "Phone")
+        return visible_names
+
+    def _rebuild_tools_nav_from_state(self, key: str) -> None:
+        nav = getattr(self, "_tools_nav", None)
+        stack = getattr(self, "_tools_stack", None)
+        catalog = self._tab_catalog.get(key, {})
+        if nav is None or stack is None or not catalog:
+            return
+        visible_names = self._visible_tools_tab_names(key)
+        prev_label = ""
+        item = nav.currentItem()
+        if item is not None:
+            prev_label = item.text().strip()
+        while stack.count():
+            w = stack.widget(0)
+            stack.removeWidget(w)
+        nav.clear()
+        for name in visible_names:
+            widget, tip = catalog[name]
+            stack_idx = stack.indexOf(widget)
+            if stack_idx < 0:
+                stack.addWidget(widget)
+                stack_idx = stack.count() - 1
+            row = QtWidgets.QListWidgetItem(name)
+            row.setToolTip(tip)
+            row.setData(QtCore.Qt.ItemDataRole.UserRole, stack_idx)
+            nav.addItem(row)
+        if not visible_names:
+            return
+        pick = 0
+        if prev_label:
+            for i in range(nav.count()):
+                it = nav.item(i)
+                if it is not None and it.text().strip() == prev_label:
+                    pick = i
+                    break
+        nav.blockSignals(True)
+        try:
+            nav.setCurrentRow(pick)
+            stack.setCurrentIndex(pick)
+        finally:
+            nav.blockSignals(False)
+
+    def _persist_tools_nav_state(self, key: str) -> None:
+        nav = getattr(self, "_tools_nav", None)
+        if nav is None:
+            return
+        order = [
+            nav.item(i).text().strip()
+            for i in range(nav.count())
+            if nav.item(i) is not None and nav.item(i).text().strip()
+        ]
+        if order:
+            save_tab_order(getattr(self, "_ui_mode", "standard"), key, order)
+        hidden = sorted(self._tab_hidden.get(key, set()))
+        save_hidden_tabs(getattr(self, "_ui_mode", "standard"), key, hidden)
+
     def _setup_reorderable_tabs(self, tabs: QtWidgets.QTabWidget, key: str) -> None:
         catalog: dict[str, tuple[QtWidgets.QWidget, str]] = {}
         for i in range(tabs.count()):
@@ -688,18 +802,7 @@ class BridgeLogicMixin:
         catalog = self._tab_catalog.get(key, {})
         if not catalog:
             return
-        hidden = self._tab_hidden.get(key, set())
-        saved = load_tab_order(getattr(self, "_ui_mode", "standard"), key)
-        visible_saved = [name for name in saved if name in catalog and name not in hidden]
-        visible_names = list(visible_saved)
-        for name in catalog.keys():
-            if name not in hidden and name not in visible_names:
-                visible_names.append(name)
-        if key == "tools_tabs" and "Phone" in catalog and "Phone" not in visible_names:
-            if "Presets" in visible_names:
-                visible_names.insert(visible_names.index("Presets") + 1, "Phone")
-            else:
-                visible_names.insert(0, "Phone")
+        visible_names = self._visible_tools_tab_names(key)
         self._tab_rebuild_guard = True
         try:
             while tabs.count():
@@ -768,6 +871,10 @@ class BridgeLogicMixin:
         hidden = self._tab_hidden.setdefault(key, set())
         if label in hidden:
             hidden.remove(label)
+        if key == "tools_tabs" and getattr(self, "_tools_nav", None) is not None:
+            self._rebuild_tools_nav_from_state(key)
+            self._persist_tools_nav_state(key)
+            return
         tabs = getattr(self, "_main_tabs", None) if key == "main_tabs" else getattr(self, "_drawer_tabs", None)
         if tabs is None:
             return
@@ -779,6 +886,10 @@ class BridgeLogicMixin:
         if not hidden:
             return
         hidden.clear()
+        if key == "tools_tabs" and getattr(self, "_tools_nav", None) is not None:
+            self._rebuild_tools_nav_from_state(key)
+            self._persist_tools_nav_state(key)
+            return
         tabs = getattr(self, "_main_tabs", None) if key == "main_tabs" else getattr(self, "_drawer_tabs", None)
         if tabs is None:
             return
@@ -802,8 +913,8 @@ class BridgeLogicMixin:
         mode = getattr(self, "_ui_mode", "standard")
         if mode == "standard":
             return (
-                "Show or hide top bar tiles, Connect sections, and main window tabs "
-                "(Standard layout)"
+                "Show or hide top bar tiles, Connect sections, main tabs, and "
+                "Tools sidebar items (Presets, Phone, NMEA, …)"
             )
         return "Show or hide top bar tiles and Tools drawer tabs (Field layout)"
 
@@ -1028,6 +1139,7 @@ class BridgeLogicMixin:
             return
         from survey_quality import (
             format_gnss_status_chip,
+            format_gnss_status_tooltip,
             gnss_status_badge_quality,
             gnss_status_badge_stylesheet,
         )
@@ -1043,14 +1155,7 @@ class BridgeLogicMixin:
                 gnss_status_badge_quality(nav, running=running, raw_mode=raw_mode)
             )
         )
-        if running and raw_mode:
-            chip.setToolTip("Raw binary mode — no GGA parsing. Use passthrough/strict for live GNSS quality.")
-        elif running and nav and not nav.get("nav_stale"):
-            chip.setToolTip(str(nav.get("detail") or nav.get("summary") or ""))
-        elif running:
-            chip.setToolTip("No GGA in the last ~2 seconds — check INS output and NMEA filter.")
-        else:
-            chip.setToolTip("GNSS quality from GGA while the bridge is Running (POSPac-style hints).")
+        chip.setToolTip(format_gnss_status_tooltip(nav, running=running, raw_mode=raw_mode))
 
     def _rebuild_recent_sessions_menu(self) -> None:
         menu = getattr(self, "_recent_sessions_menu", None)
@@ -1205,8 +1310,6 @@ class BridgeLogicMixin:
         self._log_ui(f"[UI] Loaded recent session: {com} @ {baud_s} · NMEA {nmea}")
 
     def _record_recent_session(self) -> None:
-        if getattr(self, "_demo_session_active", False):
-            return
         push_recent_session(
             {
                 "com": self.com_cb.currentText().strip(),
@@ -1261,7 +1364,7 @@ class BridgeLogicMixin:
         state = "running" if running else ("starting" if self._starting else "stopped")
 
         text = (
-            "NMEA Bridge stats snapshot\n"
+            "Serial Link stats snapshot\n"
             f"state: {state}\n"
             f"preset: {preset}\n"
             f"serial: {com} @ {baud}\n"
@@ -1353,15 +1456,9 @@ class BridgeLogicMixin:
         self._sync_theme_preset_buttons()
 
     def _load_theme_zone_colors_for_active_theme(self) -> None:
-        if self._theme_id == THEME_RANDOM_CURRENT:
-            zones = load_random_theme_current_zones()
-        elif self._theme_id == THEME_RANDOM_FAVORITE:
-            zones = load_random_theme_favorite_zones()
-        else:
-            zones = {}
-        merged = dict(DEFAULT_ZONE_COLORS)
-        merged.update(zones)
-        self._theme_zone_colors = merged
+        from ui.theme_palette import zone_colors_for_theme
+
+        self._theme_zone_colors = zone_colors_for_theme(self._theme_id)
 
     def _refresh_theme_zone_buttons(self) -> None:
         buttons = getattr(self, "_theme_zone_buttons", None)
@@ -1375,7 +1472,7 @@ class BridgeLogicMixin:
             txt_color = self._contrast_text_color(color)
             btn.setText(color.upper())
             btn.setStyleSheet(
-                "QPushButton {"
+                "QPushButton#themeStudioZoneSwatch {"
                 f"background-color: {color};"
                 f"color: {txt_color};"
                 "border: 1px solid #202020;"
@@ -1383,6 +1480,7 @@ class BridgeLogicMixin:
                 "font-family: Consolas, 'Cascadia Mono', monospace;"
                 "font-size: 9pt;"
                 "padding: 2px 6px;"
+                "border-radius: 4px;"
                 "}"
             )
 
@@ -1573,45 +1671,68 @@ class BridgeLogicMixin:
         theme_id = str(combo.currentData() or THEME_SLATE)
         self._apply_theme(theme_id)
 
-    def _sync_connect_row_style_combo(self) -> None:
-        combo = getattr(self, "cmb_connect_row_style", None)
-        if combo is None:
+    def _apply_fixed_connect_row_style(self) -> None:
+        """One house style for Connect (pill cards) — not an operator tuning knob."""
+        from ui.connect_row_style import CONNECT_ROW_PILL, apply_connect_row_style
+
+        apply_connect_row_style(self, CONNECT_ROW_PILL)
+
+    def _request_stop_from_tray(self) -> None:
+        if self._is_bridge_running():
+            self.stop_bridge()
+
+    def _quit_application(self) -> None:
+        self._force_quit = True
+        if self._is_bridge_running():
+            self.stop_bridge()
+        self._shutdown_background_services()
+        from ui.tray_support import destroy_tray_icon
+
+        destroy_tray_icon(self)
+        pop = getattr(self, "_stats_popout_window", None)
+        if pop is not None:
+            pop.close()
+            self._stats_popout_window = None
+        self.close()
+        self._request_application_quit()
+
+    def _request_application_quit(self) -> None:
+        app = QtWidgets.QApplication.instance()
+        if app is not None:
+            app.quit()
+
+    def _shutdown_background_services(self) -> None:
+        """Stop web UI, discovery workers, and background threads (idempotent)."""
+        self._stop_web_server()
+        self._diag_stop()
+        self._cancel_discovery_worker()
+        timer = getattr(self, "_discovery_timer", None)
+        if timer is not None:
+            timer.stop()
+            self._discovery_timer = None
+        self._stop_auto_discovery_thread()
+
+    def _hide_to_tray(self) -> None:
+        from ui.tray_support import update_tray_tooltip
+
+        self.hide()
+        tray = getattr(self, "_tray_icon", None)
+        if tray is None:
             return
-        from ui.connect_row_style import apply_connect_row_style, normalize_connect_row_style
-        from ui.ui_prefs import load_connect_panel_prefs
-
-        ui_mode = getattr(self, "_ui_mode", "standard")
-        prefs = load_connect_panel_prefs(ui_mode)
-        style_id = normalize_connect_row_style(str(prefs.get("connect_row_style", "pill")))
-        apply_connect_row_style(self, style_id)
-        idx = combo.findData(style_id)
-        if idx >= 0 and combo.currentIndex() != idx:
-            combo.blockSignals(True)
-            combo.setCurrentIndex(idx)
-            combo.blockSignals(False)
-
-    def _on_connect_row_style_changed(self, _idx: int) -> None:
-        combo = getattr(self, "cmb_connect_row_style", None)
-        if combo is None:
-            return
-        from ui.connect_row_style import apply_connect_row_style, normalize_connect_row_style
-        from ui.ui_prefs import load_connect_panel_prefs, save_connect_panel_prefs
-
-        style_id = normalize_connect_row_style(str(combo.currentData() or "pill"))
-        apply_connect_row_style(self, style_id)
-        ui_mode = getattr(self, "_ui_mode", "standard")
-        prefs = load_connect_panel_prefs(ui_mode)
-        save_connect_panel_prefs(
-            ui_mode,
-            list(prefs.get("order", [])),
-            dict(prefs.get("collapsed", {})),
-            sizes=dict(prefs.get("sizes", {})),
-            hidden=list(prefs.get("hidden", [])),
-            toolbar_order=list(prefs.get("toolbar_order", [])),
-            qr_lane_width=int(prefs.get("qr_lane_width", 228)),
-            connect_row_style=style_id,
+        running = self._is_bridge_running()
+        tip = (
+            "Serial Link — bridge running (double-click to show)"
+            if running
+            else "Serial Link"
         )
-        self._log_ui(f"[UI] Connect section style: {style_id}.")
+        update_tray_tooltip(tray, tip)
+        if running:
+            tray.showMessage(
+                "Serial Link",
+                "Bridge still running. Double-click the tray icon to reopen.",
+                QtWidgets.QSystemTrayIcon.MessageIcon.Information,
+                4000,
+            )
 
     def _pick_theme_zone_color(self, zone_id: str) -> None:
         current = self._theme_zone_colors.get(zone_id, DEFAULT_ZONE_COLORS.get(zone_id, "#222222"))
@@ -1638,10 +1759,16 @@ class BridgeLogicMixin:
             self._log_ui("[UI] Reordered theme zones.")
 
     def _reset_theme_zone_color(self, zone_id: str) -> None:
-        if zone_id not in DEFAULT_ZONE_COLORS:
+        from ui.theme_palette import zone_colors_for_theme
+
+        canonical = zone_colors_for_theme(self._theme_id)
+        if zone_id not in canonical:
             return
-        self._theme_zone_colors[zone_id] = DEFAULT_ZONE_COLORS[zone_id]
-        self._apply_current_zone_theme()
+        self._theme_zone_colors[zone_id] = canonical[zone_id]
+        if self._theme_id in (THEME_RANDOM_CURRENT, THEME_RANDOM_FAVORITE):
+            self._apply_current_zone_theme()
+        else:
+            self._refresh_theme_zone_buttons()
 
     def _apply_current_zone_theme(self) -> None:
         zone_map = dict(DEFAULT_ZONE_COLORS)
@@ -1862,11 +1989,57 @@ class BridgeLogicMixin:
         self._ensure_discovery_for_web()
         self._restore_web_ui_prefs()
         self._update_web_listen_label()
-        self._maybe_start_web_server()
-        self._update_web_listen_label()
+        QtCore.QTimer.singleShot(0, self._ensure_web_server_running)
         from ui.connect_qr_overlay import schedule_refresh_connect_qr_overlay
 
         schedule_refresh_connect_qr_overlay(self)
+
+    def _web_enabled_effective(self) -> bool:
+        chk = getattr(self, "chk_web_enabled", None)
+        if chk is not None:
+            return chk.isChecked()
+        from ui.ui_prefs import load_web_ui_prefs
+
+        return bool(load_web_ui_prefs().get("enabled"))
+
+    def _web_server_running(self) -> bool:
+        server = getattr(self, "_web_server", None)
+        return server is not None and bool(getattr(server, "running", False))
+
+    def _ensure_web_server_running(self) -> None:
+        """Start Web API after the Qt event loop is idle; retry once if bind races."""
+        if not self._web_enabled_effective():
+            self._update_web_listen_label()
+            return
+        if self._web_server_running():
+            self._update_web_listen_label()
+            return
+        self._maybe_start_web_server()
+        self._update_web_listen_label()
+        if self._web_enabled_effective() and not self._web_server_running():
+            gen = getattr(self, "_web_start_retry_gen", 0) + 1
+            self._web_start_retry_gen = gen
+
+            def _retry() -> None:
+                if gen != getattr(self, "_web_start_retry_gen", 0):
+                    return
+                if not self._web_enabled_effective() or self._web_server_running():
+                    return
+                from web_server import wait_port_free
+                from ui.ui_prefs import load_web_ui_prefs
+
+                prefs = load_web_ui_prefs()
+                port = int(prefs.get("port", 8765))
+                if wait_port_free(
+                    port,
+                    lan_bind=bool(prefs.get("lan_bind")),
+                    host=str(prefs.get("host", "127.0.0.1")),
+                    timeout=2.0,
+                ):
+                    self._maybe_start_web_server()
+                    self._update_web_listen_label()
+
+            QtCore.QTimer.singleShot(1200, _retry)
 
     def _web_token_from_ui(self) -> Optional[str]:
         edit = getattr(self, "edit_web_token", None)
@@ -1926,8 +2099,18 @@ class BridgeLogicMixin:
 
     def _on_tools_nav_row_changed(self, row: int) -> None:
         stack = getattr(self, "_tools_stack", None)
-        if stack is not None and 0 <= row < stack.count():
-            stack.setCurrentIndex(row)
+        nav = getattr(self, "_tools_nav", None)
+        if stack is None or row < 0:
+            return
+        stack_idx = row
+        if nav is not None:
+            item = nav.item(row)
+            if item is not None:
+                data = item.data(QtCore.Qt.ItemDataRole.UserRole)
+                if isinstance(data, int) and 0 <= data < stack.count():
+                    stack_idx = data
+        if 0 <= stack_idx < stack.count():
+            stack.setCurrentIndex(stack_idx)
         if self._tools_nav_is_phone():
             self._refresh_phone_tab_qr()
             floater = getattr(self, "_connect_qr_overlay", None)
@@ -2451,9 +2634,9 @@ class BridgeLogicMixin:
     def _maybe_start_web_server(self) -> None:
         from ui.ui_prefs import load_web_ui_prefs
 
-        prefs = load_web_ui_prefs()
-        if not prefs.get("enabled"):
+        if not self._web_enabled_effective():
             return
+        prefs = load_web_ui_prefs()
         port = int(prefs.get("port", 8765))
         try:
             from version import __version__
@@ -2493,8 +2676,9 @@ class BridgeLogicMixin:
                     f"Web API: http://127.0.0.1:{port}/ "
                     "(Tools → Phone — no token required on this PC)"
                 )
-        except Exception:
+        except Exception as exc:
             self._web_server = None
+            self._log_ui(f"[Web] Start failed: {exc}")
             self._report_web_bind_failure(port)
 
     def _stop_web_server(self) -> None:
@@ -2973,32 +3157,9 @@ class BridgeLogicMixin:
             lbl.setTextFormat(QtCore.Qt.TextFormat.PlainText)
             lbl.setText(title if not detail else f"{title} | {detail}")
 
-    def _set_demo_status_chip(self, on: bool) -> None:
-        """Optional banner hint while Product Demo is open (Standard layout)."""
-        if not on:
-            b = self.bridge
-            if b is not None and getattr(b, "running", False) and hasattr(
-                self, "_running_banner_detail"
-            ):
-                self._set_status_banner(
-                    "running", "Running", self._running_banner_detail(b)
-                )
-            else:
-                self._set_status_banner(
-                    "stopped",
-                    "Stopped",
-                    "Choose a path and Start when ready.",
-                )
-            return
-        self._set_status_banner(
-            "starting",
-            "Demonstration",
-            "Product demo open — your session restores when you close the presenter",
-        )
-
     def _set_active_preset(self, name: Optional[str]) -> None:
         self._active_preset_name = name.strip() if name else None
-        if self._active_preset_name and not getattr(self, "_demo_session_active", False):
+        if self._active_preset_name:
             set_last_preset(self._active_preset_name)
         self._refresh_preset_list_selection()
         self._rebuild_presets_quick_menu()
@@ -3678,8 +3839,6 @@ class BridgeLogicMixin:
         self._apply_preset_data(data, name=name, log=False)
 
     def _preset_save_selected(self) -> None:
-        if getattr(self, "_demo_session_active", False):
-            return
         name = self._selected_preset_name()
         if not name:
             self._preset_save_as()
@@ -3696,8 +3855,6 @@ class BridgeLogicMixin:
         self._log_ui(f"Saved preset «{name}» → {path}")
 
     def _preset_save_as(self) -> None:
-        if getattr(self, "_demo_session_active", False):
-            return
         from ui.path_preset_dialog import ask_preset_name
 
         fields = self._preset_full_from_ui()
@@ -3715,8 +3872,6 @@ class BridgeLogicMixin:
         self._log_ui(f"Saved preset «{name}» → {path}")
 
     def _preset_new(self) -> None:
-        if getattr(self, "_demo_session_active", False):
-            return
         from ui.path_preset_dialog import ask_preset_name
 
         name = ask_preset_name(self, "New preset")
@@ -4063,11 +4218,15 @@ class BridgeLogicMixin:
 
     def _update_status_bar(self, serial_line: str, network_line: str) -> None:
         from ui.controls import elide_status_label
+        from ui.tray_support import update_tray_tooltip
 
         elide_status_label(self.status_serial, serial_line)
         elide_status_label(self.status_network, network_line)
         self._refresh_nmea_status_chip()
         self._refresh_stats_popout()
+        tray = getattr(self, "_tray_icon", None)
+        if tray is not None:
+            update_tray_tooltip(tray, f"Serial Link — {serial_line} | {network_line}")
 
     def _set_connection_locked(self, locked: bool) -> None:
         for w in self._connection_widgets:
@@ -4621,20 +4780,6 @@ class BridgeLogicMixin:
             ],
         )
 
-    def _open_product_demo(self) -> None:
-        from ui.demo import open_product_demo
-
-        dlg = getattr(self, "_product_demo_dialog", None)
-        try:
-            if dlg is not None and dlg.isVisible():
-                dlg.recover_if_stuck()
-                dlg.raise_()
-                dlg.activateWindow()
-                return
-        except RuntimeError:
-            dlg = None
-        self._product_demo_dialog = open_product_demo(self)
-
     def _diag_run_tcp_stress(self) -> None:
         if not self.chk_advanced_net.isChecked() or not self.rb_tcp_server.isChecked():
             QtWidgets.QMessageBox.information(
@@ -4803,6 +4948,32 @@ class BridgeLogicMixin:
         self._send_raw_manual(where, raw)
 
     def start_bridge(self) -> None:
+        if self._starting:
+            self._log_ui("Start already in progress — wait for Running or click Stop.")
+            return
+        if self._stopping:
+            self._log_ui("Bridge is still stopping — try Start again in a moment.")
+            return
+        remain = _start_cooldown_remaining_s(
+            getattr(self, "_bridge_stop_mono", 0.0),
+            time.monotonic(),
+        )
+        if remain > 0:
+            if not getattr(self, "_start_defer_pending", False):
+                self._start_defer_pending = True
+                wait_ms = max(50, int(remain * 1000) + 25)
+                self._log_ui(
+                    f"Start queued ~{wait_ms}ms — releasing COM port after last Stop."
+                )
+                QtCore.QTimer.singleShot(wait_ms, self._start_bridge_after_cooldown)
+            return
+        self._start_bridge_impl()
+
+    def _start_bridge_after_cooldown(self) -> None:
+        self._start_defer_pending = False
+        self.start_bridge()
+
+    def _start_bridge_impl(self) -> None:
         if self._should_apply_hub_for_start():
             self._apply_hub_selection_for_start()
         err = self._validate_before_start()
@@ -4810,12 +4981,17 @@ class BridgeLogicMixin:
             self._log_ui(err)
             QtWidgets.QMessageBox.warning(self, "Cannot start", err)
             return
+        self._starting = True
+        self._sync_preset_action_buttons()
+        self.start_btn.setEnabled(False)
+        self.stop_btn.setEnabled(True)
         com = self.com_cb.currentText().strip()
         try:
             baud = int(read_baud_widget(self.baud_edit))
             if baud <= 0:
                 raise ValueError("baud must be positive")
         except ValueError:
+            self._clear_stale_start_ui()
             self._log_ui("Invalid baud rate — enter a positive number (e.g. 115200).")
             QtWidgets.QMessageBox.warning(self, "Cannot start", "Enter a valid baud rate.")
             return
@@ -4861,11 +5037,13 @@ class BridgeLogicMixin:
                     raise ValueError("TCP client host is required")
                 tcp_cp = _parse_port(self.tcp_cli_port.text(), "TCP client port")
         except ValueError as e:
+            self._clear_stale_start_ui()
             self._log_ui(str(e))
             QtWidgets.QMessageBox.warning(self, "Cannot start", str(e))
             return
 
         if self._worker and self._worker.isRunning():
+            self._clear_stale_start_ui()
             self._log_ui("Stop the bridge before starting again.")
             return
 
@@ -4885,8 +5063,9 @@ class BridgeLogicMixin:
             try:
                 sink_port = int(self.tcp_sink_port.text().strip())
                 if sink_port <= 0 or sink_port > 65535:
-                    raise ValueError("TCP sink port must be 1–65535")
+                    raise ValueError("Extra TCP output port must be 1–65535")
             except ValueError as e:
+                self._clear_stale_start_ui()
                 self._log_ui(str(e))
                 QtWidgets.QMessageBox.warning(self, "Cannot start", str(e))
                 return
@@ -4925,9 +5104,7 @@ class BridgeLogicMixin:
             )
 
         self._set_connection_locked(True)
-        self._sync_preset_action_buttons()
         self._update_status_bar("Serial: starting…", "Network: starting…")
-        self._starting = True
         self._set_status_banner(
             "starting",
             "Starting…",
@@ -4948,6 +5125,7 @@ class BridgeLogicMixin:
     def _on_worker_start_done(self, ok: bool, gen: int) -> None:
         self._start_watchdog_timer.stop()
         if gen != self._start_gen:
+            self._clear_stale_start_ui()
             return
         worker = self._worker
         if ok and worker and worker.bridge:
@@ -4962,6 +5140,16 @@ class BridgeLogicMixin:
         self._fail_start_ui(
             "Serial or network could not be opened. See the live log for details."
         )
+
+    def _clear_stale_start_ui(self) -> None:
+        """Reset UI when a background start was superseded (Stop, second Start, etc.)."""
+        if not self._starting:
+            return
+        self._starting = False
+        self._set_connection_locked(False)
+        self.start_btn.setText("Start bridge")
+        self._sync_preset_action_buttons()
+        self._refresh_nmea_status_chip()
 
     def _fail_start_ui(self, message: str) -> None:
         self.bridge = None
@@ -5000,6 +5188,7 @@ class BridgeLogicMixin:
 
     def _on_bridge_started(self, b: SerialNetBridge) -> None:
         self._starting = False
+        QtCore.QTimer.singleShot(0, self._ensure_web_server_running)
         self._save_hub_last_known_good()
         self._log_tab_auto_timer.start(20_000)
         self._start_ntrip_if_enabled()
@@ -5026,7 +5215,14 @@ class BridgeLogicMixin:
             )
 
     def stop_bridge(self) -> None:
+        self._start_defer_pending = False
+        self._start_gen += 1
+        self._start_watchdog_timer.stop()
         if self._stopping:
+            self._finish_stop_ui()
+            return
+        if self._starting and self._worker is None:
+            self._clear_stale_start_ui()
             self._finish_stop_ui()
             return
         worker = self._worker
@@ -5042,8 +5238,10 @@ class BridgeLogicMixin:
         worker.request_stop()
         worker.wait(4000)
         self._finish_stop_ui()
-        self._start_gen += 1
-        self._start_watchdog_timer.stop()
+
+    def _stop_bridge(self) -> None:
+        """Legacy name used by older tray/quit paths; prefer stop_bridge()."""
+        self.stop_bridge()
 
     def _stop_timeout_guard(self) -> None:
         if not self._stopping:
@@ -5055,6 +5253,7 @@ class BridgeLogicMixin:
 
     def _finish_stop_ui(self) -> None:
         """Re-enable controls on the Qt main thread after async stop."""
+        self._bridge_stop_mono = time.monotonic()
         self._log_tab_auto_timer.stop()
         self._stop_ntrip()
         self._reset_ui_log_serial_coalesce()
@@ -5080,10 +5279,14 @@ class BridgeLogicMixin:
             )
 
     def closeEvent(self, event: QtGui.QCloseEvent) -> None:
-        self._stop_web_server()
-        self._diag_stop()
-        self._cancel_discovery_worker()
-        self._stop_auto_discovery_thread()
+        if not getattr(self, "_force_quit", False):
+            tray = getattr(self, "_tray_icon", None)
+            if tray is not None and self._is_bridge_running():
+                event.ignore()
+                self._hide_to_tray()
+                return
+
+        self._shutdown_background_services()
         pop = getattr(self, "_stats_popout_window", None)
         if pop is not None:
             pop.close()
@@ -5091,17 +5294,23 @@ class BridgeLogicMixin:
         running = self._is_bridge_running()
         worker = self._worker
         if running or (worker and worker.isRunning()):
-            event.ignore()
-            self.bridge = None
             if worker:
+                self.bridge = None
                 worker.request_stop()
                 worker.wait(4000)
             self._worker = None
             self._finish_stop_ui()
             self._start_gen += 1
-            QtCore.QTimer.singleShot(200, self.close)
-            return
+            if not getattr(self, "_force_quit", False):
+                event.ignore()
+                QtCore.QTimer.singleShot(200, self.close)
+                return
+        from ui.tray_support import destroy_tray_icon
+
+        destroy_tray_icon(self)
         event.accept()
+        if getattr(self, "_force_quit", False) or not self._is_bridge_running():
+            self._request_application_quit()
 
     # ------------------------------------------------------------------
     # Auto-discovery: background GNSS device watcher
@@ -5172,7 +5381,7 @@ class BridgeLogicMixin:
             )
             return
 
-        err = self._validate_start()
+        err = self._validate_before_start()
         if err:
             self._log_ui(
                 f"[AutoDiscover] {port_name} selected; bridge not started: {err}"
