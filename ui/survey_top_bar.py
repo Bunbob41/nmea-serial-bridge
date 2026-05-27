@@ -950,6 +950,7 @@ class _LayoutToggleButton(QtWidgets.QToolButton):
     def __init__(self, on_toggle: Callable[[], None], parent: QtWidgets.QWidget | None = None) -> None:
         super().__init__(parent)
         self._on_toggle = on_toggle
+        self._toggle_fired = False
         self.setObjectName("surveyQuickBtn")
         configure_topbar_button(
             self,
@@ -962,6 +963,11 @@ class _LayoutToggleButton(QtWidgets.QToolButton):
 
     def mouseDoubleClickEvent(self, event: QtGui.QMouseEvent) -> None:
         if event.button() == QtCore.Qt.MouseButton.LeftButton:
+            if self._toggle_fired:
+                event.accept()
+                return
+            self._toggle_fired = True
+            self.setEnabled(False)
             self._on_toggle()
             event.accept()
             return

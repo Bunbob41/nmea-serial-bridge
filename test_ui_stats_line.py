@@ -3,7 +3,11 @@ from __future__ import annotations
 
 import unittest
 
-from ui.stats_line import format_live_stats_line, stats_snapshot_from_merged
+from ui.stats_line import (
+    format_live_stats_line,
+    stats_snapshot_from_merged,
+    transport_alert_active,
+)
 
 
 class TestStatsSnapshot(unittest.TestCase):
@@ -27,6 +31,23 @@ class TestStatsSnapshot(unittest.TestCase):
 
 
 class TestFormatLiveStatsLine(unittest.TestCase):
+    def test_transport_alert_active_true_for_backlog_or_drops(self) -> None:
+        self.assertTrue(
+            transport_alert_active(
+                {"drops_n2s": 0, "drops_s2n": 0, "rej_n2s": 0, "rej_s2n": 0, "n2s_q": 12, "s2n_q": 0}
+            )
+        )
+        self.assertTrue(
+            transport_alert_active(
+                {"drops_n2s": 1, "drops_s2n": 0, "rej_n2s": 0, "rej_s2n": 0, "n2s_q": 0, "s2n_q": 0}
+            )
+        )
+        self.assertFalse(
+            transport_alert_active(
+                {"drops_n2s": 0, "drops_s2n": 0, "rej_n2s": 0, "rej_s2n": 0, "n2s_q": 3, "s2n_q": 2}
+            )
+        )
+
     def test_healthy_idle_no_slash_pairs(self) -> None:
         s = format_live_stats_line(
             {

@@ -14,6 +14,17 @@ def queue_backlog(q_ns: int, q_sn: int) -> bool:
     return q_ns >= QUEUE_BACKLOG_DEPTH or q_sn >= QUEUE_BACKLOG_DEPTH
 
 
+def transport_alert_active(d: dict) -> bool:
+    """True when transport health should be surfaced as a visible warning."""
+    d_ns = int(d.get("drops_n2s", 0))
+    d_sn = int(d.get("drops_s2n", 0))
+    r_ns = int(d.get("rej_n2s", 0))
+    r_sn = int(d.get("rej_s2n", 0))
+    q_ns = int(d.get("n2s_q", 0))
+    q_sn = int(d.get("s2n_q", 0))
+    return bool(d_ns or d_sn or r_ns or r_sn or queue_backlog(q_ns, q_sn))
+
+
 def _fmt_k(n: int) -> str:
     if n >= 1_000_000:
         return f"{n / 1e6:.1f}M"

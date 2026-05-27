@@ -56,6 +56,17 @@ class TestStartValidation(unittest.TestCase):
         w.rb_tcp_client.isChecked.return_value = False
         self.assertIsNone(w._validate_before_start())
 
+    def test_com_preflight_message_includes_unlock_steps(self) -> None:
+        w = _ValidateHost()
+        msg = w._compose_com_preflight_error(
+            "COM7",
+            "Cannot open COM7: port is already in use by another program.",
+        )
+        self.assertIn("Cannot open COM7", msg)
+        self.assertIn("Connect", msg)
+        self.assertIn("Unlock", msg)
+        self.assertIn("Refresh", msg)
+
 
 if __name__ == "__main__":
     unittest.main()

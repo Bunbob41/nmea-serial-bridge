@@ -55,7 +55,11 @@ from nmea_static_sample import SAMPLE_ALT_M, SAMPLE_LAT_DEG, SAMPLE_LON_DEG, bui
 from log_serial_coalesce import serial_timeout_line_suppress
 from py_interpreter import cli_python_gui_spawn, frozen_helper_program_args, qprocess_attach_no_console
 from ui.bench_setup import extract_operator_guide_section, show_bench_setup_dialog
-from ui.stats_line import format_live_stats_line, stats_snapshot_from_merged
+from ui.stats_line import (
+    format_live_stats_line,
+    stats_snapshot_from_merged,
+    transport_alert_active,
+)
 from ui.stats_popout import SurveyStatsPopout
 from ui.app_icon import apply_app_icon
 from ui.styles import apply_global_contrast_guard, bridge_stylesheet
@@ -253,6 +257,7 @@ class BridgeLogicMixin:
         self._app_facade = BridgeAppFacade(self)
         self._web_server = None
         self._web_start_retry_gen = 0
+        self._layout_switch_in_progress = False
 
     def _reset_ui_log_serial_coalesce(self) -> None:
         self._ui_log_serial_dup_last = None
@@ -1858,6 +1863,8 @@ class BridgeLogicMixin:
         self._switch_ui_layout(other)
 
     def _switch_ui_layout(self, ui_id: str) -> None:
+        if getattr(self, "_layout_switch_in_progress", False):
+            return
         if self.bridge is not None or (self._worker is not None and self._worker.isRunning()):
             QtWidgets.QMessageBox.information(
                 self,
@@ -1868,6 +1875,10 @@ class BridgeLogicMixin:
         if ui_id == getattr(self, "_ui_mode", ""):
             return
         try:
+            self._layout_switch_in_progress = True
+            btn = getattr(self, "btn_ui_layout", None)
+            if btn is not None:
+                btn.setEnabled(False)
             save_ui_choice(ui_id)
             nw = create_window(ui_id)
             if hasattr(nw, "_apply_theme"):
@@ -1882,6 +1893,7 @@ class BridgeLogicMixin:
                 "UI Switch",
                 f"Could not switch UI layout: {exc}",
             )
+            self._layout_switch_in_progress = False
 
     def _toggle_fullscreen(self) -> None:
         if self.isFullScreen():
@@ -3278,6 +3290,18 @@ class BridgeLogicMixin:
             return str(e)
         return None
 
+    def _compose_com_preflight_error(self, com: str, detail: str) -> str:
+        """Operator-facing COM exclusivity guidance before async start."""
+        port = com.strip() or "selected COM"
+        base = (detail or f"Cannot open {port}.").strip()
+        return (
+            f"{base}\n\n"
+            "Quick fixes:\n"
+            f"1) Close any app using {port} (PuTTY, terminal, another bridge).\n"
+            "2) Click Connect → Unlock, then Refresh.\n"
+            "3) Replug the USB/serial adapter if the port disappeared."
+        )
+
     def _restore_ntrip_prefs(self) -> None:
         prefs = load_ntrip_prefs()
         caster = getattr(self, "ntrip_caster", None)
@@ -4300,6 +4324,19 @@ class BridgeLogicMixin:
             **b.navigation_position_stats(),
         }
 
+    def _sync_transport_alert_chrome(self, merged: dict) -> None:
+        lbl = getattr(self, "lbl_stats", None)
+        if lbl is None:
+            return
+        active = transport_alert_active(merged)
+        if active:
+            lbl.setStyleSheet(
+                "QLabel { background-color: #7f1d1d; color: #fff3f3; "
+                "border: 1px solid #ef9a9a; border-radius: 4px; padding: 0 6px; }"
+            )
+        else:
+            lbl.setStyleSheet("")
+
     def _stats_from_bridge(self, _d: dict) -> None:
         if not self.bridge:
             return
@@ -4318,6 +4355,7 @@ class BridgeLogicMixin:
         from ui.controls import elide_status_label
 
         elide_status_label(self.lbl_stats, format_live_stats_line(merged))
+        self._sync_transport_alert_chrome(merged)
         self.lbl_stats.setToolTip(self._stats_tooltip())
         self._refresh_gnss_status_chip()
         self._refresh_stats_popout()
@@ -4335,6 +4373,7 @@ class BridgeLogicMixin:
                 self.lbl_stats,
                 "Stopped — Hz & transport here when Running (hover)",
             )
+            self._sync_transport_alert_chrome({})
             self.lbl_stats.setToolTip(self._stats_tooltip())
             self._refresh_gnss_status_chip()
             self._refresh_stats_popout()
@@ -4994,6 +5033,14 @@ class BridgeLogicMixin:
             self._clear_stale_start_ui()
             self._log_ui("Invalid baud rate — enter a positive number (e.g. 115200).")
             QtWidgets.QMessageBox.warning(self, "Cannot start", "Enter a valid baud rate.")
+            return
+        preflight_err = self._preflight_com(com, baud)
+        if preflight_err:
+            self._clear_stale_start_ui()
+            self._focus_connect_tab()
+            msg = self._compose_com_preflight_error(com, preflight_err)
+            self._log_ui(f"[Start preflight] {preflight_err}")
+            QtWidgets.QMessageBox.warning(self, "Cannot start", msg)
             return
 
         if self.chk_file_log.isChecked():

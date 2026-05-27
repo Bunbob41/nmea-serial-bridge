@@ -3,6 +3,18 @@
 High-level notes for **this fork / branch** (`2034-ui-journey-modernization` and descendants).  
  Version = `version.py` / Git tag when you run `.\release.ps1` or tag manually.
 
+## v1.17.24
+
+- **Layout switch crash** — Double-clicking the top-bar **Layout** control now runs a one-shot guarded transition; re-entrant toggles are ignored while the new window is being created/activated, preventing rapid double-click crashes.
+
+## v1.17.23
+
+- **P0 COM exclusivity** — Start now runs a synchronous COM preflight probe before async startup; when the port is busy, the dialog gives explicit recovery steps (close conflicting app, Connect → Unlock, Refresh, replug) instead of a generic late failure.
+
+## v1.17.22
+
+- **P0 transport visibility** — Status-bar stats now turn into a high-contrast warning chip whenever drops, rejects, or queue backlog are present, so backpressure issues are immediately visible in Standard/Field layouts (not hover-only).
+
 ## v1.17.21
 
 - **Survey HUD GNSS** — Idle stream shows **Idle** (not clipped “No stream”); tighter badge padding in the HUD; badge width follows label text. Full meaning stays in the hover tooltip.
