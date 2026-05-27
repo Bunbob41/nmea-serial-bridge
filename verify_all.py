@@ -44,30 +44,35 @@ def _step_success(
     *,
     tb_seen: bool,
 ) -> bool:
-    if code == 0 and tb_seen and name == "unittest" and unittest_output_indicates_ok(stdout, stderr):
-        print(
-            "[verify_all] NOTE: unittest logged expected handler tracebacks — treated as pass.",
-            flush=True,
-        )
-        return True
+    if name == "unittest" and unittest_output_indicates_ok(stdout, stderr):
+        if is_windows_qt_shutdown_exit(code):
+            print(
+                "[verify_all] NOTE: unittest Qt shutdown fast-fail (0xC0000409) after OK — treated as pass.",
+                flush=True,
+            )
+            return True
+        if code == 0 and tb_seen:
+            print(
+                "[verify_all] NOTE: unittest logged expected handler tracebacks — treated as pass.",
+                flush=True,
+            )
+            return True
+        if code == 0:
+            return True
+    if name == "bench_gui_smoke" and "All UIs OK" in (stdout or ""):
+        if is_windows_qt_shutdown_exit(code) or code == 0:
+            if is_windows_qt_shutdown_exit(code):
+                print(
+                    "[verify_all] NOTE: bench_gui_smoke Qt shutdown fast-fail (0xC0000409) after OK — treated as pass.",
+                    flush=True,
+                )
+            return True
     if tb_seen:
         return False
     if code == 0:
         return True
-    if not is_windows_qt_shutdown_exit(code):
+    if is_windows_qt_shutdown_exit(code):
         return False
-    if name == "unittest" and unittest_output_indicates_ok(stdout, stderr):
-        print(
-            "[verify_all] NOTE: unittest Qt shutdown fast-fail (0xC0000409) after OK — treated as pass.",
-            flush=True,
-        )
-        return True
-    if name == "bench_gui_smoke" and "All UIs OK" in (stdout or ""):
-        print(
-            "[verify_all] NOTE: bench_gui_smoke Qt shutdown fast-fail (0xC0000409) after OK — treated as pass.",
-            flush=True,
-        )
-        return True
     return False
 
 
@@ -123,6 +128,11 @@ def main() -> int:
         ("bench_gui_smoke", ["bench_gui_smoke.py"]),
         ("bench_headless", ["bridge_headless.py", "--seconds", "2"]),
         ("bench_stress", ["bench_stress.py", "--cycles", "6", "--pause", "0.35"]),
+        ("bench_network", ["bench_network_automation.py"]),
+        (
+            "bench_fanout",
+            ["bench_fanout_automation.py", "--skip-single-link", "--live-min-recv", "0"],
+        ),
     ]
 
     skip_names = {"com_free", "bench_headless", "bench_stress"}

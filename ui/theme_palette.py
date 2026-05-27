@@ -5,7 +5,6 @@ import colorsys
 import random
 
 from ui.theme_choice import (
-    THEME_ARCTIC,
     THEME_FOREST,
     THEME_MAROON,
     THEME_MIDNIGHT,
@@ -234,28 +233,12 @@ _MIDNIGHT_MAP.update(
     }
 )
 
-_ARCTIC_MAP = dict(_SLATE_MAP)
-_ARCTIC_MAP.update(
-    {
-        "#2f2329": "#e8eef4",
-        "#241a1f": "#dce4ec",
-        "#3a2a31": "#d0dae4",
-        "#2a1d22": "#e2e8f0",
-        "#f6eee0": "#1a2838",
-        "#f4f0ea": "#1a2838",
-        "#f2e7d2": "#243448",
-        "#57333f": "#b8c8d8",
-        "#6b3a4a": "#c8d8e8",
-    }
-)
-
 THEME_COLOR_MAPS: dict[str, dict[str, str]] = {
     THEME_OCEAN: _OCEAN_MAP,
     THEME_SLATE: _SLATE_MAP,
     THEME_FOREST: _FOREST_MAP,
     THEME_SUNSET: _SUNSET_MAP,
     THEME_MIDNIGHT: _MIDNIGHT_MAP,
-    THEME_ARCTIC: _ARCTIC_MAP,
 }
 
 DEFAULT_ZONE_COLORS: dict[str, str] = {
@@ -349,6 +332,44 @@ def _zone_tint(source: str, target: str, *, weight: float) -> str:
     s = _clamp01((ss * (1.0 - weight)) + (ts * weight))
     l = _clamp01((sl * 0.62) + (tl * 0.38))
     return _rgb_to_hex(colorsys.hls_to_rgb(h, l, s))
+
+
+def zone_colors_from_theme_map(color_map: dict[str, str]) -> dict[str, str]:
+    """Infer per-zone hex colors from a built-in theme remap (for Theme studio swatches)."""
+    merged = dict(DEFAULT_ZONE_COLORS)
+    if not color_map:
+        return merged
+    for zone, sources in _ZONE_COLOR_GROUPS.items():
+        for src in sources:
+            key = src.lower()
+            if key in color_map:
+                merged[zone] = color_map[key].lower()
+                break
+    return merged
+
+
+def zone_colors_for_theme(theme_id: str) -> dict[str, str]:
+    """Zone-order colors shown in Tools → Theme for the active theme id."""
+    from ui.theme_choice import (
+        THEME_MAROON,
+        THEME_RANDOM_CURRENT,
+        THEME_RANDOM_FAVORITE,
+        _normalize_theme_id,
+    )
+
+    theme_id = _normalize_theme_id(theme_id)
+    merged = dict(DEFAULT_ZONE_COLORS)
+    if theme_id == THEME_RANDOM_CURRENT:
+        merged.update(load_random_theme_current_zones())
+    elif theme_id == THEME_RANDOM_FAVORITE:
+        merged.update(load_random_theme_favorite_zones())
+    elif theme_id == THEME_MAROON:
+        return merged
+    else:
+        color_map = THEME_COLOR_MAPS.get(theme_id)
+        if color_map:
+            merged.update(zone_colors_from_theme_map(color_map))
+    return merged
 
 
 def build_zone_theme_map(zone_colors: dict[str, str]) -> dict[str, str]:

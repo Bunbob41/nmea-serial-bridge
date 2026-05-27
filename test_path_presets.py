@@ -158,16 +158,39 @@ class TestPathPresets(unittest.TestCase):
                 self.assertEqual(raw.get("last_preset"), "Boat / INS")
 
     def test_builtin_norbit_dct_preset(self) -> None:
-        builtins = bc._builtin_presets()
+        """Built-ins from shipped bench_defaults.json only (no local override)."""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "bench_defaults.json").write_text(
+                (Path(__file__).resolve().parent / "bench_defaults.json").read_text(
+                    encoding="utf-8"
+                ),
+                encoding="utf-8",
+            )
+            with mock.patch.object(bc, "_bench_defaults_roots", return_value=[root]):
+                builtins = bc._builtin_presets()
         self.assertIn("NORBIT DCT", builtins)
         d = builtins["NORBIT DCT"]
-        self.assertEqual(d["pc_ip"], "192.168.1.4")
-        self.assertEqual(d["ins_ip"], "192.168.1.150")
+        self.assertEqual(d["pc_ip"], "192.168.1.10")
+        self.assertEqual(d["ins_ip"], "192.168.1.20")
         self.assertEqual(d["udp_port"], 40810)
-        self.assertIn("APPLANIX", d.get("notes", "").upper())
-        self.assertIn("40810", d.get("notes", ""))
-        self.assertIn("192.168.1.8", d.get("notes", ""))
-        self.assertIn("127.0.0.1", d.get("notes", ""))
+        self.assertIn("NORBIT_DCT", d.get("notes", "").replace("\\", "/"))
+
+    def test_bench_defaults_local_overrides_public(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "bench_defaults.json").write_text(
+                json.dumps({"com": "COM1", "production": {"pc_ip": "10.0.0.1"}}),
+                encoding="utf-8",
+            )
+            (root / "bench_defaults.local.json").write_text(
+                json.dumps({"com": "COM9", "production": {"pc_ip": "10.0.0.9"}}),
+                encoding="utf-8",
+            )
+            with mock.patch.object(bc, "_bench_defaults_roots", return_value=[root]):
+                merged = bc._load_merged_bench_json()
+            self.assertEqual(merged["com"], "COM9")
+            self.assertEqual(merged["production"]["pc_ip"], "10.0.0.9")
 
 
 if __name__ == "__main__":

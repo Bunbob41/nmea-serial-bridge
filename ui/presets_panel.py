@@ -20,7 +20,8 @@ def create_presets_tab(
     hint = QtWidgets.QLabel(
         "Save COM, UDP listen, NMEA mode (Tools → NMEA: passthrough / strict / raw), "
         "and optional survey Ethernet targets under names you choose. "
-        "Load a preset to fill connection + NMEA fields, then Start on Connect (or the field strip)."
+        "Click a preset to edit its survey fields below; use Load (or double-click) to apply "
+        "connection + NMEA to Connect, then Start."
     )
     hint.setWordWrap(True)
     hint.setObjectName("tabHint")
@@ -39,8 +40,9 @@ def create_presets_tab(
     parent.preset_list.setDragDropMode(QtWidgets.QAbstractItemView.DragDropMode.InternalMove)
     parent.preset_list.setFocusPolicy(QtCore.Qt.FocusPolicy.StrongFocus)
     parent.preset_list.setToolTip(
-        "Click a preset to select and load it (when the bridge is stopped). "
-        "Double-click or use Load. Saved on this PC (%USERPROFILE%\\.cursor-udp-com-bridge\\path_presets.json)."
+        "Click to select and edit survey fields (PC IP, subnet, notes). "
+        "Load or double-click applies COM/UDP/NMEA to Connect. "
+        "Saved on this PC (%USERPROFILE%\\.cursor-udp-com-bridge\\path_presets.json)."
     )
     row.addWidget(parent.preset_list, 1)
 

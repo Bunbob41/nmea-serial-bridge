@@ -27,9 +27,9 @@ python -m unittest discover -s . -p "test_*.py" -q
 .\release.ps1
 ```
 
-- [ ] `dist\nmea-serial-bridge\nmea-serial-bridge.exe` exists
-- [ ] `dist\nmea-serial-bridge\_internal\web\static\` includes dashboard + `layouts/gridstack/` + vendor (PyInstaller one-folder layout)
-- [ ] `dist\nmea-serial-bridge-vX.Y.Z-win64.zip` created
+- [ ] `dist\serial-link\serial-link.exe` exists
+- [ ] `dist\serial-link\_internal\web\static\` includes dashboard + `layouts/gridstack/` + vendor (PyInstaller one-folder layout)
+- [ ] `dist\serial-link-vX.Y.Z-win64.zip` created
 - [ ] Note zip size (~650 MB) and SHA256 in `dist\release-manifest-vX.Y.Z.json`
 
 ## 4. Smoke on clean folder (unzipped copy)

@@ -53,11 +53,20 @@ def user_presets_path() -> Path:
     return USER_PRESETS_PATH
 
 
-def _bench_defaults_paths() -> list[Path]:
-    paths: list[Path] = []
+def _bench_defaults_roots() -> list[Path]:
+    roots: list[Path] = []
     if getattr(sys, "frozen", False):
-        paths.append(Path(sys.executable).resolve().parent / "bench_defaults.json")
-    paths.append(Path(__file__).with_name("bench_defaults.json"))
+        roots.append(Path(sys.executable).resolve().parent)
+    roots.append(Path(__file__).resolve().parent)
+    return roots
+
+
+def _bench_defaults_paths() -> list[Path]:
+    """Load order: base JSON per root, then optional local override (not shipped in releases)."""
+    paths: list[Path] = []
+    for root in _bench_defaults_roots():
+        paths.append(root / "bench_defaults.json")
+        paths.append(root / "bench_defaults.local.json")
     return paths
 
 
@@ -167,14 +176,13 @@ def _builtin_presets() -> dict[str, dict[str, Any]]:
         {
             **boat,
             **{k: norbit_block[k] for k in _PRESET_KEYS if k in norbit_block},
-            "pc_ip": str(norbit_block.get("pc_ip", "192.168.1.4")).strip() or "192.168.1.4",
-            "ins_ip": str(norbit_block.get("ins_ip", "192.168.1.150")).strip() or "192.168.1.150",
+            "pc_ip": str(norbit_block.get("pc_ip", "192.168.1.10")).strip() or "192.168.1.10",
+            "ins_ip": str(norbit_block.get("ins_ip", "192.168.1.20")).strip() or "192.168.1.20",
             "notes": str(norbit_block.get("notes") or "").strip()
             or (
-                "Bridge on boat PC, UDP 40810. DCT target: on boat PC 127.0.0.1:40810; "
-                "on operator laptop (MikroTik wireless) 192.168.1.8:40810; "
-                "Tailscale/ZeroTier boat StaticIp:40810. Applanix→boat:40810. "
-                "COM=serial leg if used. Trimble→Applanix. BT $SDDBT=other COM."
+                "DCT / high-rate workflow: listen on udp_port (often 40810). "
+                "Set pc_ip to this PC's IPv4; point DCT/INS UDP output at pc_ip:udp_port. "
+                "See docs/NORBIT_DCT.md."
             ),
         }
     )

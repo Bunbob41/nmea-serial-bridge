@@ -25,11 +25,11 @@ VSVersionInfo(
     StringFileInfo([
       StringTable("040904B0", [
         StringStruct("CompanyName", "Bunbob41"),
-        StringStruct("FileDescription", "NMEA Network Serial Bridge"),
+        StringStruct("FileDescription", "Serial Link — Ethernet ↔ serial"),
         StringStruct("FileVersion", "{semver}"),
-        StringStruct("InternalName", "nmea-serial-bridge"),
-        StringStruct("OriginalFilename", "nmea-serial-bridge.exe"),
-        StringStruct("ProductName", "nmea-serial-bridge"),
+        StringStruct("InternalName", "serial-link"),
+        StringStruct("OriginalFilename", "serial-link.exe"),
+        StringStruct("ProductName", "Serial Link"),
         StringStruct("ProductVersion", "{semver}"),
       ]),
     ]),

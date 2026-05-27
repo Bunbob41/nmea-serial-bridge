@@ -16,7 +16,6 @@ THEME_SLATE = "field_slate"
 THEME_FOREST = "forest_night"
 THEME_SUNSET = "sunset_copper"
 THEME_MIDNIGHT = "midnight_teal"
-THEME_ARCTIC = "arctic_day"
 THEME_RANDOM_CURRENT = "random_current"
 THEME_RANDOM_FAVORITE = "random_favorite"
 
@@ -29,7 +28,6 @@ THEME_IDS: tuple[str, ...] = (
     THEME_FOREST,
     THEME_SUNSET,
     THEME_MIDNIGHT,
-    THEME_ARCTIC,
     THEME_RANDOM_CURRENT,
     THEME_RANDOM_FAVORITE,
 )
@@ -85,6 +83,8 @@ def _normalize_color_map(raw: Any) -> dict[str, str]:
 def _normalize_theme_id(theme: str) -> str:
     if theme == _THEME_LEGACY_MAROON_HC:
         return THEME_MAROON
+    if theme == "arctic_day":
+        return THEME_SLATE
     if theme in THEME_IDS:
         return theme
     return THEME_DEFAULT

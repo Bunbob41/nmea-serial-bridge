@@ -61,6 +61,7 @@ from ui.stats_line import (
     transport_alert_active,
 )
 from ui.stats_popout import SurveyStatsPopout
+from ui.survey_dashboard import SurveyDashboard
 from ui.app_icon import apply_app_icon
 from ui.styles import apply_global_contrast_guard, bridge_stylesheet
 from ui.theme_choice import (
@@ -193,6 +194,7 @@ class BridgeLogicMixin:
         self._active_preset_name: Optional[str] = None
         self._presets_menu_pending: Optional[str] = None
         self._preset_list_syncing = False
+        self._preset_editor_selection: Optional[str] = None
         self._starting = False
         self._bridge_stop_mono = 0.0
         self._start_defer_pending = False
@@ -209,6 +211,7 @@ class BridgeLogicMixin:
         self._stats_timer = QtCore.QTimer(self)
         self._stats_timer.timeout.connect(self._tick_stats)
         self._stats_popout_window: Optional[SurveyStatsPopout] = None
+        self._dashboard_window: Optional[SurveyDashboard] = None
         self._splitter_sizes_backup: Optional[list[int]] = None
         self._diag_qprocess: Optional[QtCore.QProcess] = None
         self._diag_current_title = ""
@@ -258,6 +261,51 @@ class BridgeLogicMixin:
         self._web_server = None
         self._web_start_retry_gen = 0
         self._layout_switch_in_progress = False
+        self._serial_retry_refresh_mono = 0.0
+
+    @staticmethod
+    def _qt_widget_alive(widget: Optional[QtWidgets.QWidget]) -> bool:
+        if widget is None:
+            return False
+        try:
+            from shiboken6 import isValid
+
+            return bool(isValid(widget))
+        except Exception:
+            try:
+                widget.isVisible()
+                return True
+            except RuntimeError:
+                return False
+
+    def _close_auxiliary_windows(self) -> None:
+        """Survey HUD + Dashboard — must close before layout switch or main window teardown."""
+        timer = getattr(self, "_stats_timer", None)
+        if timer is not None:
+            timer.stop()
+        for attr in ("_stats_popout_window", "_dashboard_window"):
+            pop = getattr(self, attr, None)
+            if pop is None:
+                continue
+            try:
+                pop.close()
+            except RuntimeError:
+                pass
+            setattr(self, attr, None)
+
+    def _stop_bridge_worker_sync(self, wait_ms: int = 4000) -> None:
+        """Join asyncio bridge thread so the process can exit cleanly."""
+        worker = getattr(self, "_worker", None)
+        if worker is None:
+            return
+        try:
+            if worker.isRunning():
+                worker.request_stop()
+                worker.wait(max(500, int(wait_ms)))
+        except RuntimeError:
+            pass
+        self._worker = None
+        self.bridge = None
 
     def _reset_ui_log_serial_coalesce(self) -> None:
         self._ui_log_serial_dup_last = None
@@ -344,12 +392,24 @@ class BridgeLogicMixin:
         self.addAction(act_fs)
         view_menu.addAction(act_fs)
 
-        act_pop = QtGui.QAction("Survey HUD…", self)
-        act_pop.setShortcut(QtGui.QKeySequence("Ctrl+Shift+S"))
-        act_pop.setStatusTip("Detachable live metrics (second monitor)")
+        act_hud = QtGui.QAction("HUD…", self)
+        act_hud.setShortcut(QtGui.QKeySequence("Ctrl+Shift+S"))
+        act_hud.setStatusTip(
+            "Open Survey HUD (Hz, GNSS, session) and Dashboard (bridge trust & reliability)"
+        )
+        act_hud.triggered.connect(self._open_hud)
+        self.addAction(act_hud)
+        view_menu.addAction(act_hud)
+
+        act_pop = QtGui.QAction("Survey HUD only…", self)
+        act_pop.setStatusTip("Live metrics window only (Hz, GNSS, backpressure tiles)")
         act_pop.triggered.connect(self._open_stats_popout)
-        self.addAction(act_pop)
         view_menu.addAction(act_pop)
+
+        act_dashboard = QtGui.QAction("Dashboard only…", self)
+        act_dashboard.setStatusTip("Bridge trust panel only (reliability checks & connection chips)")
+        act_dashboard.triggered.connect(self._open_dashboard)
+        view_menu.addAction(act_dashboard)
 
         act_ui_editor = QtGui.QAction("UI editor…", self)
         act_ui_editor.setStatusTip(self._ui_editor_status_tip())
@@ -432,9 +492,9 @@ class BridgeLogicMixin:
         bar.register("recent", "Recent", recent_btn)
 
         hud_btn = self._make_topbar_tool_button(
-            "HUD", act_pop.statusTip(), None, key="hud"
+            "HUD", act_hud.statusTip(), None, key="hud"
         )
-        hud_btn.setDefaultAction(act_pop)
+        hud_btn.setDefaultAction(act_hud)
         bar.register("hud", "HUD", hud_btn)
 
         # Tools chip is only meaningful on layouts with a floating drawer (Field).
@@ -1694,10 +1754,7 @@ class BridgeLogicMixin:
         from ui.tray_support import destroy_tray_icon
 
         destroy_tray_icon(self)
-        pop = getattr(self, "_stats_popout_window", None)
-        if pop is not None:
-            pop.close()
-            self._stats_popout_window = None
+        self._close_auxiliary_windows()
         self.close()
         self._request_application_quit()
 
@@ -1874,11 +1931,16 @@ class BridgeLogicMixin:
             return
         if ui_id == getattr(self, "_ui_mode", ""):
             return
+        btn = getattr(self, "btn_ui_layout", None)
         try:
             self._layout_switch_in_progress = True
-            btn = getattr(self, "btn_ui_layout", None)
             if btn is not None:
                 btn.setEnabled(False)
+            self._close_auxiliary_windows()
+            self._shutdown_background_services()
+            from ui.tray_support import destroy_tray_icon
+
+            destroy_tray_icon(self)
             save_ui_choice(ui_id)
             nw = create_window(ui_id)
             if hasattr(nw, "_apply_theme"):
@@ -1894,6 +1956,8 @@ class BridgeLogicMixin:
                 f"Could not switch UI layout: {exc}",
             )
             self._layout_switch_in_progress = False
+            if btn is not None:
+                btn.setEnabled(True)
 
     def _toggle_fullscreen(self) -> None:
         if self.isFullScreen():
@@ -1979,8 +2043,85 @@ class BridgeLogicMixin:
             return
         if not vis:
             return
-        serial = self.status_serial.text()
-        network = self.status_network.text()
+        if not self._qt_widget_alive(self):
+            self._stats_popout_window = None
+            return
+        try:
+            serial = self.status_serial.text()
+            network = self.status_network.text()
+        except RuntimeError:
+            self._stats_popout_window = None
+            return
+        running = self.bridge is not None
+        merged = self._merge_bridge_stats({}) if running else {}
+        pop.apply_snapshot(merged, serial, network, running=running)
+
+    def _open_hud(self) -> None:
+        """Survey HUD (metrics) + Dashboard (bridge trust)."""
+        self._open_stats_popout()
+        self._open_dashboard()
+        hud = self._stats_popout_window
+        dash = self._dashboard_window
+        if hud is not None and dash is not None:
+            try:
+                dash.place_beside(hud)
+                dash.raise_()
+            except RuntimeError:
+                pass
+
+    def _open_dashboard(self) -> None:
+        pop = self._dashboard_window
+        if pop is not None:
+            try:
+                if pop.width() < 200 or pop.height() < 120:
+                    pop.close()
+                    pop = None
+                    self._dashboard_window = None
+            except RuntimeError:
+                self._dashboard_window = None
+                pop = None
+        if pop is not None:
+            pop.show()
+            pop.raise_()
+            pop.activateWindow()
+            self._refresh_dashboard()
+            return
+        pop = SurveyDashboard(self)
+        pop.destroyed.connect(self._on_dashboard_destroyed)
+        self._dashboard_window = pop
+        anchor = self._stats_popout_window or self
+        try:
+            pop.place_beside(anchor)
+        except RuntimeError:
+            bg = self.frameGeometry()
+            pop.move(bg.x() + 40, bg.y() + 80)
+        self._refresh_dashboard()
+        pop.show()
+        pop.raise_()
+        pop.activateWindow()
+
+    def _on_dashboard_destroyed(self, *_args: object) -> None:
+        self._dashboard_window = None
+
+    def _refresh_dashboard(self) -> None:
+        pop = self._dashboard_window
+        if pop is None:
+            return
+        try:
+            if not pop.isVisible():
+                return
+        except RuntimeError:
+            self._dashboard_window = None
+            return
+        if not self._qt_widget_alive(self):
+            self._dashboard_window = None
+            return
+        try:
+            serial = self.status_serial.text()
+            network = self.status_network.text()
+        except RuntimeError:
+            self._dashboard_window = None
+            return
         running = self.bridge is not None
         merged = self._merge_bridge_stats({}) if running else {}
         pop.apply_snapshot(merged, serial, network, running=running)
@@ -3418,7 +3559,6 @@ class BridgeLogicMixin:
         self.udp_host.setText(udp_host)
         self.udp_port.setText(str(udp_port))
         self.rb_nmea_passthrough.setChecked(True)
-        self._focus_log_tab()
         self.chk_verbose_log.setChecked(True)
         self._mode_toggle()
         self._refresh_intent_hint()
@@ -3743,8 +3883,25 @@ class BridgeLogicMixin:
             lines.append(notes)
         self._log_ui("\n".join(lines))
 
+    def _select_preset_for_editing(self, name: str) -> None:
+        """List click / keyboard: highlight preset and fill survey editor only."""
+        clean = (name or "").strip()
+        if not clean:
+            return
+        if clean == self._preset_editor_selection:
+            self._sync_preset_action_buttons()
+            return
+        self._preset_editor_selection = clean
+        try:
+            data = load_preset(clean)
+        except KeyError:
+            self._sync_preset_action_buttons()
+            return
+        self._apply_preset_survey_fields(data)
+        self._sync_preset_action_buttons()
+
     def _activate_preset_by_name(self, name: str, *, log: bool = True) -> None:
-        """Select in list + load fields (single code path for list, menu, and Load)."""
+        """Select in list + load Connect + survey fields (Load, double-click, menu)."""
         clean = (name or "").strip()
         if not clean:
             return
@@ -3770,6 +3927,7 @@ class BridgeLogicMixin:
             )
             return
         self._presets_menu_pending = None
+        self._preset_editor_selection = clean
         self._apply_preset_data(data, name=clean, log=log)
         self._rebuild_presets_quick_menu()
 
@@ -3821,13 +3979,13 @@ class BridgeLogicMixin:
                 btn.setToolTip(tip)
 
     def _on_preset_list_item_clicked(self, item: QtWidgets.QListWidgetItem) -> None:
-        """Primary click handler — reliable inside QScrollArea on Windows."""
+        """Primary click — select for editing; use Load or double-click to apply Connect fields."""
         if self._preset_list_syncing:
             return
         name = self._preset_name_from_item(item)
         if not name:
             return
-        self._activate_preset_by_name(name, log=False)
+        self._select_preset_for_editing(name)
 
     def _on_preset_rows_moved(self, *args: object) -> None:
         lst = getattr(self, "preset_list", None)
@@ -3846,21 +4004,14 @@ class BridgeLogicMixin:
             self._log_ui("[UI] Reordered connection presets.")
 
     def _on_preset_list_selection_changed(self) -> None:
-        """Keyboard / programmatic selection changes."""
+        """Keyboard / programmatic selection — same as click (editor only)."""
         if self._preset_list_syncing:
             return
         name = self._selected_preset_name()
-        if not name or name == self._active_preset_name:
+        if not name:
             self._sync_preset_action_buttons()
             return
-        if self.bridge is not None or self._starting:
-            self._sync_preset_action_buttons()
-            return
-        try:
-            data = load_preset(name)
-        except KeyError:
-            return
-        self._apply_preset_data(data, name=name, log=False)
+        self._select_preset_for_editing(name)
 
     def _preset_save_selected(self) -> None:
         name = self._selected_preset_name()
@@ -4240,12 +4391,49 @@ class BridgeLogicMixin:
         self._ui_log_serial_dup_mono = mono
         return suppress
 
+    def _sync_serial_status_chrome(self, serial_line: str) -> None:
+        chip = getattr(self, "status_serial", None)
+        if chip is None:
+            return
+        low = serial_line.lower()
+        alert = self._is_bridge_running() and any(
+            token in low
+            for token in (
+                "disconnected",
+                "reconnect",
+                "retry",
+                "cannot open",
+                "timed out",
+                "not found",
+            )
+        )
+        if alert:
+            chip.setStyleSheet(
+                "QLabel { background-color: #7f1d1d; color: #fff3f3; "
+                "border: 1px solid #ef9a9a; border-radius: 4px; padding: 0 4px; }"
+            )
+        else:
+            chip.setStyleSheet("")
+
+    def _maybe_refresh_ports_on_serial_retry(self, serial_line: str) -> None:
+        """USB re-enumeration may change COM name while bridge is retrying."""
+        low = serial_line.lower()
+        if not any(token in low for token in ("reconnect", "disconnected", "not found", "retry")):
+            return
+        now = time.monotonic()
+        if now - getattr(self, "_serial_retry_refresh_mono", 0.0) < 5.0:
+            return
+        self._serial_retry_refresh_mono = now
+        self.refresh_ports()
+
     def _update_status_bar(self, serial_line: str, network_line: str) -> None:
         from ui.controls import elide_status_label
         from ui.tray_support import update_tray_tooltip
 
+        self._maybe_refresh_ports_on_serial_retry(serial_line)
         elide_status_label(self.status_serial, serial_line)
         elide_status_label(self.status_network, network_line)
+        self._sync_serial_status_chrome(serial_line)
         self._refresh_nmea_status_chip()
         self._refresh_stats_popout()
         tray = getattr(self, "_tray_icon", None)
@@ -4320,6 +4508,7 @@ class BridgeLogicMixin:
             "hz_up": b.hz_serial_to_net(),
             "lines_down": b.lines_remote_to_serial,
             "lines_up": b.lines_serial_to_net,
+            "udp_peers": b.udp_peer_count,
             **b.navigation_quality_stats(),
             **b.navigation_position_stats(),
         }
@@ -4359,6 +4548,7 @@ class BridgeLogicMixin:
         self.lbl_stats.setToolTip(self._stats_tooltip())
         self._refresh_gnss_status_chip()
         self._refresh_stats_popout()
+        self._refresh_dashboard()
 
     def _tick_stats(self) -> None:
         if self._is_bridge_running():
@@ -4377,6 +4567,7 @@ class BridgeLogicMixin:
             self.lbl_stats.setToolTip(self._stats_tooltip())
             self._refresh_gnss_status_chip()
             self._refresh_stats_popout()
+            self._refresh_dashboard()
 
     def _diag_udp_port(self) -> Optional[int]:
         try:
@@ -4803,6 +4994,20 @@ class BridgeLogicMixin:
         )
         self._diag_start_script("check_setup --production (boat preset)", "check_setup.py", args)
 
+    def _diag_run_network_bench(self) -> None:
+        self._diag_start_script(
+            "bench_network_automation (P0 network auto)",
+            "bench_network_automation.py",
+            [],
+        )
+
+    def _diag_run_fanout_bench(self) -> None:
+        self._diag_start_script(
+            "bench_fanout_automation (two UDP peers)",
+            "bench_fanout_automation.py",
+            [],
+        )
+
     def _diag_run_udp_sample(self) -> None:
         host, port = self._diag_desk_udp_target()
         self._diag_start_script(
@@ -5034,6 +5239,7 @@ class BridgeLogicMixin:
             self._log_ui("Invalid baud rate — enter a positive number (e.g. 115200).")
             QtWidgets.QMessageBox.warning(self, "Cannot start", "Enter a valid baud rate.")
             return
+        self.refresh_ports()
         preflight_err = self._preflight_com(com, baud)
         if preflight_err:
             self._clear_stale_start_ui()
@@ -5334,10 +5540,14 @@ class BridgeLogicMixin:
                 return
 
         self._shutdown_background_services()
-        pop = getattr(self, "_stats_popout_window", None)
-        if pop is not None:
-            pop.close()
-            self._stats_popout_window = None
+        self._close_auxiliary_windows()
+        if getattr(self, "_layout_switch_in_progress", False):
+            from ui.tray_support import destroy_tray_icon
+
+            destroy_tray_icon(self)
+            self._stop_bridge_worker_sync(2000)
+            event.accept()
+            return
         running = self._is_bridge_running()
         worker = self._worker
         if running or (worker and worker.isRunning()):
@@ -5376,9 +5586,20 @@ class BridgeLogicMixin:
 
     def _stop_auto_discovery_thread(self) -> None:
         thread = getattr(self, "_auto_discovery_thread", None)
-        if thread is not None:
-            thread.stop()
-            self._auto_discovery_thread = None
+        if thread is None:
+            return
+        try:
+            thread.device_detected.disconnect(self._on_auto_device_detected)
+        except (RuntimeError, TypeError):
+            pass
+        thread.stop()
+        if thread.isRunning():
+            thread.wait(4000)
+        try:
+            thread.deleteLater()
+        except RuntimeError:
+            pass
+        self._auto_discovery_thread = None
 
     def _restore_auto_discover_pref(self) -> None:
         """Apply the persisted auto-discover checkbox state on startup."""

@@ -76,7 +76,7 @@ def pick_ui_dialog(parent: Optional[QtWidgets.QWidget] = None) -> Optional[str]:
     dlg.setObjectName("UiPickerDialog")
     dlg.setStyleSheet(UI_PICKER_STYLESHEET)
     apply_app_icon(dlg)
-    dlg.setWindowTitle(f"NMEA Serial Bridge v{__version__} — choose layout")
+    dlg.setWindowTitle(f"Serial Link v{__version__} — Ethernet ↔ serial")
     dlg.setMinimumWidth(440)
 
     lay = QtWidgets.QVBoxLayout(dlg)

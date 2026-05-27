@@ -58,6 +58,16 @@ def main() -> int:
     if code != 0:
         return code
 
+    code = _run([py, script("bench_network_automation.py")])
+    if code != 0:
+        print("[bench_all] network automation failed (see output above).")
+        return code
+
+    code = _run([py, script("bench_fanout_automation.py")])
+    if code != 0:
+        print("[bench_all] fan-out automation failed (see output above).")
+        return code
+
     print("\n[bench_all] OK — for GUI: shortcut -> bench preset -> Start -> watch paired COM.")
     return 0
 

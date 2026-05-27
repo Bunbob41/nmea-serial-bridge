@@ -11,10 +11,8 @@ from bridge_core import (
 )
 from nmea_codec import NMEA_SENTENCE_TYPES
 from ui.connection_fields import BAUD_PRESETS, DEFAULT_BAUD
-from ui.connect_row_style import CONNECT_ROW_LABELS, CONNECT_ROW_STYLES
 from ui.styles import THEME_LABELS
 from ui.theme_choice import (
-    THEME_ARCTIC,
     THEME_FOREST,
     THEME_MAROON,
     THEME_MIDNIGHT,
@@ -286,14 +284,17 @@ def create_connection_controls(parent: QtWidgets.QWidget) -> None:
         "UDP listen port. Bench simulators and INS outputs send datagrams here "
         "(e.g. 127.0.0.1:10110 on one PC)."
     )
-    p.chk_tcp_sink_enable = QtWidgets.QCheckBox("TCP sink mirror (serial→net copy)")
+    p.chk_tcp_sink_enable = QtWidgets.QCheckBox("Extra TCP output")
     p.chk_tcp_sink_enable.setChecked(False)
     p.chk_tcp_sink_enable.setToolTip(
-        "Optional second egress: TCP server that mirrors the same serial→network bytes "
-        "as UDP fan-out. Independent of UDP listen; does not affect fan-out peers."
+        "While Running, opens a TCP server on this PC so other programs can connect "
+        "and receive the same COM→network stream as your main path (e.g. UDP on 10110). "
+        "Does not replace UDP listen or fan-out."
     )
     p.tcp_sink_port = QtWidgets.QLineEdit("10111")
-    p.tcp_sink_port.setToolTip("TCP port for mirror clients (default 10111).")
+    p.tcp_sink_port.setToolTip(
+        "TCP port for Extra TCP output (default 10111). Clients connect here to listen."
+    )
 
     p.chk_udp_fanout = QtWidgets.QCheckBox("Fan-out  —  send serial data to all UDP peers")
     p.chk_udp_fanout.setChecked(True)
@@ -517,7 +518,8 @@ def create_theme_controls(parent: QtWidgets.QWidget) -> QtWidgets.QWidget:
     lay.setSpacing(10)
 
     hint = QtWidgets.QLabel(
-        "Theme studio. Pick a base style, randomize a new palette, and save named presets."
+        "Optional colors for bench or training setups. "
+        "Defaults are fine — most operators connect, start the bridge, then minimize."
     )
     hint.setWordWrap(True)
     hint.setObjectName("themeStudioHint")
@@ -535,35 +537,13 @@ def create_theme_controls(parent: QtWidgets.QWidget) -> QtWidgets.QWidget:
         THEME_FOREST,
         THEME_SUNSET,
         THEME_MIDNIGHT,
-        THEME_ARCTIC,
-        THEME_RANDOM_CURRENT,
+    THEME_RANDOM_CURRENT,
         THEME_RANDOM_FAVORITE,
     )
     for tid in theme_order:
         parent.cmb_theme_choice.addItem(THEME_LABELS.get(tid, tid), tid)
     parent.cmb_theme_choice.currentIndexChanged.connect(parent._on_theme_choice_changed)
     gf.addRow("Theme:", parent.cmb_theme_choice)
-
-    connect_grp = QtWidgets.QGroupBox("Connect sections (Standard)")
-    connect_grp.setObjectName("themeStudioCard")
-    connect_gf = QtWidgets.QFormLayout(connect_grp)
-    parent.cmb_connect_row_style = QtWidgets.QComboBox()
-    parent.cmb_connect_row_style.setObjectName("themeStudioCombo")
-    parent.cmb_connect_row_style.setToolTip(
-        "How Run / Serial & network headers look on the Connect tab. "
-        "Pill = rounded cards; Seamless = flat list."
-    )
-    for style_id in CONNECT_ROW_STYLES:
-        parent.cmb_connect_row_style.addItem(
-            CONNECT_ROW_LABELS.get(style_id, style_id),
-            style_id,
-        )
-    if hasattr(parent, "_on_connect_row_style_changed"):
-        parent.cmb_connect_row_style.currentIndexChanged.connect(
-            parent._on_connect_row_style_changed
-        )
-    connect_gf.addRow("Section style:", parent.cmb_connect_row_style)
-    lay.addWidget(connect_grp)
 
     parent.chk_theme_seed_lock = QtWidgets.QCheckBox("Lock random seed (same vibe)")
     parent.chk_theme_seed_lock.setObjectName("themeStudioSeedLock")
@@ -623,11 +603,22 @@ def create_theme_controls(parent: QtWidgets.QWidget) -> QtWidgets.QWidget:
     row = QtWidgets.QHBoxLayout()
     parent.btn_theme_randomize = QtWidgets.QPushButton("Randomize")
     parent.btn_theme_randomize.setObjectName("themeStudioRandomBtn")
+    parent.btn_theme_randomize.setToolTip(
+        "New randomized palette (Ctrl+R). Double-click within ~0.3 s for a variant in the same family."
+    )
     parent.btn_theme_randomize.clicked.connect(parent._randomize_theme_now)
+    parent.btn_theme_standardize = QtWidgets.QPushButton("Standardize")
+    parent.btn_theme_standardize.setObjectName("themeStudioFavBtn")
+    parent.btn_theme_standardize.setToolTip(
+        "Cohesive Field Slate–style palette (Ctrl+Shift+R). "
+        "Double-click quickly for a subtle variant."
+    )
+    parent.btn_theme_standardize.clicked.connect(parent._standardize_theme_now)
     parent.btn_theme_save_favorite = QtWidgets.QPushButton("Save current random as favorite")
     parent.btn_theme_save_favorite.setObjectName("themeStudioFavBtn")
     parent.btn_theme_save_favorite.clicked.connect(parent._save_current_random_theme_as_favorite)
     row.addWidget(parent.btn_theme_randomize)
+    row.addWidget(parent.btn_theme_standardize)
     row.addWidget(parent.btn_theme_save_favorite)
     row.addStretch(1)
     lay.addLayout(row)
@@ -828,8 +819,9 @@ def create_connect_mini_log(parent: QtWidgets.QWidget) -> QtWidgets.QWidget:
         QtWidgets.QSizePolicy.Policy.Expanding,
     )
     parent.connect_mini_log.setPlaceholderText("Start the bridge to see connection events here…")
-    mono = QtGui.QFontDatabase.systemFont(QtGui.QFontDatabase.SystemFont.FixedFont)
-    parent.connect_mini_log.setFont(mono)
+    from ui.fonts import monospace_ui_font
+
+    parent.connect_mini_log.setFont(monospace_ui_font())
     lay.addWidget(parent.connect_mini_log, 1)
     return body
 
@@ -857,8 +849,9 @@ def create_connect_quick_terminal(parent: QtWidgets.QWidget) -> QtWidgets.QWidge
         QtWidgets.QSizePolicy.Policy.Expanding,
     )
     parent.connect_terminal_out.setPlaceholderText("Bench pair setup and checks appear here…")
-    mono = QtGui.QFontDatabase.systemFont(QtGui.QFontDatabase.SystemFont.FixedFont)
-    parent.connect_terminal_out.setFont(mono)
+    from ui.fonts import monospace_ui_font
+
+    parent.connect_terminal_out.setFont(monospace_ui_font())
     lay.addWidget(parent.connect_terminal_out, 1)
     row = QtWidgets.QHBoxLayout()
     parent.connect_terminal_input = QtWidgets.QLineEdit()

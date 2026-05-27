@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>NMEA Bridge Dashboard (Grid)</title>
+  <title>Serial Link Dashboard (Grid)</title>
   <link rel="stylesheet" href="/static/dashboard.css" />
   <link rel="stylesheet" href="/static/vendor/leaflet/leaflet.css" />
   <link rel="stylesheet" href="/static/vendor/gridstack/gridstack.min.css" />
@@ -14,7 +14,8 @@
   <header class="app-header">
     <div class="header-row">
       <div class="header-brand">
-        <span class="brand-name">NMEA Bridge</span>
+        <span class="brand-name">Serial Link</span>
+        <span class="brand-tagline">Ethernet ↔ serial</span>
         <span class="version-tag" id="ver-tag">…</span>
       </div>
       <div class="header-run-controls">
@@ -35,7 +36,6 @@
     <div class="inline-alert header-run-alert" id="run-alert" hidden role="status"></div>
   </header>
 
-  <p class="layout-beta-banner"><a href="/static/index.html">&larr; Classic standard layout</a> &middot; Customize tiles, then check <strong>Lock layout</strong> in the header. Blue bars resize; ⋯ or long-press for options. <button type="button" class="layout-beta-reset" id="btn-gridstack-reset">Reset layout</button></p>
   <main class="dashboard layout-gridstack-main">
   <div class="grid-stack" id="dashboard-panels">
 
@@ -176,7 +176,7 @@
         <span class="dashboard-panel-summary mono" id="panel-sum-map">Off</span>
       </button>
       <div class="dashboard-panel-body" id="panel-body-map" hidden>
-        <p class="map-hint">Live fix from GGA/RMC on the bridge stream. Choose <strong>Street</strong> or <strong>Satellite</strong> with the layer control on the map (internet required; tiles not bundled).</p>
+        <p class="map-hint">Live fix from GGA/RMC. Right-click the map (or the map panel <strong>⋯</strong> menu) for Street / Satellite and track options. Tiles need internet access.</p>
         <label class="map-enable-row">
           <input type="checkbox" id="map-enabled" />
           Show map
@@ -425,8 +425,9 @@
   </div>
 
   <footer class="app-footer">
-    <span id="footer-note">NMEA Serial Bridge — Web Dashboard</span>
-    <span class="footer-layout-link"> · <a href="/static/index.html">Classic layout (backup)</a></span>
+    <span id="footer-note">Serial Link — Web Dashboard</span>
+    <span class="footer-layout-link"> · <a href="/static/index.html">Classic layout</a></span>
+    <span class="footer-layout-actions"> · <button type="button" class="footer-layout-reset" id="btn-gridstack-reset" title="Restore default tile positions (clears saved grid layout)">Reset layout</button></span>
   </footer>
 
   <script src="/static/vendor/leaflet/leaflet.js"></script>

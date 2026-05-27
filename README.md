@@ -1,6 +1,8 @@
-# nmea-serial-bridge
+# Serial Link
 
-**Current version:** see [`version.py`](version.py) (e.g. **v1.13.x**) — Windows desktop app that **bidirectionally bridges** traffic between **UDP/TCP** and a **serial COM port**. Primary use: **NMEA 0183 text** for survey / USV workflows — Ethernet GNSS or INS (e.g. Trimble R10) → bridge → physical COM destination.
+**Product name:** **Serial Link** (`serial-link.exe`). GitHub repo: `nmea-serial-bridge`.
+
+**Current version:** see [`version.py`](version.py) — Windows desktop app that **bidirectionally bridges** traffic between **UDP/TCP** and a **serial COM port**. Primary use: **NMEA 0183 text** for survey / USV workflows — Ethernet GNSS or INS (e.g. Trimble R10) → bridge → physical COM destination.
 
 **Spec Kit baseline**: [`specs/001-baseline-spec/spec.md`](specs/001-baseline-spec/spec.md) (as-built FR traceability).
 
@@ -25,7 +27,7 @@
   - **TCP server** / **TCP client** — under *Advanced* network; TCP client auto-reconnects with configurable delay.
 
 - **Serial** — COM list, baud, refresh; **auto-reconnect COM** (optional, on by default) if the port drops while the bridge stays Running.  
-- **Named presets** — **Presets** tab (or survey bar **Presets** menu): load, save, save as, delete; stored in `%USERPROFILE%\.cursor-udp-com-bridge\path_presets.json`. Shipped defaults in `bench_defaults.json` (or beside the `.exe`).
+- **Named presets** — **Presets** tab (or survey bar **Presets** menu): load, save, save as, delete; stored in `%USERPROFILE%\.cursor-udp-com-bridge\path_presets.json`. Shipped built-ins come from neutral `bench_defaults.json` beside the `.exe`; optional `bench_defaults.local.json` overrides for your fleet (not in release zips).
 
 - **Queues & backpressure** — bounded queues; drop / reject counters in the status bar and Survey HUD.
 
@@ -39,7 +41,7 @@
 
 - **UI layouts** — **Standard** (`Connect | Log | Tools`) and **Field** (log-first, survey bar, tools drawer). Launcher remembers choice. **UI editor** reorders Connect sections, top bar, main tabs.
 
-- **Survey workflow** — Survey HUD popout, **GNSS** status (GGA fix / sats / HDOP), product demo teleprompter, preflight menus, themes, recent sessions.
+- **Survey workflow** — Survey HUD popout, **GNSS** status (GGA fix / sats / HDOP), in-app **Guide** (Tools), preflight menus, themes, recent sessions.
 - **Connection Hub (Standard Connect)** — card grid for GNSS COM + UDP listen + **LAN-discovered** hosts (Refresh discovery); **Unlock ports** for bench COM conflicts; live **QoS** on the active card; **Manual override** for TCP/advanced; optional **TCP sink mirror** (parallel egress with fan-out). Field strip adds Refresh/Unlock.
 - **Hybrid UI (v1.7+)** — Qt Designer shells; optional **Web API** + browser **operator dashboard** (`requirements-web.txt`) — status, config, discovery, start/stop, log, map, Survey monitor; optional **GridStack beta** layout — see `specs/005-hybrid-ui-webui/quickstart.md` and `specs/006-phase-b-dashboard/quickstart.md`.
 - **Connect tab (Standard)** — collapsible panels (Serial & network defaults under Run), quick log/terminal, intent hint.
@@ -72,13 +74,12 @@ python -m pip install -r requirements.txt
 # or
 python launcher.py
 python launcher.py --ui field
-python bridge_gui.py --ui field --demo
 ```
 
 | UI | Use |
 |----|-----|
-| **Standard** | Connect + Log + Tools (Presets, NMEA, Terminal, Diagnostics, Theme, Guide) |
-| **Field** | Large log, COM/UDP strip, Tools drawer, survey bar (**Presets**, **Recent**, **Checklists**, **HUD**, **Demo**) |
+| **Standard** | Connect + Log + Tools (Presets, Phone, NMEA, Terminal, Diagnostics, Inject, Theme, Guide) |
+| **Field** | Large log, COM/UDP strip, Tools drawer, survey bar (**Presets**, **Recent**, **Checklists**, **HUD**) |
 
 Saved layout: `%USERPROFILE%\.cursor-udp-com-bridge\ui_choice.json`
 
@@ -136,9 +137,9 @@ python -m unittest discover -s . -p "test_*.py" -v
 
 ## Frozen build (field PCs)
 
-1. Download `nmea-serial-bridge-v<version>-win64.zip` from GitHub Releases.  
-2. Unzip; run `nmea-serial-bridge.exe`.  
-3. Optional `bench_defaults.json` beside exe for fleet defaults.
+1. Download `serial-link-v<version>-win64.zip` from GitHub Releases.  
+2. Unzip; run `serial-link.exe`.  
+3. Optional `bench_defaults.local.json` beside exe for fleet LAN/COM overrides (copy from `bench_defaults.local.json.example`; not shipped publicly).
 
 ```powershell
 .\release.ps1
@@ -158,7 +159,8 @@ Version: `version.py` + `CHANGELOG.md`.
 | `docs/GETTING_STARTED.md` | First install and walkthrough |
 | `docs/OPERATOR_GUIDE.md` | Step-by-step operator manual |
 | `docs/NORBIT_DCT.md` | NORBIT DCT operator notes |
-| `bench_defaults.json` | Shipped Desk + production defaults |
+| `bench_defaults.json` | Shipped neutral Desk / Boat / NORBIT built-ins |
+| `bench_defaults.local.json` | Optional local override (gitignored; not in public zip) |
 
 ## What this app is not
 

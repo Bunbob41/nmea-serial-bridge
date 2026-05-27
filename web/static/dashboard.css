@@ -171,6 +171,14 @@ body {
   letter-spacing: 0.02em;
 }
 
+.brand-tagline {
+  font-size: 0.78rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+}
+
 .version-tag {
   font-size: 0.72rem;
   color: var(--text-muted);
@@ -1885,31 +1893,9 @@ body.dashboard-log-expanded .log-card .dashboard-panel-summary::after {
   background: #0b0d12;
 }
 
+/* Layer picker removed — use map panel ⋯ / right-click (Street / Satellite). */
 .leaflet-control-layers {
-  background: rgba(15, 20, 30, 0.92);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  color: var(--text);
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
-}
-
-.leaflet-control-layers-expanded {
-  padding: 6px 8px 8px;
-}
-
-.leaflet-control-layers label {
-  font-size: 0.82rem;
-  margin-bottom: 4px;
-}
-
-.leaflet-control-layers-separator {
-  border-top-color: var(--border);
-  margin: 6px 0;
-}
-
-.leaflet-control-layers-toggle {
-  background-color: rgba(15, 20, 30, 0.92);
-  border: 1px solid var(--border);
+  display: none !important;
 }
 
 /* ── Footer ───────────────────────────────────────────────────── */

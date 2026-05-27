@@ -51,11 +51,7 @@ def apply_connect_row_style(
     if host is None:
         return CONNECT_ROW_DEFAULT
     if style_id is None:
-        from ui.ui_prefs import load_connect_panel_prefs
-
-        ui_mode = getattr(win, "_ui_mode", "standard")
-        prefs = load_connect_panel_prefs(ui_mode)
-        style_id = str(prefs.get("connect_row_style", CONNECT_ROW_DEFAULT))
+        style_id = CONNECT_ROW_DEFAULT
     style_id = normalize_connect_row_style(style_id)
     host.setProperty("connectRowStyle", style_id)
     _repolish_widget_tree(host)

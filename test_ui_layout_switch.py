@@ -29,9 +29,16 @@ class _LayoutHost(BridgeLogicMixin, object):
         self._theme_id = "slate"
         self._layout_switch_in_progress = False
         self.closed = False
+        self.quit_requested = False
+        self._stats_timer = type("_T", (), {"stop": lambda self: None})()
+        self._stats_popout_window = None
+        self._dashboard_window = None
 
     def close(self) -> None:
         self.closed = True
+
+    def _request_application_quit(self) -> None:
+        self.quit_requested = True
 
 
 class TestUiLayoutSwitch(unittest.TestCase):
@@ -39,13 +46,44 @@ class TestUiLayoutSwitch(unittest.TestCase):
         host = _LayoutHost()
         with patch("ui.mixin.save_ui_choice") as save_choice, patch(
             "ui.mixin.create_window", return_value=_FakeWindow()
-        ) as create:
+        ) as create, patch.object(host, "_shutdown_background_services") as shutdown, patch(
+            "ui.tray_support.destroy_tray_icon"
+        ):
             host._switch_ui_layout("field")
             host._switch_ui_layout("field")
         self.assertTrue(host.closed)
         self.assertTrue(host._layout_switch_in_progress)
+        self.assertFalse(host.quit_requested)
         self.assertEqual(create.call_count, 1)
         self.assertEqual(save_choice.call_count, 1)
+        shutdown.assert_called()
+
+    def test_switch_layout_stops_background_before_new_window(self) -> None:
+        host = _LayoutHost()
+        calls: list[str] = []
+
+        def _shutdown() -> None:
+            calls.append("shutdown")
+
+        def _create(_ui: str) -> _FakeWindow:
+            calls.append("create")
+            return _FakeWindow()
+
+        with patch("ui.mixin.save_ui_choice"), patch(
+            "ui.mixin.create_window", side_effect=_create
+        ), patch.object(host, "_shutdown_background_services", side_effect=_shutdown), patch(
+            "ui.tray_support.destroy_tray_icon"
+        ):
+            host._switch_ui_layout("field")
+        self.assertEqual(calls, ["shutdown", "create"])
+
+    def test_close_event_during_layout_switch_does_not_quit_app(self) -> None:
+        host = _LayoutHost()
+        host._layout_switch_in_progress = True
+        event = type("_E", (), {"accept": lambda self: None, "ignore": lambda self: None})()
+        with patch.object(host, "_shutdown_background_services"):
+            host.closeEvent(event)  # type: ignore[arg-type]
+        self.assertFalse(host.quit_requested)
 
 
 if __name__ == "__main__":

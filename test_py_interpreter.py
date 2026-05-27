@@ -92,14 +92,14 @@ class TestCliPythonExecutable(unittest.TestCase):
             self.assertEqual(got.resolve(), py.resolve())
 
     def test_frozen_app_uses_bundled_exe_not_system_python(self) -> None:
-        app = Path(r"C:\tmp\nmea-serial-bridge.exe")
+        app = Path(r"C:\tmp\serial-link.exe")
         with mock.patch.object(sys, "executable", str(app)):
             with mock.patch.object(sys, "frozen", True, create=True):
                 got = Path(py_interpreter.cli_python_executable())
         self.assertEqual(got.resolve(), app.resolve())
 
     def test_subprocess_script_argv_frozen_uses_helper_flag(self) -> None:
-        app = Path(r"C:\tmp\nmea-serial-bridge.exe")
+        app = Path(r"C:\tmp\serial-link.exe")
         with mock.patch.object(sys, "executable", str(app)):
             with mock.patch.object(sys, "frozen", True, create=True):
                 argv = py_interpreter.subprocess_script_argv("verify_all.py", ["--x"])

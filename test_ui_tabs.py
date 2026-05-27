@@ -93,7 +93,7 @@ class TestUiTabs(unittest.TestCase):
         self.assertIn("Theme", labels)
         self.assertTrue(tabs.tabBar().isMovable())
 
-    def test_preset_list_click_loads_when_stopped(self) -> None:
+    def test_preset_list_click_selects_without_loading_connect(self) -> None:
         from ui.standard import BridgeWindowStandard
 
         win = BridgeWindowStandard()
@@ -103,12 +103,15 @@ class TestUiTabs(unittest.TestCase):
         self.assertGreaterEqual(lst.count(), 1)
         if lst.count() < 2:
             return
-        second = win._preset_name_from_item(lst.item(1))
-        win._on_preset_list_item_clicked(lst.item(1))
+        second_item = lst.item(1)
+        second = win._preset_name_from_item(second_item)
+        com_before = win.com_cb.currentText()
+        lst.setCurrentItem(second_item)
+        win._on_preset_list_item_clicked(second_item)
         self._app.processEvents()
-        self.assertEqual(win._active_preset_name, second)
-        self.assertEqual(lst.currentRow(), 1)
+        self.assertEqual(win._preset_editor_selection, second)
         self.assertTrue(win.btn_preset_load.isEnabled())
+        self.assertEqual(win.com_cb.currentText(), com_before)
 
     def test_preset_named_one_loads(self) -> None:
         import tempfile
@@ -146,7 +149,8 @@ class TestUiTabs(unittest.TestCase):
                 self._app.processEvents()
                 one_item = win.preset_list.item(0)
                 self.assertEqual(win._preset_name_from_item(one_item), "1")
-                win._on_preset_list_item_clicked(one_item)
+                win.preset_list.setCurrentItem(one_item)
+                win._preset_load_selected()
                 self._app.processEvents()
                 self.assertEqual(win._active_preset_name, "1")
                 self.assertEqual(win.com_cb.currentText(), "COM9")

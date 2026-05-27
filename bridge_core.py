@@ -202,17 +202,73 @@ class _SurveyFileFormatter(logging.Formatter):
         return f"{t}.{int(record.msecs):03d}"
 
 
+def _retention_duration_label(minutes: int) -> str:
+    if minutes < 90:
+        return f"{minutes} min"
+    if minutes < 36 * 60:
+        return f"{minutes // 60} h"
+    return f"{minutes // (24 * 60)} d"
+
+
 def file_log_retention_hint(max_mb: int, backup_count: int) -> str:
     """Rough on-disk span for operator planning (POSPAC / post-processing)."""
-    total_mb = max_mb * (1 + max(0, backup_count))
-    # Typical survey NMEA ~50–120 B/line; 1–20 Hz → wide range.
-    low_min = int((max_mb * 1024 * 1024) / max(20 * 120, 1) / 60)
-    high_min = int((max_mb * 1024 * 1024) / max(1 * 50, 1) / 60)
+    kept = max(0, int(backup_count))
+    # Typical survey NMEA ~50–120 B/line; 1–20 Hz → wide range per file.
+    busy_min = int((max_mb * 1024 * 1024) / max(20 * 120, 1) / 60)
+    quiet_min = int((max_mb * 1024 * 1024) / max(1 * 50, 1) / 60)
+    busy_lbl = _retention_duration_label(busy_min)
+    quiet_lbl = _retention_duration_label(quiet_min)
+    if kept == 0:
+        return (
+            f"Single file only (~{max_mb} MB cap). When the log reaches {max_mb} MB it is cleared "
+            f"and logging continues at the same path (lines already in that file are discarded). "
+            f"Often refills in {busy_lbl}–{quiet_lbl} at 1–20 Hz NMEA "
+            f"(RTCM or heavy traffic fills sooner)."
+        )
+    file_count = 1 + kept
+    total_mb = max_mb * file_count
+    roll_word = "copy" if kept == 1 else "copies"
     return (
-        f"~{max_mb} MB per file × {1 + backup_count} files ≈ {total_mb} MB on disk. "
-        f"One file often lasts ~{low_min}–{high_min} min at 1–20 Hz NMEA "
-        f"(RTCM/corrections or high-rate traffic fill much faster)."
+        f"When the active log reaches {max_mb} MB it is renamed (e.g. .log.1) and a new file starts. "
+        f"You keep {kept} older rotated {roll_word} — {file_count} files total, about {total_mb} MB on disk. "
+        f"Each file often lasts {busy_lbl}–{quiet_lbl} at 1–20 Hz NMEA "
+        f"(RTCM or heavy traffic fills sooner)."
     )
+
+
+def _purge_rotated_log_siblings(path: Path) -> None:
+    """Remove bridge_survey.log.1, .log.2, … left from a previous retention setting."""
+    base = str(path)
+    i = 1
+    while True:
+        sibling = Path(f"{base}.{i}")
+        if not sibling.is_file():
+            break
+        sibling.unlink()
+        i += 1
+
+
+class _SurveyRotatingFileHandler(RotatingFileHandler):
+    """Stdlib RotatingFileHandler; backup_count=0 would never roll — we truncate instead."""
+
+    def __init__(self, *args, single_file_only: bool = False, **kwargs):
+        self._single_file_only = single_file_only
+        if single_file_only:
+            kwargs["backupCount"] = 0
+        super().__init__(*args, **kwargs)
+
+    def doRollover(self) -> None:
+        if self._single_file_only:
+            if self.stream:
+                self.stream.close()
+                self.stream = None
+            enc = self.encoding or "utf-8"
+            with open(self.baseFilename, "w", encoding=enc):
+                pass
+            if not self.delay:
+                self.stream = self._open()
+            return
+        super().doRollover()
 
 
 class _FileSurveyLog:
@@ -230,11 +286,16 @@ class _FileSurveyLog:
         self._logger.setLevel(logging.INFO)
         self._logger.handlers.clear()
         path.parent.mkdir(parents=True, exist_ok=True)
-        fh = RotatingFileHandler(
+        kept = max(0, int(backup_count))
+        single = kept == 0
+        if single:
+            _purge_rotated_log_siblings(path)
+        fh = _SurveyRotatingFileHandler(
             path,
             maxBytes=max(1024 * 1024, int(max_bytes)),
-            backupCount=max(0, int(backup_count)),
+            backupCount=kept if not single else 0,
             encoding="utf-8",
+            single_file_only=single,
         )
         fmt = _SurveyFileFormatter("%(asctime)s | %(gps)s | %(direction)s | %(message)s")
         fh.setFormatter(fmt)
@@ -1036,6 +1097,13 @@ class SerialNetBridge:
                 )
                 await asyncio.sleep(delay)
 
+    def _reset_serial_decode_state(self) -> None:
+        """Drop partial line assembly after COM glitches so reconnect cannot splice bytes."""
+        self._asm_n2s.reset()
+        self._asm_s2n.reset()
+        self._serial_io_err_last_msg = None
+        self._serial_io_err_last_mono = 0.0
+
     async def _close_serial_streams(self) -> None:
         writer = self.serial_writer
         self.serial_writer = None
@@ -1056,6 +1124,7 @@ class SerialNetBridge:
             self._ui_log_serial_coalesced(_friendly_serial_error(e, self.com))
             return False
         self._serial_open = True
+        self._reset_serial_decode_state()
         self._set_status(
             f"Serial: {self.com} @ {self.baud} — open (reconnected)",
             self._last_network_status,
@@ -1110,6 +1179,7 @@ class SerialNetBridge:
                 await self._close_serial_streams()
                 if not need_retry or not self.serial_auto_reconnect:
                     break
+                self._reset_serial_decode_state()
                 self._ui_log(
                     f"Serial session ended on {self.com} — retry in "
                     f"{SERIAL_RECONNECT_INTERVAL_S:.0f}s"
@@ -1285,8 +1355,7 @@ class SerialNetBridge:
 
         self._serial_open = False
         self._network_ready = False
-        self._asm_n2s.reset()
-        self._asm_s2n.reset()
+        self._reset_serial_decode_state()
 
     async def _await_closed(self, writer: Optional[asyncio.StreamWriter], label: str) -> None:
         if not writer:
@@ -1351,8 +1420,7 @@ class SerialNetBridge:
 
         self._serial_open = False
         self._network_ready = False
-        self._asm_n2s.reset()
-        self._asm_s2n.reset()
+        self._reset_serial_decode_state()
         self._nav_quality_state[0] = None
         self._position_state[0] = None
 

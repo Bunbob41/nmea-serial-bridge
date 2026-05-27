@@ -26,6 +26,20 @@ class TestSurveyFileLog(unittest.TestCase):
         # PC time YYYY-MM-DD HH:MM:SS.mmm
         self.assertTrue(re.match(r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3}", parts[0]), msg=parts[0])
 
+    def test_single_file_mode_truncates_without_siblings(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "survey.log"
+            log = _FileSurveyLog(path, max_bytes=256, backup_count=0)
+            handler = log._logger.handlers[0]
+            handler.maxBytes = 256  # production floor is 1 MB; force rollover in test
+            try:
+                for _ in range(40):
+                    log.write("NET→COM", "x" * 48, "")
+            finally:
+                log.close()
+            self.assertFalse(Path(f"{path}.1").exists())
+            self.assertLess(path.stat().st_size, 2048)
+
 
 if __name__ == "__main__":
     unittest.main()

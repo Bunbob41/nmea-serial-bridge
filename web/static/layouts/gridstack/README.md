@@ -11,7 +11,7 @@
 
 - Same **`dashboard.js`** and FastAPI routes as the standard page.
 - **[GridStack](https://gridstackjs.com/)** 10.3.1 (vendored under `web/static/vendor/gridstack/`) for drag-and-resize tiles.
-- Layout persisted in browser `localStorage` key `nmea-gridstack-layout-v2` (separate from standard panel order). Use **Reset layout** in the blue banner if tiles are stuck on the left.
+- Layout persisted in browser `localStorage` key `nmea-gridstack-layout-v2` (separate from standard panel order). Use **Reset layout** in the page footer if tiles are stuck on the left.
 - **▲▼** on each section header — swap tile position with the neighbor above/below (same as standard dashboard).
 - **Drag** header to move; **resize** from tile corners; **collapse** shrinks tile height.
 - **Lock layout:** header checkbox **Lock layout** — when checked, tiles cannot be dragged, resized, or ▲▼ reordered; current layout is saved. Uncheck to customize again.

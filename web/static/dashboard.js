@@ -1,5 +1,5 @@
 /**
- * NMEA Bridge Dashboard — vanilla ES6
+ * Serial Link Dashboard — vanilla ES6
  * No frameworks. No NMEA/socket logic. REST only.
  * Covers: US1 telemetry, US2 start/stop, US3 unlock, US4 discovery + COM picker.
  */
@@ -11,7 +11,7 @@ const MAP_ENABLED_KEY = "nmea-bridge-map-enabled";
 const MAP_BASE_LAYER_KEY = "nmea-bridge-map-base-layer";
 const MAP_TRACK_MAX = 120;
 /** Bumped when dashboard.js changes — used for ?v= cache bust on script tags. */
-const DASHBOARD_SCRIPT_REV = "1.14.5";
+const DASHBOARD_SCRIPT_REV = "1.15.1";
 let lastDashboardStatus = null;
 // Keep in sync with ui/connection_fields.py BAUD_PRESETS
 const BAUD_PRESETS = [4800, 9600, 19200, 38400, 57600, 115200, 230400, 460800];
@@ -253,7 +253,7 @@ async function shareSetupLink() {
   if (navigator.share) {
     try {
       await navigator.share({
-        title: "NMEA Bridge dashboard",
+        title: "Serial Link dashboard",
         text: "Open to save API token",
         url,
       });
@@ -393,7 +393,7 @@ async function loadMeta() {
     if (body.commands_ready === false) {
       showAlert(
         "run-alert",
-        "Desktop bridge window not linked to the web API — fully quit and restart the NMEA Bridge app (need v1.8.2+), then hard-refresh this page (Ctrl+F5).",
+        "Desktop bridge window not linked to the web API — fully quit and restart Serial Link (need v1.8.2+), then hard-refresh this page (Ctrl+F5).",
         "warn"
       );
     }
@@ -2901,7 +2901,6 @@ function clearWebLogView() {
 let mapInstance = null;
 let mapStreetLayer = null;
 let mapSatelliteLayer = null;
-let mapLayerControl = null;
 let mapMarker = null;
 let mapTrackLine = null;
 let mapTrackPoints = [];
@@ -2988,6 +2987,12 @@ function syncMapVisibility() {
   if (attr) attr.hidden = !on;
   const sum = document.getElementById("panel-sum-map");
   if (sum && !on) sum.textContent = "Off";
+  if (on) {
+    ensureBridgeMap();
+    requestAnimationFrame(() => {
+      mapInstance?.invalidateSize();
+    });
+  }
 }
 
 function ensureBridgeMap() {
@@ -3024,18 +3029,6 @@ function ensureBridgeMap() {
   else mapStreetLayer.addTo(mapInstance);
   syncMapAttributionText(base);
 
-  mapLayerControl = L.control
-    .layers(
-      { Street: mapStreetLayer, Satellite: mapSatelliteLayer },
-      null,
-      { position: "topright", collapsed: true }
-    )
-    .addTo(mapInstance);
-  mapInstance.on("baselayerchange", (ev) => {
-    const mode = ev.name === "Satellite" ? "satellite" : "street";
-    saveMapBaseLayer(mode);
-    syncMapAttributionText(mode);
-  });
   mapMarker = L.circleMarker([0, 0], {
     radius: 9,
     weight: 2,

@@ -66,7 +66,7 @@ def _save_choice(ui: str) -> None:
 
 
 def _menu() -> str:
-    print(f"\n  NMEA Serial Bridge v{__version__} — choose layout\n")
+    print(f"\n  Serial Link v{__version__} — Ethernet ↔ serial — choose layout\n")
     for i, uid in enumerate(UI_ORDER, 1):
         print(f"  {i}. {UI_LABELS[uid]}")
         for line in UI_DESCRIPTIONS[uid].split(". "):
@@ -115,7 +115,7 @@ def _spawn_gui(ui_arg: list[str], *, foreground: bool = False) -> None:
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description=f"Launch NMEA bridge GUI (v{__version__})",
+        description=f"Launch Serial Link GUI (v{__version__})",
     )
     parser.add_argument(
         "--ui",

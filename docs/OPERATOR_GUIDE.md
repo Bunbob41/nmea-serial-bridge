@@ -1,4 +1,4 @@
-# NMEA Serial Bridge — Operator Guide
+# Serial Link — Operator Guide
 
 Step-by-step guide for survey / bench use. Screenshots are optional; a **shot list** at the end lists exactly what to capture if you want illustrated docs.
 
@@ -28,7 +28,7 @@ Typical use: INS or GNSS on Ethernet → bridge → designated device COM input.
 | Windows PC                       | Primary target                                                   |
 | COM port for the bridge          | Physical USB, or com0com pair on bench                           |
 | UDP source (bench) or INS (boat) | Bridge **listens**; others **send to** the PC                    |
-| This app installed               | Python dev tree **or** release zip with `nmea-serial-bridge.exe` |
+| This app installed               | Python dev tree **or** release zip with `serial-link.exe` |
 
 
 **Do not** open Tera Term or another app on the **same** COM the bridge uses.
@@ -89,9 +89,13 @@ Older names **Minimal** / **Log-first** map to **Field** in the launcher (or sti
 
 On launch, connection fields load your **last-used named preset** (or the first bench-style preset from `bench_defaults.json`). You can **Start** within about a minute without opening Tools first.
 
+**Tray monitoring:** After **Start bridge**, closing the window (X) **minimizes to the system tray** and leaves the bridge running. Double-click the tray icon to reopen, or use the tray menu **Stop bridge** / **Exit**. Hover the tray icon for Serial | Network status. Theme and layout chrome are fixed for speed — personalization lives under **Tools → Theme** only if you need bench colors.
+
 **Recent sessions** (survey bar): last five COM + UDP + **NMEA mode** combos. Pick one while the bridge is **stopped**; if running, stop first then apply.
 
 **Customize Connect:** survey bar or Connect toolbar **UI editor…** → drag sections (Run and Serial & network always stay on). Default order puts **Serial & network** directly under **Run** to reduce scrolling.
+
+**Tools sidebar (Standard):** same **UI editor…** → **Tools tabs** page — reorder or hide Presets, Phone, NMEA, Terminal, Diagnostics, Inject, Theme, and Guide in the left list on the **Tools** main tab. At least one item must stay visible. Field layout uses the same page for drawer tabs instead of the sidebar.
 
 **Connect layout:** use **UI editor…** on the Connect toolbar to show/hide and reorder sections. Panel heights follow the disclosure layout (no splitter **Reset sizes** control).
 
@@ -126,11 +130,12 @@ Use this when testing on your desk: virtual COM pair and UDP from `127.0.0.1`.
 
 | Step | Action                                                   | Success check                                                      |
 | ---- | -------------------------------------------------------- | ------------------------------------------------------------------ |
-| 1    | Open the app (Standard layout)                           | Window title: `Network ↔ COM Bridge v…`                            |
+| 1    | Open the app (Standard layout)                           | Window title: `Serial Link v…`                            |
 | 2    | **Presets** tab or survey bar **Presets** → load bench preset | COM, baud, UDP fill in; intent hint mentions 127.0.0.1      |
 | 3    | Confirm **COM** = bridge port (not the paired echo port) |                                                                    |
 | 4    | Confirm **Listen port** (e.g. 10110) on **Connect**    | **UDP listen** (Advanced off unless you know why)                  |
 | 4b   | **Fan-out** checkbox (Connect → Run area)              | **Checked** = all UDP senders get serial→net (default); off = last sender only |
+| 4c   | **Extra TCP output** (optional, port e.g. 10111)       | Off by default; when on, tools connect to this PC as TCP **clients** for a copy of COM→net |
 | 5    | Click **Start bridge** on **Connect**                  | Banner → **Running**; log shows UDP listen + serial open           |
 | 6    | Open Tera Term on the **paired** COM (not bridge COM)    | Bridge owns one leg; monitor the **paired** port only              |
 | 7    | Send UDP NMEA to the bridge                              | Diagnostics → **UDP sample burst**, or `python nmea_static_sample.py` |
@@ -176,6 +181,7 @@ You do **not** need a second bridge app. Use **one** Running bridge and two UDP 
 | 4 | Generate COM→net traffic | com0com echo on paired port, or live serial into bridge COM |
 | 5 | Observe B (and A if still listening) | Both receive serial-originated UDP within a few seconds |
 | 6 | Stop → Start with **Fan-out** unchecked | Repeat steps 2–5; only the **last** sender receives serial→net |
+| 7 | **Automated** | `python bench_fanout_automation.py` — headless when UDP port free (both peers + last-peer-only); live registers two peers when the bridge is already Running. Also **Diagnostics → Fan-out bench (auto)** and `verify_all.py`. |
 
 See also [`specs/001-baseline-spec/quickstart.md`](../specs/001-baseline-spec/quickstart.md).
 
@@ -220,6 +226,24 @@ Use when the INS sends NMEA UDP to the survey PC and the bridge drives the targe
 
 The bridge does not configure routers or VPN — only opens sockets on the Windows machine.
 
+### 6.4 Network reliability checklist (P0)
+
+Use this when traffic is flaky, Hz drops, or the status bar / HUD shows **transport** warnings (drops, rejects, queue backlog).
+
+| Check | What to verify |
+| ----- | ---------------- |
+| **INS → PC direction** | The INS must **send** UDP to this PC’s IP and the **same listen port** the bridge shows on **Connect**. The bridge **listens**; it does not dial the INS. |
+| **Listen host** | `0.0.0.0` accepts datagrams on all interfaces; a specific IP binds only that address. Mismatch = no packets. |
+| **Windows firewall** | Allow **inbound UDP** on your listen port (and TCP if you use Advanced TCP server/client). |
+| **Fan-out** | **On (default):** every UDP peer that has sent to this session gets **COM→UDP** replies. **Off:** only the **most recent** sender receives serial→net — fine for one simulator; wrong if you expect multiple listeners. |
+| **Extra TCP output** | Optional second listener for **COM→network** bytes only; unrelated to fan-out. Turn off if nothing is connected (avoids idle TCP queue pressure). |
+| **TCP client (Advanced)** | Bridge reconnects automatically; tune **reconnect delay** on Connect if the peer is slow to come up. If a consumer never reads TCP replies, queues can fill — keep the client reading or stop the bridge. |
+| **Tailscale / VPN** | Sender must target this PC’s **VPN IP**, not only LAN. Expect extra jitter; use Survey HUD **Into COM** Hz as a sanity check. |
+| **When things go wrong** | Status bar **session stats** turn red on drops/rejects/backlog; Survey HUD **Transport** tile shows Warn/OK. **Stop** → fix bind/port/firewall → **Start** again. |
+| **Automated bench** | `python bench_network_automation.py` — **headless** when the bench UDP port is free (zero net→serial drops + TCP reconnect on :41099); **live** burst when the bridge is already listening. Fan-out: `python bench_fanout_automation.py`. **Diagnostics → Network bench (auto)** / **Fan-out bench (auto)**; `verify_all.py`. |
+
+For in-app wording aligned with Connect, use **Connect → ?** (network guide popout) and **Tools → Guide**.
+
 ---
 
 ## 7. Tab reference
@@ -229,7 +253,9 @@ The bridge does not configure routers or VPN — only opens sockets on the Windo
 - **Connection hub** — card grid at the top of **Serial & network**: pick a detected GNSS COM port, UDP listen context, or a **LAN-discovered** host (after **Refresh discovery**). Selection fills COM/baud or listen host/port for **Start**. The active card shows **QoS** (Hz / drops) while the bridge is running. Successful starts save **last-known-good** per device.
 - **Refresh discovery** — scans the local ARP table and sends short UDP probes on survey ports (10110, 4001, 10111) to find peers; completes in a few seconds. Does not replace your INS configuration — it surfaces likely targets on the LAN.
 - **Unlock ports** — tries to release a stuck COM (e.g. PuTTY left open) without restarting the app. Blocked while the bridge is **Running** on that COM; stop the bridge first.
-- **Manual override** — expand the checkbox group below the hub for full COM, fan-out, TCP sink mirror, and **Advanced network** (TCP/UDP remote). When override is on and you edit fields, hub card defaults are ignored until you collapse override or pick a card again.
+- **Manual override** — expand the checkbox group below the hub for full COM, **Fan-out**, **Extra TCP output**, and **Advanced network** (TCP/UDP remote). When override is on and you edit fields, hub card defaults are ignored until you collapse override or pick a card again.
+- **Extra TCP output** — optional TCP server on this PC (default port **10111**). Other programs connect as clients to receive the same **COM→network** bytes as your main UDP path. Independent of **Fan-out**; leave off unless you need a second listener (logger, test tool, etc.).
+- **Network guide (?)** — beside **Fan-out** on Standard **Connect** → opens a popout explaining Listen host/port, Fan-out, Extra TCP output, and Advanced network.
 - **Bench walkthrough** — see `specs/004-hub-network-discovery/quickstart.md` for resize, refresh, unlock, QoS, and two-sender LAN checks.
 
 ### Web control plane (optional, v1.7+)
@@ -285,6 +311,7 @@ Does **not** inject binary streams — NMEA text only.
 ### Phone (Tools → Phone)
 
 - Enable localhost Web API, LAN/Tailscale bind, API token, **Show QR**, setup link copy/paste, **Detect Tailscale IP**, **Open dashboard in browser**.
+- In-tab **API token** blurb explains when the token is required, and **Generate** vs paste-your-own / setup link.
 
 ### Guide (Tools → Guide)
 
@@ -310,24 +337,17 @@ Four **collapsible cards** in a vertical stack (default order: **Automated check
 
 | Control | Action |
 | ------- | ------ |
-| **View** | Full screen, Survey HUD, Theme, Product demo |
+| **View** | Full screen, Survey HUD, Theme, UI editor |
 | **Presets** | Quick-load menu of saved presets |
 | **Recent** | Last five COM + network + NMEA sessions |
 | **Checklists** | Bench or Boat check_setup (same as Diagnostics) |
 | **HUD** | Survey stats popout |
 | **Tools** | Toggle Field/Minimal tools drawer |
 | **Pause log** / **Clear log** / **Copy stats** | Log control and clipboard export |
-| **Demo** | Presenter teleprompter |
 
-### Product demo (presenters)
+### Connection help (Tools → Guide)
 
-Open **Demo** on Field layout or `python bridge_gui.py --ui field --demo`.
-
-- **Previous step** / **Next step** — walk the script at your pace (default).
-- **Auto-play script** — timed walkthrough (~6 s per beat); **Stop auto** returns to manual.
-- **Run selected step** — run one step’s bridge actions from the list.
-- **Reset demo script** — rewinds the presenter to Welcome; does not change your live COM/preset.
-- **Close** — restores the COM, network, NMEA, preset, and bridge run/stop state from before you opened the demo (within a few seconds). Demo steps do not save presets or recent sessions while presenting. Status banner shows **Demonstration** while the dialog is open.
+Use **Tools → Guide** for in-app UDP/TCP steps that match the Connect tab (Start here, UDP, TCP client/server, checklist). Doc buttons open **GETTING_STARTED.md** and this guide. Phone/Web API setup is on **Tools → Phone**, not Guide.
 
 ---
 
@@ -382,7 +402,8 @@ If **drops** or **rejects** climb under load, serial consumer may be slow or fil
 | -------------------------------------------------------- | ---------------------------- |
 | `%USERPROFILE%\.cursor-udp-com-bridge\path_presets.json` | Named presets (bench, boat, custom) |
 | `%USERPROFILE%\.cursor-udp-com-bridge\ui_choice.json`    | Last UI layout               |
-| `bench_defaults.json` (beside exe or repo)               | Shipped defaults for new PCs |
+| `bench_defaults.json` (beside exe or repo)               | Neutral shipped Desk / Boat / NORBIT built-ins |
+| `bench_defaults.local.json` (optional, not in public zip) | Your LAN/COM overrides; copy from `.example` |
 | Optional file log path                                   | Set on Diagnostics tab       |
 
 
@@ -421,7 +442,7 @@ Use **Field Slate** theme unless noted. Hide unrelated windows; status bar and s
 | ID  | Filename | What to capture | Setup before capture |
 | --- | -------- | --------------- | -------------------- |
 | S14 | `14-hud-popout.png` | Survey HUD (6 columns, 100% scale) | **View → Survey HUD** or survey bar **HUD** |
-| S15 | `15-demo-teleprompter.png` | Product demo window (optional) | Survey bar **Demo** or **View → Product demo** |
+| S15 | (optional) | Tools → Guide — Start here tab | **Tools → Guide** |
 
 ### Optional (outside the app)
 
@@ -456,4 +477,4 @@ COM names, survey IP, and INS IP will be wrong on the repo defaults until you co
 2. **Save** Desk or Boat.
 3. Use checklists and Start — no code changes required.
 
-When you have final field values, copy `path_presets.json` to other PCs or edit `bench_defaults.json` next to the exe for fleet defaults.
+When you have final field values, copy `path_presets.json` to other PCs, or add `bench_defaults.local.json` next to the exe for fleet overrides (keeps public `bench_defaults.json` generic).

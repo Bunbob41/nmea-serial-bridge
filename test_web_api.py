@@ -113,7 +113,7 @@ class TestWebApi(unittest.TestCase):
         r = self.client.get("/api")
         self.assertEqual(r.status_code, 200)
         body = r.json()
-        self.assertEqual(body["service"], "nmea-serial-bridge")
+        self.assertEqual(body["service"], "serial-link")
         self.assertIn("discovery", body)
         self.assertIn("meta", body)
 

@@ -19,6 +19,8 @@ HELPER_SCRIPTS = [
     "bench_gui_smoke.py",
     "bridge_headless.py",
     "bench_stress.py",
+    "bench_network_automation.py",
+    "bench_fanout_automation.py",
 ]
 
 # Python module files imported by the helper scripts when they run as subprocesses.
@@ -111,7 +113,7 @@ exe = EXE(
     a.scripts,
     [],
     exclude_binaries=True,
-    name="nmea-serial-bridge",
+    name="serial-link",
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -136,5 +138,5 @@ coll = COLLECT(
     strip=False,
     upx=False,
     upx_exclude=[],
-    name="nmea-serial-bridge",
+    name="serial-link",
 )

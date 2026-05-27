@@ -1,7 +1,7 @@
-# Getting started — NMEA Serial Bridge
+# Getting started — Serial Link
 
 **Audience:** first-time operators and survey leads onboarding a new PC.  
-**Version:** read the window title (`Network ↔ COM Bridge v…`) or `version.py`.  
+**Version:** read the window title (`Serial Link v…`) or `version.py`.  
 **Full manual:** [OPERATOR_GUIDE.md](OPERATOR_GUIDE.md) · **NORBIT DCT:** [NORBIT_DCT.md](NORBIT_DCT.md)
 
 ---
@@ -22,13 +22,13 @@ It does **not** replace Applanix positioning, NORBIT acquisition, or Hypack — 
 
 | Step | Action |
 | ---- | ------ |
-| 1 | Download `nmea-serial-bridge-v<version>-win64.zip` from GitHub Releases. |
+| 1 | Download `serial-link-v<version>-win64.zip` from GitHub Releases. |
 | 2 | Unzip the **entire folder** (do not run only the `.exe` without its `_internal` tree). |
-| 3 | Double-click `nmea-serial-bridge.exe`. |
+| 3 | Double-click `serial-link.exe`. |
 | 4 | If Windows SmartScreen warns: **More info** → **Run anyway** (unsigned build until code signing). |
 | 5 | **Layout picker** appears once → choose **Standard** (best for first setup). |
 
-Optional: copy `bench_defaults.json` beside the `.exe` so Desk/Boat/NORBIT presets ship with the build.
+Release builds ship a neutral `bench_defaults.json`. For your survey LAN/COM, copy `bench_defaults.local.json.example` to `bench_defaults.local.json` beside the `.exe` (or in the repo root when developing).
 
 ### B — Developer / repo folder
 
@@ -122,7 +122,7 @@ Web API, Tailscale/LAN URL, API token, QR code, and setup link for the operator 
 
 ### Tools → Guide
 
-UDP/TCP connection workflows and links to **GETTING_STARTED.md** / **OPERATOR_GUIDE.md** (no web controls here).
+**Start here** (stuck on connect?) plus UDP / TCP client / TCP server / checklist tabs — labels match the **Connect** tab and **Advanced network** controls. Buttons open **GETTING_STARTED.md** / **OPERATOR_GUIDE.md**. Web/phone setup stays on **Tools → Phone**.
 
 ### Optional — phone / second monitor dashboard
 
@@ -153,6 +153,8 @@ Switch via launcher, **Diagnostics → Quick UI switch**, or survey bar layout c
 6. **Checklists → Boat checklist** or Diagnostics → **Boat checklist**.
 
 See [NORBIT_DCT.md](NORBIT_DCT.md) for Applanix + iWBMSe: **40810** on the boat PC; DCT target is **127.0.0.1** (DCT on boat), **192.168.1.8** (DCT on operator laptop / MikroTik wireless), or **VPN StaticIp** (Tailscale/ZeroTier).
+
+**Network reliability (UDP listen, fan-out, TCP):** see **OPERATOR_GUIDE.md** section **6.4 Network reliability checklist (P0)** — quick table for bind direction, firewall, Fan-out on vs last-sender only, Extra TCP output, and TCP client reconnect. Automated checks: `python bench_network_automation.py`, `python bench_fanout_automation.py` (or **Diagnostics → Network bench / Fan-out bench (auto)**).
 
 ---
 

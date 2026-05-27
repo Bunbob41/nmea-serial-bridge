@@ -5,11 +5,18 @@ import os
 import queue
 import re
 import select
+import subprocess
 import sys
 import time
+from functools import partial
+from pathlib import Path
 from typing import Callable, Optional
 
 from PySide6 import QtCore, QtGui, QtWidgets
+
+from ui import ui_prefs
+from ui.fonts import monospace_ui_font
+from ui.terminal_ping import ping_pty_command, ping_subprocess_args, sanitize_ping_host
 
 _ANSI_ESCAPE = re.compile(r"\x1b\[[0-9;?]*[ -/]*[@-~]|\x1b\].*?(?:\x07|\x1b\\)|\x1b[@-_]")
 _READ_CHUNK = 16_384
@@ -34,6 +41,17 @@ def _backspace_byte() -> str:
     return "\x08" if sys.platform == "win32" else "\x7f"
 
 
+def _powershell_embedded_args() -> list[str]:
+    """Drop PSReadLine — it fights ConPTY/winpty (double echo, broken backspace)."""
+    return [
+        "-NoLogo",
+        "-NoProfile",
+        "-NoExit",
+        "-Command",
+        "Remove-Module PSReadLine -ErrorAction SilentlyContinue",
+    ]
+
+
 def _default_shell() -> tuple[str, list[str]]:
     if sys.platform == "win32":
         system_root = os.environ.get("SystemRoot", r"C:\Windows")
@@ -45,10 +63,71 @@ def _default_shell() -> tuple[str, list[str]]:
             "powershell.exe",
         )
         if os.path.isfile(ps):
-            return ps, ["-NoLogo", "-NoProfile"]
+            return ps, _powershell_embedded_args()
         return os.path.join(system_root, "System32", "cmd.exe"), ["/Q"]
     shell = os.environ.get("SHELL", "/bin/bash")
     return shell, ["-i"] if "bash" in os.path.basename(shell) else []
+
+
+def _consume_duplicate_key_text(pending: str, text: str) -> str:
+    """
+    When Qt delivers the same printable char via inputMethodEvent and keyPressEvent
+    (common on Windows), only write once.
+    """
+    if not pending or not text:
+        return pending
+    if pending.startswith(text):
+        return pending[len(text) :]
+    return pending
+
+
+def _external_shell_working_directory() -> str:
+    """Prefer the app folder when frozen so bench scripts beside the exe are in cwd."""
+    if getattr(sys, "frozen", False):
+        return str(Path(sys.executable).resolve().parent)
+    try:
+        return os.getcwd()
+    except OSError:
+        return str(Path.home())
+
+
+def launch_external_shell(exe: str, args: list[str], cwd: str | None = None) -> tuple[bool, str]:
+    """
+    Open a visible shell window. GUI-subsystem apps on Windows cannot rely on
+    QProcess.startDetached for console hosts — use CREATE_NEW_CONSOLE / cmd start.
+    """
+    work = cwd or _external_shell_working_directory()
+    if sys.platform == "win32":
+        return _launch_external_shell_windows(exe, list(args), work)
+    try:
+        QtCore.QProcess.startDetached(exe, args, work)
+        return True, ""
+    except Exception as exc:
+        return False, str(exc)
+
+
+def _launch_external_shell_windows(exe: str, args: list[str], cwd: str) -> tuple[bool, str]:
+    if not os.path.isfile(exe):
+        return False, f"Shell not found: {exe}"
+    create_flags = getattr(subprocess, "CREATE_NEW_CONSOLE", 0)
+    try:
+        subprocess.Popen(
+            [exe, *args],
+            cwd=cwd,
+            creationflags=create_flags,
+        )
+        return True, ""
+    except OSError:
+        pass
+    # Fallback: `start` opens a new console even when the parent is windowed (PyInstaller).
+    try:
+        subprocess.Popen(
+            ["cmd.exe", "/c", "start", "Serial Link shell", exe, *args],
+            cwd=cwd,
+        )
+        return True, ""
+    except OSError as exc:
+        return False, str(exc)
 
 
 def _strip_ansi(text: str) -> str:
@@ -174,8 +253,10 @@ class _TerminalScreen(QtWidgets.QPlainTextEdit):
         super().__init__(parent)
         self._write_fn = write_fn
         self._bs = _backspace_byte()
+        self._pending_ime_text = ""
         self.setObjectName("systemTerminalScreen")
         self.setReadOnly(True)
+        self.setAttribute(QtCore.Qt.WidgetAttribute.WA_InputMethodEnabled, False)
         self.setTextInteractionFlags(
             QtCore.Qt.TextInteractionFlag.TextSelectableByKeyboard
             | QtCore.Qt.TextInteractionFlag.TextSelectableByMouse
@@ -184,16 +265,20 @@ class _TerminalScreen(QtWidgets.QPlainTextEdit):
         self.setUndoRedoEnabled(False)
         self.setMaximumBlockCount(8000)
         self.setCenterOnScroll(False)
-        font = QtGui.QFontDatabase.systemFont(QtGui.QFontDatabase.SystemFont.FixedFont)
-        font.setPointSize(max(9, font.pointSize()))
-        font.setStyleHint(QtGui.QFont.StyleHint.Monospace)
-        self.setFont(font)
+        self.setFont(monospace_ui_font())
         self.setFocusPolicy(QtCore.Qt.FocusPolicy.StrongFocus)
         self.setToolTip("Local shell — click here, then type when the session is running.")
         self.setSizePolicy(
             QtWidgets.QSizePolicy.Policy.Expanding,
             QtWidgets.QSizePolicy.Policy.Expanding,
         )
+
+    def inputMethodEvent(self, event: QtGui.QInputMethodEvent) -> None:
+        commit = event.commitString()
+        if commit:
+            self._pending_ime_text += commit
+            self._write_fn(commit)
+        event.accept()
 
     def keyPressEvent(self, event: QtGui.QKeyEvent) -> None:
         if event.matches(QtGui.QKeySequence.StandardKey.Copy):
@@ -237,6 +322,7 @@ class _TerminalScreen(QtWidgets.QPlainTextEdit):
 
         key = event.key()
         if key in (QtCore.Qt.Key.Key_Backspace, QtCore.Qt.Key.Key_Delete):
+            self._pending_ime_text = ""
             self._write_fn(self._bs if key == QtCore.Qt.Key.Key_Backspace else "\x1b[3~")
             event.accept()
             return
@@ -251,6 +337,12 @@ class _TerminalScreen(QtWidgets.QPlainTextEdit):
 
         text = event.text()
         if text and text not in ("\x7f", "\x08"):
+            pending = self._pending_ime_text
+            if pending and pending.startswith(text):
+                self._pending_ime_text = _consume_duplicate_key_text(pending, text)
+                event.accept()
+                return
+            self._pending_ime_text = ""
             self._write_fn(text)
             event.accept()
             return
@@ -321,8 +413,8 @@ class SystemTerminalWidget(QtWidgets.QWidget):
         hint.setObjectName("tabHint")
         root.addWidget(hint)
 
-        bar = QtWidgets.QHBoxLayout()
-        bar.setSpacing(8)
+        shell_row = QtWidgets.QHBoxLayout()
+        shell_row.setSpacing(8)
         self._shell_combo = QtWidgets.QComboBox()
         self._shell_combo.setObjectName("systemTerminalShell")
         if sys.platform == "win32":
@@ -331,9 +423,12 @@ class SystemTerminalWidget(QtWidgets.QWidget):
         else:
             self._shell_combo.addItem("Login shell", ("login",))
         self._shell_combo.setToolTip("Shell to spawn when you press New session.")
-        bar.addWidget(QtWidgets.QLabel("Shell:"))
-        bar.addWidget(self._shell_combo, 1)
-
+        self._shell_combo.setSizeAdjustPolicy(
+            QtWidgets.QComboBox.SizeAdjustPolicy.AdjustToContents
+        )
+        self._shell_combo.setMaximumWidth(168)
+        shell_row.addWidget(QtWidgets.QLabel("Shell:"))
+        shell_row.addWidget(self._shell_combo)
         self._btn_new = QtWidgets.QPushButton("New session")
         self._btn_new.setToolTip("Start a fresh shell (stops any existing session).")
         self._btn_clear = QtWidgets.QPushButton("Clear screen")
@@ -341,10 +436,52 @@ class SystemTerminalWidget(QtWidgets.QWidget):
         self._btn_external.setToolTip(
             "Open PowerShell or cmd in a separate console window (always available)."
         )
-        bar.addWidget(self._btn_new)
-        bar.addWidget(self._btn_clear)
-        bar.addWidget(self._btn_external)
-        root.addLayout(bar)
+        shell_row.addWidget(self._btn_new)
+        shell_row.addWidget(self._btn_clear)
+        shell_row.addWidget(self._btn_external)
+        shell_row.addStretch(1)
+        root.addLayout(shell_row)
+
+        ping_row = QtWidgets.QHBoxLayout()
+        ping_row.setSpacing(8)
+        ping_row.addWidget(QtWidgets.QLabel("Ping:"))
+        self._ping_host = QtWidgets.QLineEdit()
+        self._ping_host.setObjectName("terminalPingHost")
+        self._ping_host.setPlaceholderText("IP or hostname")
+        self._ping_host.setClearButtonEnabled(True)
+        self._ping_host.setMinimumWidth(100)
+        self._ping_host.setMaximumWidth(240)
+        self._ping_host.setToolTip("IPv4, hostname, or MagicDNS name (e.g. boat.tail-xx.ts.net)")
+        ping_row.addWidget(self._ping_host)
+        self._btn_ping = QtWidgets.QPushButton("Ping")
+        self._btn_ping.setToolTip("Run ping in the shell below (starts a session if needed).")
+        self._btn_ping_save = QtWidgets.QPushButton("Save…")
+        self._btn_ping_save.setToolTip("Save the host above as a named preset.")
+        self._btn_ping_delete = QtWidgets.QPushButton("Delete")
+        self._btn_ping_delete.setToolTip("Remove the selected preset from the list.")
+        self._btn_ping_delete.setEnabled(False)
+        self._ping_preset_combo = QtWidgets.QComboBox()
+        self._ping_preset_combo.setObjectName("terminalPingPresets")
+        self._ping_preset_combo.setMinimumWidth(88)
+        self._ping_preset_combo.setMaximumWidth(160)
+        self._ping_preset_combo.setToolTip("Load a saved ping target.")
+        ping_row.addWidget(self._btn_ping)
+        ping_row.addWidget(self._btn_ping_save)
+        ping_row.addWidget(self._btn_ping_delete)
+        ping_row.addWidget(self._ping_preset_combo)
+        ping_row.addStretch(1)
+        root.addLayout(ping_row)
+
+        self._ping_bubble_row = QtWidgets.QHBoxLayout()
+        self._ping_bubble_row.setSpacing(6)
+        self._ping_bubble_label = QtWidgets.QLabel("Quick:")
+        self._ping_bubble_row.addWidget(self._ping_bubble_label)
+        self._ping_bubble_host = QtWidgets.QWidget()
+        self._ping_bubble_inner = QtWidgets.QHBoxLayout(self._ping_bubble_host)
+        self._ping_bubble_inner.setContentsMargins(0, 0, 0, 0)
+        self._ping_bubble_inner.setSpacing(6)
+        self._ping_bubble_row.addWidget(self._ping_bubble_host, 1)
+        root.addLayout(self._ping_bubble_row)
 
         self._status = QtWidgets.QLabel()
         self._status.setObjectName("tabNote")
@@ -382,7 +519,14 @@ class SystemTerminalWidget(QtWidgets.QWidget):
         self._btn_clear.clicked.connect(self._screen.clear)
         self._btn_external.clicked.connect(self._open_external_shell)
         self._btn_install_hint.clicked.connect(self._show_install_hint)
+        self._btn_ping.clicked.connect(self._on_ping_clicked)
+        self._btn_ping_save.clicked.connect(self._on_ping_save_preset)
+        self._btn_ping_delete.clicked.connect(self._on_ping_delete_preset)
+        self._ping_preset_combo.currentIndexChanged.connect(self._on_ping_preset_combo_changed)
+        self._ping_host.returnPressed.connect(self._on_ping_clicked)
 
+        self._ping_process: QtCore.QProcess | None = None
+        self._refresh_ping_presets_ui()
         self._refresh_availability()
 
     def _refresh_availability(self) -> None:
@@ -393,8 +537,9 @@ class SystemTerminalWidget(QtWidgets.QWidget):
             self._status.setText("Click New session, then type in the screen below.")
             return
         self._fallback.setVisible(True)
-        self._screen.setEnabled(False)
+        self._screen.setEnabled(True)
         self._btn_new.setEnabled(False)
+        self._btn_ping.setEnabled(True)
         err = _WINPTY_IMPORT_ERROR
         detail = f" ({err})" if err else ""
         self._fallback_msg.setText(
@@ -411,6 +556,16 @@ class SystemTerminalWidget(QtWidgets.QWidget):
             system_root = os.environ.get("SystemRoot", r"C:\Windows")
             if key == ("cmd",):
                 return os.path.join(system_root, "System32", "cmd.exe"), ["/Q"]
+            if key == ("powershell",):
+                ps = os.path.join(
+                    system_root,
+                    "System32",
+                    "WindowsPowerShell",
+                    "v1.0",
+                    "powershell.exe",
+                )
+                if os.path.isfile(ps):
+                    return ps, _powershell_embedded_args()
             exe, args = _default_shell()
             return exe, list(args)
         return _default_shell()
@@ -538,13 +693,224 @@ class SystemTerminalWidget(QtWidgets.QWidget):
         if self._pty is not None:
             self._schedule_resize()
 
-    def _open_external_shell(self) -> None:
-        if sys.platform == "win32":
-            exe, args = self._shell_command()
-            QtCore.QProcess.startDetached(exe, args, os.getcwd())
+    def _refresh_ping_presets_ui(self) -> None:
+        host = self._ping_host.text()
+        self._ping_preset_combo.blockSignals(True)
+        self._ping_preset_combo.clear()
+        self._ping_preset_combo.addItem("Presets…", "")
+        for name in ui_prefs.list_terminal_ping_preset_names():
+            h = ui_prefs.terminal_ping_host(name) or ""
+            self._ping_preset_combo.addItem(name, h)
+        self._ping_preset_combo.setCurrentIndex(0)
+        self._ping_preset_combo.blockSignals(False)
+        self._sync_ping_delete_button()
+        self._ping_host.setText(host)
+        while self._ping_bubble_inner.count():
+            item = self._ping_bubble_inner.takeAt(0)
+            w = item.widget()
+            if w is not None:
+                w.deleteLater()
+        for name in ui_prefs.terminal_ping_bubble_names():
+            target = ui_prefs.terminal_ping_host(name) or ""
+            btn = QtWidgets.QPushButton(name)
+            btn.setObjectName("terminalPingBubble")
+            btn.setFlat(True)
+            btn.setCursor(QtGui.QCursor(QtCore.Qt.CursorShape.PointingHandCursor))
+            btn.setToolTip(f"Ping {target} — right-click to delete preset")
+            btn.clicked.connect(partial(self._run_ping, target))
+            btn.setContextMenuPolicy(QtCore.Qt.ContextMenuPolicy.CustomContextMenu)
+            btn.customContextMenuRequested.connect(
+                partial(self._on_ping_bubble_context_menu, name)
+            )
+            self._ping_bubble_inner.addWidget(btn)
+        self._ping_bubble_inner.addStretch(1)
+        has_bubbles = bool(ui_prefs.terminal_ping_bubble_names())
+        self._ping_bubble_label.setVisible(has_bubbles)
+        self._ping_bubble_host.setVisible(has_bubbles)
+
+    def _selected_ping_preset_name(self) -> Optional[str]:
+        index = self._ping_preset_combo.currentIndex()
+        if index <= 0:
+            return None
+        name = self._ping_preset_combo.currentText().strip()
+        return name or None
+
+    def _sync_ping_delete_button(self) -> None:
+        self._btn_ping_delete.setEnabled(self._selected_ping_preset_name() is not None)
+
+    def _on_ping_preset_combo_changed(self, index: int) -> None:
+        self._sync_ping_delete_button()
+        if index <= 0:
             return
-        shell, args = _default_shell()
-        QtCore.QProcess.startDetached(shell, args, os.getcwd())
+        host = self._ping_preset_combo.currentData()
+        if host:
+            self._ping_host.setText(str(host))
+
+    def _confirm_delete_ping_preset(self, name: str) -> bool:
+        clean = name.strip()
+        if not clean:
+            return False
+        host = ui_prefs.terminal_ping_host(clean) or ""
+        detail = f" ({host})" if host else ""
+        answer = QtWidgets.QMessageBox.question(
+            self,
+            "Delete ping preset",
+            f"Remove preset «{clean}»{detail}?",
+            QtWidgets.QMessageBox.StandardButton.Yes
+            | QtWidgets.QMessageBox.StandardButton.No,
+            QtWidgets.QMessageBox.StandardButton.No,
+        )
+        return answer == QtWidgets.QMessageBox.StandardButton.Yes
+
+    def _delete_ping_preset_named(self, name: str) -> None:
+        clean = name.strip()
+        if not clean:
+            return
+        if not ui_prefs.delete_terminal_ping_preset(clean):
+            QtWidgets.QMessageBox.information(
+                self,
+                "Delete ping preset",
+                f"Preset «{clean}» was not found.",
+            )
+            return
+        self._refresh_ping_presets_ui()
+
+    def _on_ping_delete_preset(self) -> None:
+        name = self._selected_ping_preset_name()
+        if not name:
+            QtWidgets.QMessageBox.information(
+                self,
+                "Delete ping preset",
+                "Choose a preset in the list, then click Delete.",
+            )
+            return
+        if not self._confirm_delete_ping_preset(name):
+            return
+        self._delete_ping_preset_named(name)
+
+    def _on_ping_bubble_context_menu(self, name: str, pos: QtCore.QPoint) -> None:
+        btn = self.sender()
+        if not isinstance(btn, QtWidgets.QWidget):
+            return
+        menu = QtWidgets.QMenu(self)
+        act_delete = menu.addAction(f"Delete «{name}»…")
+        chosen = menu.exec(btn.mapToGlobal(pos))
+        if chosen is not act_delete:
+            return
+        if not self._confirm_delete_ping_preset(name):
+            return
+        self._delete_ping_preset_named(name)
+
+    def _on_ping_save_preset(self) -> None:
+        host = sanitize_ping_host(self._ping_host.text())
+        if not host:
+            QtWidgets.QMessageBox.warning(
+                self,
+                "Ping preset",
+                "Enter a valid IP address or hostname first.",
+            )
+            return
+        default_name = self._ping_preset_combo.currentText()
+        if default_name == "Presets…":
+            default_name = host
+        name, ok = QtWidgets.QInputDialog.getText(
+            self,
+            "Save ping preset",
+            "Preset name:",
+            QtWidgets.QLineEdit.EchoMode.Normal,
+            default_name,
+        )
+        if not ok:
+            return
+        err = ui_prefs.save_terminal_ping_preset(name, host)
+        if err:
+            QtWidgets.QMessageBox.warning(self, "Ping preset", err)
+            return
+        self._refresh_ping_presets_ui()
+        for i in range(self._ping_preset_combo.count()):
+            if self._ping_preset_combo.itemText(i) == name.strip():
+                self._ping_preset_combo.setCurrentIndex(i)
+                break
+
+    def _on_ping_clicked(self) -> None:
+        self._run_ping(self._ping_host.text())
+
+    def _run_ping(self, host: str) -> None:
+        clean = sanitize_ping_host(host)
+        if not clean:
+            QtWidgets.QMessageBox.warning(
+                self,
+                "Ping",
+                "Enter a valid IP address or hostname.",
+            )
+            return
+        self._ping_host.setText(clean)
+        if _HAS_WINPTY:
+            cmd = ping_pty_command(clean)
+            if not cmd:
+                return
+            self._append_output_immediate(f"\n--- ping {clean} ---\n")
+
+            def _send() -> None:
+                self._submit_pty_write(cmd)
+                self._screen.setFocus(QtCore.Qt.FocusReason.OtherFocusReason)
+
+            self._with_session(_send)
+            return
+        self._run_ping_subprocess(clean)
+
+    def _with_session(self, action: Callable[[], None]) -> None:
+        if self._io is not None and self._pty is not None:
+            try:
+                alive = bool(getattr(self._pty, "isalive", lambda: False)())
+            except Exception:
+                alive = False
+            if alive:
+                action()
+                return
+        self._restart_session()
+        if self._io is not None:
+            QtCore.QTimer.singleShot(450, action)
+
+    def _run_ping_subprocess(self, host: str) -> None:
+        args = ping_subprocess_args(host)
+        if not args:
+            return
+        proc = self._ping_process
+        if proc is not None and proc.state() != QtCore.QProcess.ProcessState.NotRunning:
+            proc.kill()
+            proc.waitForFinished(500)
+        proc = QtCore.QProcess(self)
+        self._ping_process = proc
+        proc.setProcessChannelMode(QtCore.QProcess.ProcessChannelMode.MergedChannels)
+
+        def _append_chunk() -> None:
+            data = proc.readAllStandardOutput()
+            if data:
+                self._append_output_immediate(bytes(data).decode("utf-8", errors="replace"))
+
+        proc.readyReadStandardOutput.connect(_append_chunk)
+        proc.finished.connect(
+            lambda _code, _status: self._append_output_immediate("\n[ping finished]\n")
+        )
+        self._append_output_immediate(f"\n--- ping {host} (subprocess) ---\n")
+        self._screen.setEnabled(True)
+        proc.start(args[0], args[1:])
+
+    def _open_external_shell(self) -> None:
+        exe, args = self._shell_command()
+        cwd = _external_shell_working_directory()
+        ok, err = launch_external_shell(exe, args, cwd)
+        if ok:
+            self._status.setText(
+                f"Opened external {os.path.basename(exe)} (cwd: {cwd})."
+            )
+            return
+        QtWidgets.QMessageBox.warning(
+            self,
+            "Open external shell",
+            f"Could not start {exe}:\n{err or 'unknown error'}",
+        )
 
     def _show_install_hint(self) -> None:
         QtWidgets.QMessageBox.information(
@@ -556,6 +922,11 @@ class SystemTerminalWidget(QtWidgets.QWidget):
         )
 
     def closeEvent(self, event: QtGui.QCloseEvent) -> None:
+        proc = self._ping_process
+        if proc is not None and proc.state() != QtCore.QProcess.ProcessState.NotRunning:
+            proc.kill()
+            proc.waitForFinished(500)
+        self._ping_process = None
         self._stop_session()
         super().closeEvent(event)
 

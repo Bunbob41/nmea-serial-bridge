@@ -12,7 +12,7 @@ $desk = [Environment]::GetFolderPath("Desktop")
 $w = New-Object -ComObject WScript.Shell
 
 $iconIco = Join-Path $proj "assets\app-icon.ico"
-$distExe = Join-Path $proj "dist\nmea-serial-bridge\nmea-serial-bridge.exe"
+$distExe = Join-Path $proj "dist\serial-link\serial-link.exe"
 
 function New-BridgeShortcut($name, $targetPath, $desc, $iconPath) {
     $lnk = Join-Path $desk $name
@@ -34,7 +34,7 @@ if (Test-Path $distExe) {
     $launchIcon = $distExe
 }
 
-New-BridgeShortcut "NMEA Serial Bridge.lnk" $launchTarget "NMEA bridge: saved UI or layout picker" $launchIcon
+New-BridgeShortcut "Serial Link.lnk" $launchTarget "Serial Link: saved UI or layout picker" $launchIcon
 if (Test-Path $batMenu) {
-    New-BridgeShortcut "NMEA Serial Bridge (console menu).lnk" $batMenu "NMEA bridge: numbered UI menu in a console window" $launchIcon
+    New-BridgeShortcut "Serial Link (console menu).lnk" $batMenu "Serial Link: numbered UI menu in a console window" $launchIcon
 }

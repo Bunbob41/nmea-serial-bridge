@@ -28,8 +28,8 @@ def main() -> None:
     html = (ROOT / "index.html").read_text(encoding="utf-8")
     html = html.replace("<body>", '<body class="layout-gridstack">', 1)
     html = html.replace(
-        "<title>NMEA Bridge Dashboard</title>",
-        "<title>NMEA Bridge Dashboard (Grid)</title>",
+        "<title>Serial Link Dashboard</title>",
+        "<title>Serial Link Dashboard (Grid)</title>",
         1,
     )
     html = html.replace(
@@ -41,10 +41,6 @@ def main() -> None:
     )
     html = html.replace(
         '<main class="dashboard" id="dashboard-panels">',
-        '<p class="layout-beta-banner"><a href="/static/index.html">&larr; Classic standard layout</a> '
-        "&middot; Customize tiles, then check <strong>Lock layout</strong> in the header. "
-        "Blue bars resize; ⋯ or long-press for options. "
-        '<button type="button" class="layout-beta-reset" id="btn-gridstack-reset">Reset layout</button></p>\n'
         '  <main class="dashboard layout-gridstack-main">\n'
         '  <div class="grid-stack" id="dashboard-panels">',
         1,
@@ -101,7 +97,10 @@ def main() -> None:
     )
     html = html.replace(
         '<span class="footer-layout-link"> · <a href="/">Grid dashboard (default)</a></span>',
-        '<span class="footer-layout-link"> · <a href="/static/index.html">Classic layout (backup)</a></span>',
+        '<span class="footer-layout-link"> · <a href="/static/index.html">Classic layout</a></span>\n'
+        '    <span class="footer-layout-actions"> · '
+        '<button type="button" class="footer-layout-reset" id="btn-gridstack-reset" '
+        'title="Restore default tile positions (clears saved grid layout)">Reset layout</button></span>',
         1,
     )
 

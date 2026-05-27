@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>NMEA Bridge Dashboard</title>
+  <title>Serial Link Dashboard</title>
   <link rel="stylesheet" href="/static/dashboard.css" />
   <link rel="stylesheet" href="/static/vendor/leaflet/leaflet.css" />
 </head>
@@ -12,7 +12,8 @@
   <header class="app-header">
     <div class="header-row">
       <div class="header-brand">
-        <span class="brand-name">NMEA Bridge</span>
+        <span class="brand-name">Serial Link</span>
+        <span class="brand-tagline">Ethernet ↔ serial</span>
         <span class="version-tag" id="ver-tag">…</span>
       </div>
       <div class="header-run-controls">
@@ -170,7 +171,7 @@
         <span class="dashboard-panel-summary mono" id="panel-sum-map">Off</span>
       </button>
       <div class="dashboard-panel-body" id="panel-body-map" hidden>
-        <p class="map-hint">Live fix from GGA/RMC on the bridge stream. Choose <strong>Street</strong> or <strong>Satellite</strong> with the layer control on the map (internet required; tiles not bundled).</p>
+        <p class="map-hint">Live fix from GGA/RMC. Right-click the map (or the map panel <strong>⋯</strong> menu) for Street / Satellite and track options. Tiles need internet access.</p>
         <label class="map-enable-row">
           <input type="checkbox" id="map-enabled" />
           Show map
@@ -413,7 +414,7 @@
   </div>
 
   <footer class="app-footer">
-    <span id="footer-note">NMEA Serial Bridge — Web Dashboard</span>
+    <span id="footer-note">Serial Link — Web Dashboard</span>
     <span class="footer-layout-link"> · <a href="/">Grid dashboard (default)</a></span>
   </footer>
 

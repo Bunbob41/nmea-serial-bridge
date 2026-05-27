@@ -160,7 +160,7 @@ class _DevStaticFiles(StaticFiles):
 
     async def get_response(self, path: str, scope) -> StarletteResponse:
         response = await super().get_response(path, scope)
-        if path.endswith((".js", ".css")):
+        if path.endswith((".js", ".css", ".html")):
             response.headers["Cache-Control"] = "no-store, must-revalidate"
         return response
 
@@ -190,7 +190,7 @@ def create_app(
     if FastAPI is None:
         raise RuntimeError("fastapi is not installed; pip install -r requirements-web.txt")
 
-    app = FastAPI(title="NMEA Serial Bridge Web Control", version=version)
+    app = FastAPI(title="Serial Link Web Control", version=version)
 
     # ------------------------------------------------------------------ health
     @app.get("/health", response_model=HealthResponse)
@@ -260,7 +260,7 @@ def create_app(
     @app.get("/api", response_model=ApiIndexResponse)
     def api_index() -> ApiIndexResponse:
         return ApiIndexResponse(
-            service="nmea-serial-bridge",
+            service="serial-link",
             docs="/docs",
             status="/status",
             config="/config",
@@ -372,12 +372,16 @@ def create_app(
         def dashboard() -> FileResponse:
             # Default operator UI: customizable grid; classic single-page layout at /static/index.html
             path = grid_index if grid_index.is_file() else static / "index.html"
-            return FileResponse(str(path), media_type="text/html")
+            return FileResponse(
+                str(path),
+                media_type="text/html",
+                headers={"Cache-Control": "no-store, must-revalidate"},
+            )
     else:
         @app.get("/", response_model=ApiIndexResponse)
         def root() -> ApiIndexResponse:
             return ApiIndexResponse(
-                service="nmea-serial-bridge",
+                service="serial-link",
                 docs="/docs",
                 status="/status",
                 config="/config",

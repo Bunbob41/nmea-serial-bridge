@@ -46,7 +46,7 @@ def main() -> int:
     if not port_has_tcp_listener(args.host, args.port):
         print(
             f"[bench_tcp_test] ERROR: Nothing accepted TCP on {args.host}:{args.port}.\n"
-            "  1) Open NMEA Serial Bridge\n"
+            "  1) Open Serial Link\n"
             "  2) Tools/Net → Advanced → TCP server (e.g. 0.0.0.0:4001)\n"
             "  3) Desk test or Boat, then Start bridge\n"
             "  4) Log should say: TCP server listening …\n"

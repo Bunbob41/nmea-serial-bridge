@@ -33,6 +33,16 @@ _DIAG_CARD_EXPANDED_CAP: dict[str, int] = {
     "automated_checks": 520,
 }
 
+# Tools → Phone — in-tab help (also referenced by tests).
+PHONE_API_TOKEN_HELP = (
+    "API token — shared secret so only you can start/stop the bridge, change COM, "
+    "or refresh discovery from a phone or another PC over Tailscale/LAN. "
+    "Required when Allow LAN / Tailscale is on and this field is not empty; "
+    "with remote access off, the dashboard on this PC alone does not check the token. "
+    "Generate creates a new random secret. You may paste your own long private string instead, "
+    "or use Copy link / Paste link / QR to hand the same token to your phone."
+)
+
 
 def _diag_collapsed_strip_height(toggle: QtWidgets.QToolButton, margins: QtCore.QMargins) -> int:
     """Header strip height when collapsed — safe before first show/layout."""
@@ -364,122 +374,129 @@ code  { background: #2a2a2a; color: #e8e8e8; padding: 1px 4px; border-radius: 3p
 .note { color: #999; font-style: italic; margin-top: 6px; }
 """
 
-_GUIDE_UDP = """
-<h2>Method 1 — UDP Flow (Point-to-Point / Broadcast)</h2>
-<p><em>Best for fast, connectionless data streams to a specific machine or local software
-(e.g. bench testing, MissionPlanner, local chart plotter).</em></p>
+_GUIDE_START = """
+<h2>Start here — stuck on connect?</h2>
+<p><em>Most survey setups use <b>UDP listen</b> on the <b>Connect</b> tab. Use this page first,
+then open the UDP / TCP tabs for mode-specific detail.</em></p>
 <hr/>
-<h3>How to Configure</h3>
+<h3>60-second path (Standard layout)</h3>
 <ol>
-  <li>Open the main <b>Tools</b> tab (Standard) or <b>Tools</b> drawer (Field) and select <b>Presets</b>.</li>
-  <li>Click <b>Save as…</b> to create a new named preset (or edit fields and <b>Save</b>).</li>
-  <li>Name your preset (e.g. <em>"Bench UDP Test"</em>).</li>
-  <li><b>Serial Configuration:</b>
-    <ul>
-      <li>Select the target <b>COM Port</b> (e.g. COM7).</li>
-      <li>Set the <b>Baud Rate</b> (e.g. 115200).</li>
-    </ul>
-  </li>
-  <li><b>Network Configuration (UDP):</b>
-    <ul>
-      <li>Set Protocol to <b>UDP Remote</b> or <b>UDP Listen</b>.</li>
-      <li>Set <b>Target IP:</b> the IP address receiving the data
-          (use <code>127.0.0.1</code> for local software).</li>
-      <li>Set <b>Target Port:</b> the port the receiving software listens on
-          (e.g. <code>10110</code>).</li>
-    </ul>
-  </li>
-  <li>Click <b>Save</b> or <b>Save as…</b>.</li>
-  <li>Return to the <b>Connect</b> tab: confirm <b>Serial &amp; network</b> (connection hub or manual fields),
-      then <b>Start bridge</b> in the <b>Run bridge</b> panel.</li>
+  <li><b>Connect</b> tab → <b>Serial &amp; network</b> (or the connection hub device card):
+      pick <b>COM</b> (Refresh if missing), set <b>Baud</b> to match the receiver.</li>
+  <li><b>Network (UDP listen)</b> on the same tab:
+      <b>Listen host</b> <code>0.0.0.0</code> (all interfaces) or your PC IP;
+      <b>Listen port</b> to match the INS/GNSS output (often <code>10110</code>).</li>
+  <li><b>Run bridge</b> panel → <b>Start bridge</b> (shortcut <code>Ctrl+B</code>).
+      Status banner should show <b>Running</b>; bottom bar shows Serial / Network lines.</li>
+  <li>No data? Check firewall, cable/VLAN, and that the sender targets this PC and port.
+      Open <b>Log</b> and enable verbose logging if you need to see each sentence.</li>
 </ol>
-<p class="note">UDP Listen mode tracks every sender that transmits to your port and can
-fan-out replies to all of them (toggle the <em>Fan-out to all UDP peers</em> checkbox).</p>
+<h3>Where things live</h3>
+<ul>
+  <li><b>Standard:</b> COM + UDP listen on <b>Connect</b>. TCP / UDP remote → enable
+      <b>Advanced network (TCP / UDP remote / all modes)</b> on Connect, then pick a mode.</li>
+  <li><b>Field / Minimal / Log-first:</b> same fields in <b>Connect</b>; TCP / UDP remote also
+      under <b>Tools</b> drawer → <b>Presets</b> → <b>Advanced network (TCP / UDP remote)</b>.</li>
+  <li><b>Named setups:</b> <b>Tools → Presets</b> — click a name to <b>Load</b>, edit, <b>Save</b>
+      or <b>Save as…</b> (bridge must be stopped to load).</li>
+  <li><b>NMEA mode:</b> <b>Tools → NMEA</b> — Passthrough (recommended), Strict, or Raw binary.</li>
+  <li><b>Phone / browser dashboard:</b> <b>Tools → Phone</b> (token, port, QR — not on this Guide tab).</li>
+  <li><b>Tray:</b> closing the window while the bridge runs hides to the tray; use tray <b>Exit</b>
+      to quit the app completely.</li>
+</ul>
+<p class="note">Bench help: <b>Tools → Diagnostics</b> → <b>Bench pair setup…</b> or
+<b>Bench checklist</b>. Full docs: buttons at the top of this tab.</p>
+"""
+
+_GUIDE_UDP = """
+<h2>UDP — listen vs remote</h2>
+<p><em><b>UDP listen</b> (default on Connect): this PC receives datagrams on a bind port — typical
+for Trimble/INS Ethernet NMEA. <b>UDP remote</b> (Advanced): send to one fixed host:port.</em></p>
+<hr/>
+<h3>UDP listen (most survey installs)</h3>
+<ol>
+  <li><b>Connect</b> → <b>Serial</b>: <b>COM</b> + <b>Baud</b> (e.g. COM7 @ 115200).</li>
+  <li><b>Network (UDP listen)</b>: <b>Listen host</b> + <b>Listen port</b>
+      (not “target” fields — those apply to UDP remote only).</li>
+  <li>Optional: <b>Fan-out — send serial data to all UDP peers</b> — when checked, COM→network
+      goes to every sender that has talked to this port (UDP listen only).</li>
+  <li><b>Run bridge</b> → <b>Start bridge</b>. Confirm the status bar Network line shows listen OK.</li>
+  <li>To reuse later: <b>Tools → Presets</b> → <b>Save as…</b> after fields look right (load when stopped).</li>
+</ol>
+<h3>UDP remote (fixed peer — bench or one chart PC)</h3>
+<ol>
+  <li>On <b>Connect</b>, check <b>Advanced network (TCP / UDP remote / all modes)</b>.</li>
+  <li>Under <b>Mode</b>, select <b>UDP remote</b>.</li>
+  <li><b>UDP remote (fixed peer)</b> → <b>Host</b> (e.g. <code>127.0.0.1</code> for local software)
+      and <b>Port</b> (e.g. <code>10110</code>).</li>
+  <li><b>Start bridge</b>. Fan-out does not apply in remote mode.</li>
+</ol>
+<p class="note">Field layout: the Advanced network block is also on <b>Tools → Presets</b>
+if you prefer to configure there, then return to Connect to Start.</p>
 """
 
 _GUIDE_TCP_CLIENT = """
-<h2>Method 2 — TCP Client Flow (Connecting Outward)</h2>
-<p><em>Best for connecting your local serial hardware to an established remote server.</em></p>
+<h2>TCP client — connect outward to a server</h2>
+<p><em>Use when your serial device should join an existing TCP service (remote host listens;
+this app connects as the client).</em></p>
 <hr/>
-<h3>How to Configure</h3>
+<h3>Steps</h3>
 <ol>
-  <li>Open the main <b>Tools</b> tab (Standard) or <b>Tools</b> drawer (Field) and select <b>Presets</b>.</li>
-  <li>Click <b>Save as…</b> to create a new named preset (or edit fields and <b>Save</b>).</li>
-  <li>Name your preset (e.g. <em>"Remote Server Link"</em>).</li>
-  <li><b>Serial Configuration:</b>
-    <ul>
-      <li>Select the target <b>COM Port</b>.</li>
-      <li>Set the <b>Baud Rate</b>.</li>
-    </ul>
-  </li>
-  <li><b>Network Configuration (TCP Client):</b>
-    <ul>
-      <li>Set Protocol to <b>TCP Client</b>.</li>
-      <li>Set <b>Server IP:</b> the exact IP address of the remote machine.</li>
-      <li>Set <b>Server Port:</b> the port the remote server has opened for you.</li>
-    </ul>
-  </li>
-  <li>Click <b>Save</b> or <b>Save as…</b>.</li>
-  <li>Return to <b>Connect</b> and click <b>Start bridge</b>.
-      The app will actively attempt to connect to the remote server.</li>
+  <li><b>Connect</b> → <b>Serial</b>: correct <b>COM</b> and <b>Baud</b>.</li>
+  <li>Enable <b>Advanced network (TCP / UDP remote / all modes)</b>.</li>
+  <li><b>Mode</b> → <b>TCP client</b>.</li>
+  <li><b>TCP client</b> group → <b>Host</b> (server IP) and <b>Port</b>.</li>
+  <li>Optional: <b>TCP reconnect delay</b> (seconds between retries if the server drops).</li>
+  <li><b>Start bridge</b> — the app actively opens the TCP connection. Watch the Network line
+      in the status bar.</li>
+  <li>Save the setup under <b>Tools → Presets</b> when it works.</li>
 </ol>
-<p class="note">The bridge retries the connection automatically if the server drops.
-Watch the Network chip in the status bar for connection state.</p>
+<p class="note">TCP client is under Advanced network on Connect (Standard) or Presets (Field drawer).</p>
 """
 
 _GUIDE_TCP_SERVER = """
-<h2>Method 3 — TCP Server Flow (Hosting Locally)</h2>
-<p><em>Best for allowing external software or remote machines to connect to your local
-serial hardware.</em></p>
+<h2>TCP server — host a port on this PC</h2>
+<p><em>Use when Hypack, a chart, or another machine must connect <em>to</em> your bridge PC
+to read/write the COM port.</em></p>
 <hr/>
-<h3>How to Configure</h3>
+<h3>Steps</h3>
 <ol>
-  <li>Open the main <b>Tools</b> tab (Standard) or <b>Tools</b> drawer (Field) and select <b>Presets</b>.</li>
-  <li>Click <b>Save as…</b> to create a new named preset (or edit fields and <b>Save</b>).</li>
-  <li>Name your preset (e.g. <em>"Local Host Access"</em>).</li>
-  <li><b>Serial Configuration:</b>
-    <ul>
-      <li>Select the target <b>COM Port</b>.</li>
-      <li>Set the <b>Baud Rate</b>.</li>
-    </ul>
-  </li>
-  <li><b>Network Configuration (TCP Server):</b>
-    <ul>
-      <li>Set Protocol to <b>TCP Server</b>.</li>
-      <li>Set <b>Listen IP:</b> use <code>0.0.0.0</code> to accept connections from any
-          machine, or <code>127.0.0.1</code> to restrict to this computer only.</li>
-      <li>Set <b>Listen Port:</b> choose an open port (e.g. <code>10110</code>).
-          Ensure this port is not blocked by your firewall.</li>
-    </ul>
-  </li>
-  <li>Click <b>Save</b> or <b>Save as…</b>.</li>
-  <li>Return to <b>Connect</b> and click <b>Start bridge</b>.
-      The app will listen and wait for a client to connect.</li>
+  <li><b>Connect</b> → <b>Serial</b>: <b>COM</b> + <b>Baud</b>.</li>
+  <li>Enable <b>Advanced network (TCP / UDP remote / all modes)</b>.</li>
+  <li><b>Mode</b> → <b>TCP server</b>.</li>
+  <li><b>TCP server</b> group → <b>Bind</b>
+      (<code>0.0.0.0</code> = any interface, <code>127.0.0.1</code> = this PC only)
+      and <b>Port</b> (e.g. <code>4001</code>). Allow the port in Windows Firewall for remote clients.</li>
+  <li><b>Start bridge</b> — the app listens until a client connects (one client at a time).</li>
+  <li>Point your client software at this PC’s IP and the listen port. Network status updates
+      when a client attaches.</li>
 </ol>
-<p class="note">Only one TCP client can connect at a time in server mode. The status bar
-Network chip shows the connected client address once a connection is established.</p>
+<p class="note">Bench TCP test: <b>Tools → Diagnostics</b> → automated TCP stress/demo buttons
+(require TCP server mode + bridge running).</p>
 """
 
 _GUIDE_CHECKLIST = """
-<h2>Technical Verification Checklist</h2>
-<p><em>Verify these fields before starting the bridge to avoid silent data corruption.</em></p>
+<h2>Before you Start bridge</h2>
+<p><em>Quick checks when nothing moves on the wire or sentences look wrong.</em></p>
 <hr/>
 <ul>
-  <li><b>COM Port:</b> must be a valid local identifier (COM1–256 on Windows,
-      <code>/dev/tty…</code> on Linux). Use the Refresh button if it does not appear.</li>
-  <li><b>Baud Rate:</b> must match the physical hardware exactly —
-      a mismatch produces garbled NMEA sentences without an error.</li>
-  <li><b>Target / Listen IP:</b> must be a valid IPv4 address (<code>X.X.X.X</code>).</li>
-  <li><b>Port Numbers:</b> integer between <code>1</code> and <code>65535</code>.
-      Avoid ports below <code>1024</code> — they are OS-reserved and may require
-      elevated privileges.</li>
-  <li><b>Firewall:</b> TCP Server and UDP Listen modes require the chosen port to be
-      reachable. Add a Windows Defender inbound rule if external machines cannot connect.</li>
-  <li><b>NMEA Mode:</b> use <em>Passthrough</em> for trusted hardware;
-      use <em>Strict</em> to drop malformed sentences and track rejects in the status bar.</li>
+  <li><b>COM:</b> correct port (Refresh), not held by PuTTY/Tera Term — use <b>Unlock COM</b>
+      on the connection hub if shown. Baud matches the receiver exactly.</li>
+  <li><b>UDP listen:</b> <b>Listen host</b> / <b>Listen port</b> match how the sender is configured;
+      ping the INS from <b>Tools → Terminal</b> if needed.</li>
+  <li><b>UDP remote / TCP:</b> <b>Advanced network</b> enabled; correct mode radio selected;
+      host/port fields match the peer (labels are <b>Host</b>/<b>Port</b> or <b>Bind</b>/<b>Port</b>).</li>
+  <li><b>Ports:</b> integers <code>1</code>–<code>65535</code>; avoid &lt; <code>1024</code> unless you know the OS allows it.</li>
+  <li><b>Firewall:</b> inbound rule for UDP listen / TCP server ports used from other PCs.</li>
+  <li><b>NMEA (Tools → NMEA):</b>
+      <b>Passthrough (recommended)</b> for normal GNSS;
+      <b>Strict + sentence filter</b> to drop bad lines;
+      <b>Raw binary (RTCM / other)</b> only for non-NMEA bytes.</li>
+  <li><b>While running:</b> status banner + bottom <b>Serial</b> / <b>Network</b> lines;
+      ↓ ↑ Hz on the right when traffic flows. Drops/rejects called out in plain language.</li>
 </ul>
-<p class="note">After clicking Start bridge, watch the Serial and Network chips in the
-bottom status bar. Green text indicates an active connection; red indicates an error.</p>
+<p class="note">Still stuck? Open <b>Getting started…</b> above or run
+<b>Tools → Diagnostics → Bench checklist</b> with the bridge stopped.</p>
 """
 
 
@@ -712,7 +729,7 @@ def build_phone_dashboard_tab(parent: QtWidgets.QWidget) -> QtWidgets.QWidget:
 
     parent.chk_web_enabled = QtWidgets.QCheckBox("Enable")
     parent.chk_web_enabled.setToolTip(
-        "Enable the HTTP dashboard on this PC (default port 8765) for status, config, and start/stop. "
+        "HTTP dashboard on this PC (port 8765 by default). On at launch for phone/monitor use. "
         "Requires a token when LAN/Tailscale access is enabled."
     )
 
@@ -828,6 +845,10 @@ def build_phone_dashboard_tab(parent: QtWidgets.QWidget) -> QtWidgets.QWidget:
     server_lay.addWidget(server_form_host, 1)
 
     phone_card, phone_lay = _phone_dashboard_card("Phone Pairing")
+    token_help = QtWidgets.QLabel(PHONE_API_TOKEN_HELP)
+    token_help.setWordWrap(True)
+    token_help.setObjectName("tabNote")
+    phone_lay.addWidget(token_help)
     phone_form_host = QtWidgets.QWidget()
     phone_form = QtWidgets.QFormLayout(phone_form_host)
     _configure_phone_form(phone_form)
@@ -870,8 +891,8 @@ def build_phone_dashboard_tab(parent: QtWidgets.QWidget) -> QtWidgets.QWidget:
     parent.edit_web_token = QtWidgets.QLineEdit()
     parent.edit_web_token.setPlaceholderText("Generate or paste token")
     parent.edit_web_token.setToolTip(
-        "X-Bridge-Token for Start/Stop and COM changes from your phone. "
-        "Generate here or paste a setup link from another device."
+        "Sent as X-Bridge-Token on remote control requests when LAN/Tailscale is on. "
+        "Generate a new secret, paste your own, or import from a setup link."
     )
     parent.edit_web_token.setClearButtonEnabled(True)
     parent.btn_web_token_generate = _phone_icon_tool_button(
@@ -927,8 +948,8 @@ def build_phone_dashboard_tab(parent: QtWidgets.QWidget) -> QtWidgets.QWidget:
     )
     phone_form.addRow(
         _phone_form_label(
-            "Remote control token",
-            "Required for remote start/stop and COM changes when LAN/Tailscale is on.",
+            "API token",
+            "X-Bridge-Token for remote Start/Stop, config, COM unlock, and discovery refresh.",
         ),
         token_field,
     )
@@ -967,9 +988,17 @@ def build_guide_tab(parent: QtWidgets.QWidget) -> QtWidgets.QWidget:
     lay.setContentsMargins(10, 10, 10, 10)
     lay.setSpacing(8)
 
-    header = QtWidgets.QLabel("Network ↔ COM Bridge — Connection Workflows")
+    header = QtWidgets.QLabel("Serial Link — connection help")
     header.setObjectName("tabHint")
     lay.addWidget(header)
+
+    intro = QtWidgets.QLabel(
+        "Step-by-step UDP/TCP workflows aligned with the Connect tab and Tools drawer. "
+        "Use Start here if you are stuck; use the doc buttons for the full install walkthrough."
+    )
+    intro.setWordWrap(True)
+    intro.setObjectName("tabNote")
+    lay.addWidget(intro)
 
     repo_root = Path(__file__).resolve().parent.parent
     doc_note = QtWidgets.QLabel(
@@ -1018,6 +1047,7 @@ def build_guide_tab(parent: QtWidgets.QWidget) -> QtWidgets.QWidget:
     tabs.setDocumentMode(True)
 
     for tab_title, html in (
+        ("Start here", _GUIDE_START),
         ("UDP", _GUIDE_UDP),
         ("TCP Client", _GUIDE_TCP_CLIENT),
         ("TCP Server", _GUIDE_TCP_SERVER),
@@ -1170,27 +1200,37 @@ def build_diagnostics_tab(parent: QtWidgets.QWidget) -> QtWidgets.QWidget:
     )
     _register_card("file_log")
     parent.chk_file_log = QtWidgets.QCheckBox("Write NMEA traffic to file while bridge runs")
+    parent.chk_file_log.setToolTip(
+        "Appends each bridged line to the path below. Separate from the on-screen Log tab."
+    )
     fv.addWidget(parent.chk_file_log)
     path_row = QtWidgets.QHBoxLayout()
     parent.file_log_path = QtWidgets.QLineEdit(str(Path.home() / "bridge_survey.log"))
     parent.file_log_path.setPlaceholderText("Path to .log file")
+    parent.file_log_path.setToolTip("Active log file. When it fills up, it is renamed .log.1, .log.2, …")
     parent.btn_browse = QtWidgets.QPushButton("Browse…")
     path_row.addWidget(parent.file_log_path, 1)
     path_row.addWidget(parent.btn_browse)
     fv.addLayout(path_row)
     size_row = QtWidgets.QHBoxLayout()
-    size_row.addWidget(QtWidgets.QLabel("Per-file size:"))
+    size_row.addWidget(QtWidgets.QLabel("Roll at:"))
     parent.cmb_file_log_mb = QtWidgets.QComboBox()
     for mb in (10, 25, 50, 100):
         parent.cmb_file_log_mb.addItem(f"{mb} MB", mb)
     parent.cmb_file_log_mb.setToolTip(
-        "Rotating log size before rollover. Duration depends on sentence rate and payload size."
+        "Start a new log file when the active file reaches this size."
     )
     size_row.addWidget(parent.cmb_file_log_mb, 1)
-    size_row.addWidget(QtWidgets.QLabel("Backups:"))
+    size_row.addWidget(QtWidgets.QLabel("Keep old files:"))
     parent.cmb_file_log_backups = QtWidgets.QComboBox()
+    parent.cmb_file_log_backups.addItem("None — one file only", 0)
     for n in (3, 5, 10):
         parent.cmb_file_log_backups.addItem(str(n), n)
+    parent.cmb_file_log_backups.setToolTip(
+        "None: when the log fills, the same file is cleared and reused (~one file on disk). "
+        "Otherwise keep that many rotated copies (e.g. .log.1, .log.2); oldest are deleted. "
+        "On-disk only — not a cloud backup."
+    )
     size_row.addWidget(parent.cmb_file_log_backups, 0)
     fv.addLayout(size_row)
     parent.lbl_file_log_retention = QtWidgets.QLabel(file_log_retention_hint(10, 5))
@@ -1201,8 +1241,8 @@ def build_diagnostics_tab(parent: QtWidgets.QWidget) -> QtWidgets.QWidget:
         parent.cmb_file_log_mb.currentIndexChanged.connect(parent._refresh_file_log_retention_hint)
         parent.cmb_file_log_backups.currentIndexChanged.connect(parent._refresh_file_log_retention_hint)
     file_note = QtWidgets.QLabel(
-        "Format: PC time | GPS UTC | direction | sentence. "
-        "Use size/backups for POSPAC/post-processing retention on this PC."
+        "Line format: PC time | GPS UTC | direction | NMEA sentence. "
+        "Tune roll size and kept old files for how much history stays on this PC (e.g. POSPAC export)."
     )
     file_note.setWordWrap(True)
     file_note.setObjectName("tabNote")
@@ -1233,7 +1273,7 @@ def build_diagnostics_tab(parent: QtWidgets.QWidget) -> QtWidgets.QWidget:
         "• session totals — Lifetime counts this run.\n"
         "• GNSS chip — fix quality, sats, HDOP, stale detection.\n\n"
         "This card is a fast operator legend (not a protocol deep dive).\n"
-        "For transparent scope, strengths, and current limitations, open the Guide tab."
+        "For connection workflows and troubleshooting, open Tools → Guide."
     )
     qa.setWordWrap(True)
     qa.setObjectName("tabNote")
@@ -1299,6 +1339,18 @@ def build_diagnostics_tab(parent: QtWidgets.QWidget) -> QtWidgets.QWidget:
     bv.addLayout(btn_row1)
 
     btn_row2 = QtWidgets.QHBoxLayout()
+    parent.btn_diag_network_bench = QtWidgets.QPushButton("Network bench (auto)")
+    parent.btn_diag_network_bench.setObjectName("btnDiagNetworkBench")
+    parent.btn_diag_network_bench.setToolTip(
+        "Runs bench_network_automation.py: headless zero-drop UDP + TCP reconnect when the "
+        "bench UDP port is free; otherwise a short live burst to the running bridge."
+    )
+    parent.btn_diag_fanout_bench = QtWidgets.QPushButton("Fan-out bench (auto)")
+    parent.btn_diag_fanout_bench.setObjectName("btnDiagFanoutBench")
+    parent.btn_diag_fanout_bench.setToolTip(
+        "Runs bench_fanout_automation.py: headless two-peer fan-out + last-peer-only when UDP "
+        "port is free; live registers two peers when the bridge is already Running."
+    )
     parent.btn_diag_udp = QtWidgets.QPushButton("UDP sample burst (2.5 s)")
     parent.btn_diag_udp.setObjectName("btnDiagUdpBurst")
     parent.btn_diag_udp.setToolTip(
@@ -1321,6 +1373,8 @@ def build_diagnostics_tab(parent: QtWidgets.QWidget) -> QtWidgets.QWidget:
     parent.btn_diag_stop.setEnabled(False)
     parent.btn_diag_stop.setToolTip("Kill the running helper process.")
     parent.btn_diag_clear = QtWidgets.QPushButton("Clear output")
+    btn_row2.addWidget(parent.btn_diag_network_bench)
+    btn_row2.addWidget(parent.btn_diag_fanout_bench)
     btn_row2.addWidget(parent.btn_diag_udp)
     btn_row2.addWidget(parent.btn_diag_tcp_stress)
     btn_row2.addWidget(parent.btn_diag_tcp_demo)
@@ -1379,14 +1433,17 @@ def build_diagnostics_tab(parent: QtWidgets.QWidget) -> QtWidgets.QWidget:
         QtWidgets.QSizePolicy.Policy.Fixed,
     )
     parent.diag_output.setMaximumBlockCount(12_000)
-    mono = QtGui.QFontDatabase.systemFont(QtGui.QFontDatabase.SystemFont.FixedFont)
-    parent.diag_output.setFont(mono)
+    from ui.fonts import monospace_ui_font
+
+    parent.diag_output.setFont(monospace_ui_font())
     bv.addWidget(parent.diag_output)
 
     parent._diag_run_buttons = [
         parent.btn_diag_verify,
         parent.btn_diag_setup,
         parent.btn_diag_setup_prod,
+        parent.btn_diag_network_bench,
+        parent.btn_diag_fanout_bench,
         parent.btn_diag_udp,
         parent.btn_diag_tcp_stress,
         parent.btn_diag_tcp_demo,
@@ -1395,6 +1452,8 @@ def build_diagnostics_tab(parent: QtWidgets.QWidget) -> QtWidgets.QWidget:
     parent.btn_diag_verify.clicked.connect(parent._diag_run_verify_all)
     parent.btn_diag_setup.clicked.connect(parent._diag_run_check_setup)
     parent.btn_diag_setup_prod.clicked.connect(parent._diag_run_check_setup_production)
+    parent.btn_diag_network_bench.clicked.connect(parent._diag_run_network_bench)
+    parent.btn_diag_fanout_bench.clicked.connect(parent._diag_run_fanout_bench)
     parent.btn_diag_udp.clicked.connect(parent._diag_run_udp_sample)
     parent.btn_diag_tcp_stress.clicked.connect(parent._diag_run_tcp_stress)
     parent.btn_diag_tcp_demo.clicked.connect(parent._diag_run_tcp_demo)

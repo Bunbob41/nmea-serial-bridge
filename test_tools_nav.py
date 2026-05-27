@@ -1,4 +1,4 @@
-"""Product demo helpers — open Tools drawer tabs by alias."""
+"""Tools drawer / nav helpers."""
 from __future__ import annotations
 
 import sys
@@ -6,10 +6,10 @@ import unittest
 
 from PySide6 import QtWidgets
 
-from ui.demo import _open_tools
+from ui.tools_nav import open_tools_tab
 
 
-class TestDemoHelpers(unittest.TestCase):
+class TestToolsNav(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         cls._app = QtWidgets.QApplication.instance() or QtWidgets.QApplication(sys.argv)
@@ -28,22 +28,22 @@ class TestDemoHelpers(unittest.TestCase):
 
     def test_open_send_selects_inject_tab(self) -> None:
         win = self._make_win(["Presets", "Terminal", "Inject", "Diagnostics"])
-        _open_tools(win, "send")
+        open_tools_tab(win, "send")
         self.assertTrue(win._drawer_btn.isChecked())  # type: ignore[attr-defined]
         tabs = win._drawer_tabs  # type: ignore[attr-defined]
         self.assertEqual(tabs.tabText(tabs.currentIndex()), "Inject")
 
     def test_open_terminal_alias(self) -> None:
         win = self._make_win(["Presets", "Terminal", "Inject", "Diagnostics"])
-        _open_tools(win, "terminal")
+        open_tools_tab(win, "terminal")
         tabs = win._drawer_tabs  # type: ignore[attr-defined]
         self.assertEqual(tabs.tabText(tabs.currentIndex()), "Terminal")
 
-    def test_open_diag_aliases(self) -> None:
-        win = self._make_win(["Presets", "Diagnostics"])
-        _open_tools(win, "diagnostics")
+    def test_open_guide_alias(self) -> None:
+        win = self._make_win(["Presets", "Guide"])
+        open_tools_tab(win, "guide")
         tabs = win._drawer_tabs  # type: ignore[attr-defined]
-        self.assertEqual(tabs.tabText(tabs.currentIndex()), "Diagnostics")
+        self.assertEqual(tabs.tabText(tabs.currentIndex()), "Guide")
 
 
 if __name__ == "__main__":

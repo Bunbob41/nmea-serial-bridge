@@ -39,11 +39,6 @@ def main() -> None:
         action="store_true",
         help="Show layout picker dialog before opening the window",
     )
-    parser.add_argument(
-        "--demo",
-        action="store_true",
-        help="Open the product demo guide (Field layout recommended)",
-    )
     args = parser.parse_args()
 
     # Qt6-native high-DPI scaling — must be set before QApplication is constructed.
@@ -51,7 +46,33 @@ def main() -> None:
     os.environ["QT_ENABLE_HIGHDPI_SCALING"] = "1"
 
     app = QtWidgets.QApplication(sys.argv)
+    app.setQuitOnLastWindowClosed(True)
     apply_app_icon(app)
+
+    from PySide6.QtCore import QLockFile, QStandardPaths
+
+    lock_path = os.path.join(
+        QStandardPaths.writableLocation(QStandardPaths.StandardLocation.TempLocation),
+        "nmea-serial-bridge.lock",
+    )
+    instance_lock = QLockFile(lock_path)
+    instance_lock.setStaleLockTime(0)
+    if not instance_lock.tryLock(400):
+        if instance_lock.error() == QLockFile.LockError.LockFailedError:
+            instance_lock.removeStaleLockFile()
+            instance_lock.tryLock(400)
+        if not instance_lock.isLocked():
+            QtWidgets.QMessageBox.warning(
+                None,
+                "Already running",
+                "Serial Link is already open.\n\n"
+                "Check the taskbar or system tray for the window. "
+                "If you switched layouts earlier, end the old python.exe in "
+                "Task Manager only if no window is visible.",
+            )
+            return
+    app._instance_lock = instance_lock  # type: ignore[attr-defined]
+
     from ui.picker import load_saved_ui, resolve_ui_id
 
     # Only show the picker when explicitly requested via --pick-ui.
@@ -60,11 +81,6 @@ def main() -> None:
     ui_id = resolve_ui_id(args.ui, show_picker=show_picker)
     w = create_window(ui_id)
     w.show()
-    if args.demo:
-        from PySide6 import QtCore
-        from ui.demo import open_product_demo
-
-        QtCore.QTimer.singleShot(500, lambda: open_product_demo(w))
     sys.exit(app.exec())
 
 

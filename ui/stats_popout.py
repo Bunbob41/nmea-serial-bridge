@@ -1769,6 +1769,16 @@ class SurveyStatsPopout(QtWidgets.QWidget):
         *,
         running: bool,
     ) -> None:
+        bridge = self._bridge
+        if bridge is not None:
+            try:
+                from shiboken6 import isValid
+
+                if not isValid(bridge):
+                    self.close()
+                    return
+            except Exception:
+                pass
         # Avoid heavy repaint churn while user is actively dragging resize edges.
         if self._interactive_resize_active:
             return

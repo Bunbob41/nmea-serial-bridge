@@ -153,7 +153,7 @@ UDP + NMEA Simulator (common mistake):
 
 
 def main() -> None:
-    p = argparse.ArgumentParser(description="Pre-flight checks for nmea-serial-bridge")
+    p = argparse.ArgumentParser(description="Pre-flight checks for Serial Link")
     p.add_argument("--port", type=int, default=0, help="UDP listen port (0 = load from saved preset)")
     p.add_argument("--host", default="", help="UDP target for send test (empty = preset default)")
     p.add_argument("--com", default="", help="Expected bridge COM (highlights in port list)")

@@ -19,7 +19,7 @@ def main() -> int:
 
     py = cli_python_executable()
     proc = subprocess.run(
-        [py, "-m", "unittest", "discover", "-s", str(ROOT), "-p", "test_*.py", "-q"],
+        [py, "-m", "unittest", "discover", "-s", str(ROOT), "-p", "test_*.py"],
         cwd=ROOT,
         capture_output=True,
         text=True,

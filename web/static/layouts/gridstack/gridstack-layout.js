@@ -285,7 +285,13 @@ function applyGridstackLayoutLock(locked) {
   }
 }
 
+/** Drop legacy top banner (cached HTML may still include it after CSS was updated). */
+function removeLegacyLayoutBanner() {
+  document.querySelectorAll(".layout-beta-banner").forEach((el) => el.remove());
+}
+
 function initGridstackDashboard() {
+  removeLegacyLayoutBanner();
   const root = document.querySelector(".grid-stack#dashboard-panels");
   if (!root || typeof GridStack === "undefined") {
     console.warn("[gridstack] GridStack not available");
@@ -393,14 +399,6 @@ function patchGridstackMapChromeMenu() {
     } else {
       gridstackMapChromeMenuFallback(head);
     }
-    const banner = document.querySelector(".layout-beta-banner");
-    if (banner && !banner.querySelector(".grid-chrome-stale-hint")) {
-      const hint = document.createElement("span");
-      hint.className = "grid-chrome-stale-hint";
-      hint.textContent =
-        " · Map menu patched — restart the app or Ctrl+Shift+R to load dashboard.js v1.13.5+";
-      banner.appendChild(hint);
-    }
     return head.concat([{ separator: true }], items);
   };
   window.buildChromeMenuItems.__gridMapChromePatch = true;
@@ -493,5 +491,6 @@ function gridstackMapChromeMenuFallback(items) {
 }
 
 document.addEventListener("DOMContentLoaded", () => {
+  removeLegacyLayoutBanner();
   patchGridstackMapChromeMenu();
 });

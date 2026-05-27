@@ -21,8 +21,8 @@ if ($versionLine -match '"([^"]+)"') {
     throw "Could not read __version__ from version.py"
 }
 
-$distDir = Join-Path $PSScriptRoot "dist\nmea-serial-bridge"
-$zipName = "nmea-serial-bridge-v$Version-win64.zip"
+$distDir = Join-Path $PSScriptRoot "dist\serial-link"
+$zipName = "serial-link-v$Version-win64.zip"
 $zipPath = Join-Path $PSScriptRoot "dist\$zipName"
 
 $doPublish = $Publish -or $PublishOnly
@@ -30,7 +30,7 @@ if ($PublishOnly -and $SkipTests) {
     Write-Host "Note: -SkipTests is ignored with -PublishOnly (no build)." -ForegroundColor DarkGray
 }
 
-Write-Host "=== NMEA Serial Bridge release v$Version ===" -ForegroundColor Cyan
+Write-Host "=== Serial Link release v$Version ===" -ForegroundColor Cyan
 
 if ($PublishOnly) {
     if (-not (Test-Path $zipPath)) {
@@ -53,8 +53,8 @@ if ($PublishOnly) {
         & "$PSScriptRoot\build.ps1"
     }
 
-    if (-not (Test-Path (Join-Path $distDir "nmea-serial-bridge.exe"))) {
-        throw "Build failed: missing $distDir\nmea-serial-bridge.exe"
+    if (-not (Test-Path (Join-Path $distDir "serial-link.exe"))) {
+        throw "Build failed: missing $distDir\serial-link.exe"
     }
 
     Write-Host "Zipping -> dist\$zipName" -ForegroundColor Cyan
@@ -84,7 +84,7 @@ Write-Host "OK: $zipPath ($sizeMb MB)" -ForegroundColor Green
 $envLockPath = Join-Path $PSScriptRoot "dist\build-env-v$Version.txt"
 $manifestPath = Join-Path $PSScriptRoot "dist\release-manifest-v$Version.json"
 $zipHash = (Get-FileHash $zipPath -Algorithm SHA256).Hash
-$exePath = Join-Path $distDir "nmea-serial-bridge.exe"
+$exePath = Join-Path $distDir "serial-link.exe"
 $exeHash = ""
 if (Test-Path $exePath) {
     $exeHash = (Get-FileHash $exePath -Algorithm SHA256).Hash
@@ -132,7 +132,7 @@ $manifest | ConvertTo-Json -Depth 6 | Set-Content -Path $manifestPath -Encoding 
 Write-Host "Build env lock: $envLockPath" -ForegroundColor DarkGray
 Write-Host "Manifest: $manifestPath" -ForegroundColor DarkGray
 Write-Host ""
-Write-Host "On another PC: unzip and run nmea-serial-bridge\nmea-serial-bridge.exe"
+Write-Host "On another PC: unzip and run serial-link\serial-link.exe"
 Write-Host "First run shows a layout picker; choice is saved under %USERPROFILE%\.cursor-udp-com-bridge\"
 
 if (-not $doPublish) {
@@ -168,14 +168,18 @@ if (-not $existing) {
 }
 
 $notes = @"
-Windows x64 one-folder build (PyInstaller).
+Windows x64 one-folder build (PyInstaller) — **v$Version**.
 
-- Unzip and run ``nmea-serial-bridge.exe`` (keep the whole folder).
+- Unzip and run ``serial-link.exe`` (keep the whole folder).
 - First launch: pick Standard or Field UI; choice persists under ``%USERPROFILE%\.cursor-udp-com-bridge\``.
-- **Web dashboard** (optional): Tools → Phone → Enable Web API → **Open dashboard** (`http://127.0.0.1:8765/`). Start/stop, config, discovery, live log, map, Survey monitor layouts.
-- **Grid layout (beta)**: ``/static/layouts/gridstack/`` — drag/resize tiles, Lock layout, touch **⋯** menu; standard dashboard unchanged at ``GET /``.
+- **Survey HUD + Dashboard** (View / top bar **HUD**): metrics pop-out plus bridge-trust checklist.
+- **Presets tab**: click to edit survey fields; **Load** or double-click applies COM/UDP/NMEA.
+- **Terminal** (Tools): embedded shell + ping presets (Save / Delete / Quick chips).
+- **Web dashboard** (optional): Tools → Phone → Enable Web API → **Open dashboard** (`http://127.0.0.1:8765/`).
+- **Grid layout (beta)**: ``/static/layouts/gridstack/``.
+- Layout switch + single-instance lock reduce duplicate ``python.exe`` after UI changes.
 - Bench preset uses ``bench_defaults.json`` beside the exe.
-- SmartScreen may warn (unsigned app). See ``docs/OPERATOR_GUIDE.md`` in the zip folder or repo ``docs/``.
+- **Unsigned** — SmartScreen may warn. See ``docs/OPERATOR_GUIDE.md``.
 "@
 
 $ErrorActionPreference = "SilentlyContinue"

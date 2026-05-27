@@ -59,7 +59,7 @@ class BridgeWindowField(BridgeLogicMixin, QtWidgets.QWidget):
         self.setObjectName("BridgeRoot")
         self._ui_mode = "field"
         self.setStyleSheet(bridge_stylesheet(self._ui_mode, load_theme_choice()))
-        self.setWindowTitle(f"NMEA Bridge (field) v{__version__}")
+        self.setWindowTitle(f"Serial Link (field) v{__version__}")
         self.resize(960, 580)
         self.setMinimumSize(720, 480)
         self._init_bridge_state()

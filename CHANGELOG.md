@@ -3,6 +3,55 @@
 High-level notes for **this fork / branch** (`2034-ui-journey-modernization` and descendants).  
  Version = `version.py` / Git tag when you run `.\release.ps1` or tag manually.
 
+## v1.17.36
+
+- **Windows font warning** — Terminal, log, and diagnostics use a DirectWrite-safe monospace font instead of legacy system fixed fonts (e.g. `8514oem`) that spam `qt.qpa.fonts: DirectWrite: CreateFontFaceFromHDC() failed` on startup.
+
+## v1.17.35
+
+- **Terminal ping presets** — **Delete** removes the preset chosen in the dropdown (with confirmation). Right-click a **Quick** chip to delete that preset.
+
+## v1.17.34
+
+- **Presets tab click** — Single click only selects a preset and fills the survey-network editor (PC IP, subnet, notes). **Load** or double-click applies COM/UDP/NMEA to Connect; no jump to the Log tab. Survey-bar **Presets** menu still quick-connects (apply + Start).
+
+## v1.17.33
+
+- **Layout switch zombie process** — Stop web server, discovery thread, and tray icon on the **old** window before creating the new layout (was starting duplicate background services). Tray destroyed on handoff; auto-discovery thread joins cleanly. Single-instance lock file prevents a second `python.exe` when one copy is already running.
+
+## v1.17.32
+
+- **Layout switch crash** — Switching Standard/Field no longer calls `app.quit()` when the bridge is stopped (old window close during handoff). Survey HUD and Dashboard close cleanly before layout swap; refresh paths guard deleted Qt widgets.
+
+## v1.17.31
+
+- **Dashboard + HUD** — Top bar **HUD** and **View → HUD…** open **Survey HUD** (metrics) and **Dashboard** (bridge trust: Ready/Caution/Stopped, health chips, issues-only reliability checks). **View** also offers each window alone. Dashboard replaces the Beta HUD preview; slimmer layout (no duplicate Hz tiles).
+
+## v1.17.30
+
+- **Beta HUD (P0 preview)** — superseded by Dashboard in v1.17.31.
+
+## v1.17.29
+
+- **Fan-out probe fix** — `bench_fanout_probe.py` and automation use one bound socket per peer so bridge replies reach the listener (was split tx/rx ports).
+
+## v1.17.28
+
+- **P0 fan-out bench automation** — `bench_fanout_automation.py` headless: two UDP peers both receive `schedule_serial_to_net` inject (fan-out ON), then last-peer-only (fan-out OFF). Live mode registers peers when the GUI bridge holds the port. **Diagnostics → Fan-out bench (auto)**; `verify_all.py` / `bench_all.py`. No HUD changes.
+
+## v1.17.27
+
+- **P0 bench automation** — `bench_network_automation.py` runs headless UDP zero-drop ingest + TCP reconnect (port 41099) when the bench UDP port is free, or a live UDP burst when the GUI bridge is already listening. Wired into `verify_all.py`, `bench_all.py`, and **Diagnostics → Network bench (auto)**. No Survey HUD changes.
+
+## v1.17.26
+
+- **P0 network operator docs** — Added **§6.4 Network reliability checklist** to `docs/OPERATOR_GUIDE.md` (UDP listen direction, firewall, Fan-out vs last-sender, Extra TCP output, TCP client reconnect, Tailscale). `docs/GETTING_STARTED.md` points operators there; `test_operator_guide_network.py` keeps the section present.
+
+## v1.17.25
+
+- **P0 serial reconnect** — Clear partial NMEA assembly buffers after COM drop/reopen so reconnect cannot splice stale bytes; status bar highlights serial retry/disconnect and refreshes the COM list every few seconds during reconnect.
+- **P0 raw binary** — Tests confirm RAW mode forwards binary payloads unchanged (no line assembly or rejects).
+
 ## v1.17.24
 
 - **Layout switch crash** — Double-clicking the top-bar **Layout** control now runs a one-shot guarded transition; re-entrant toggles are ignored while the new window is being created/activated, preventing rapid double-click crashes.

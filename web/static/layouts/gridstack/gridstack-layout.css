@@ -3,33 +3,26 @@ body.layout-gridstack {
   background: var(--bg, #0f1419);
 }
 
+/* Cached pages may still ship the old banner node — hide/remove via JS too */
 .layout-beta-banner {
-  margin: 0.5rem 1rem 0;
-  padding: 0.5rem 0.75rem;
-  font-size: 0.9rem;
-  background: rgba(56, 189, 248, 0.12);
-  border: 1px solid rgba(56, 189, 248, 0.35);
-  border-radius: 8px;
+  display: none !important;
 }
 
-.layout-beta-banner a {
-  font-weight: 600;
-}
-
-.layout-beta-reset {
-  margin-left: 0.35rem;
-  padding: 0.15rem 0.5rem;
+body.layout-gridstack .footer-layout-reset {
+  margin-left: 0.15rem;
+  padding: 0.1rem 0.45rem;
   font: inherit;
-  font-size: 0.85rem;
+  font-size: inherit;
   color: var(--accent, #38bdf8);
   background: transparent;
-  border: 1px solid rgba(56, 189, 248, 0.45);
-  border-radius: 6px;
+  border: 1px solid rgba(56, 189, 248, 0.35);
+  border-radius: 4px;
   cursor: pointer;
+  vertical-align: baseline;
 }
 
-.layout-beta-reset:hover {
-  background: rgba(56, 189, 248, 0.15);
+body.layout-gridstack .footer-layout-reset:hover {
+  background: rgba(56, 189, 248, 0.12);
 }
 
 /* Do not apply standard dashboard CSS grid — GridStack owns tile positions */
@@ -84,6 +77,51 @@ body.layout-gridstack .layout-gridstack-main.dashboard {
   flex: 1;
   min-height: 0;
   overflow: auto;
+}
+
+/* Position map — fill the grid tile (not a fixed 420px strip) */
+body.layout-gridstack .map-card.dashboard-panel-open .dashboard-panel-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 0.35rem 0.45rem 0.45rem;
+  overflow: hidden;
+}
+
+body.layout-gridstack .map-card.dashboard-panel-open .map-hint {
+  flex: 0 0 auto;
+  margin-bottom: 0;
+  font-size: 0.75rem;
+}
+
+body.layout-gridstack .map-card.dashboard-panel-open .map-enable-row,
+body.layout-gridstack .map-card.dashboard-panel-open .map-coords {
+  flex: 0 0 auto;
+  margin-bottom: 0;
+}
+
+body.layout-gridstack .map-card.dashboard-panel-open .map-frame {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex !important;
+  flex-direction: column;
+  margin-bottom: 0;
+  border: none;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+body.layout-gridstack .map-card.dashboard-panel-open .map-frame[hidden] {
+  display: none !important;
+}
+
+body.layout-gridstack .map-card.dashboard-panel-open .bridge-map,
+body.layout-gridstack .map-card.dashboard-panel-open .leaflet-container {
+  flex: 1 1 auto;
+  width: 100% !important;
+  height: 100% !important;
+  min-height: 0;
+  max-height: none;
 }
 
 .grid-stack-item-content .dashboard-panel-toggle {

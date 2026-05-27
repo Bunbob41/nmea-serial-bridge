@@ -23,5 +23,5 @@ if (Test-Path "assets\app-icon.png") {
 python -m PyInstaller nmea_serial_bridge.spec --noconfirm
 
 Write-Host ""
-Write-Host "Build output: dist\nmea-serial-bridge\nmea-serial-bridge.exe"
+Write-Host "Build output: dist\serial-link\serial-link.exe"
 Write-Host "Copy that folder to a clean PC or create a shortcut to the .exe."

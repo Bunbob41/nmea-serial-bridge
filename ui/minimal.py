@@ -29,7 +29,7 @@ class BridgeWindowMinimal(BridgeLogicMixin, QtWidgets.QWidget):
         self._ui_mode = "minimal"
         self._compact_intent_hint = True
         self.setStyleSheet(bridge_stylesheet(self._ui_mode, load_theme_choice()))
-        self.setWindowTitle(f"NMEA Bridge (minimal) v{__version__}")
+        self.setWindowTitle(f"Serial Link (minimal) v{__version__}")
         self.resize(880, 640)
         self.setMinimumSize(640, 480)
         self._init_bridge_state()

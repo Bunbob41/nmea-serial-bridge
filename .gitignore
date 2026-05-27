@@ -8,4 +8,9 @@ venv/
 *.log
 build/
 dist/
+bench_defaults.local.json
 *.spec.bak
+.cursor/*.png
+test_out.txt
+test_err.txt
+unittest_full.txt

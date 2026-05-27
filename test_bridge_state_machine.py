@@ -216,6 +216,32 @@ class TestBridgeStateMachine(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(bridge.drops_serial_to_net, 0)
         self.assertEqual(bridge.rejected_serial_to_net, 0)
 
+    async def test_raw_mode_preserves_binary_bytes(self) -> None:
+        bridge = await self._make_bridge(NetMode.UDP_LISTEN)
+        bridge.nmea_mode = NmeaMode.RAW
+        bridge.running = True
+        bridge.net_to_serial = asyncio.Queue()
+        bridge.serial_to_net = asyncio.Queue()
+        payload = bytes([0x00, 0xD3, 0x00, 0xFF, 0x81, 0x00, 0x13])
+        bridge._ingest_net(payload, "UDP←('127.0.0.1', 10110)")
+        self.assertEqual(bridge.net_to_serial.get_nowait(), payload)
+        bridge._ingest_serial(payload, "SER→NET")
+        self.assertEqual(bridge.serial_to_net.get_nowait(), payload)
+        self.assertEqual(bridge._asm_n2s.pending_bytes, 0)
+        self.assertEqual(bridge._asm_s2n.pending_bytes, 0)
+        self.assertEqual(bridge.rejected_net_to_serial, 0)
+        self.assertEqual(bridge.rejected_serial_to_net, 0)
+
+    async def test_serial_reconnect_resets_assembler_buffers(self) -> None:
+        bridge = await self._make_bridge(NetMode.UDP_LISTEN)
+        bridge._asm_n2s._buf.extend(b"$GPGGA,partial")
+        bridge._asm_s2n._buf.extend(b"$GPRMC,frag")
+        bridge._serial_io_err_last_msg = "Serial: timed out"
+        bridge._reset_serial_decode_state()
+        self.assertEqual(bridge._asm_n2s.pending_bytes, 0)
+        self.assertEqual(bridge._asm_s2n.pending_bytes, 0)
+        self.assertIsNone(bridge._serial_io_err_last_msg)
+
 
 if __name__ == "__main__":
     unittest.main()

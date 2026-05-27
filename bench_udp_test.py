@@ -45,7 +45,7 @@ def main() -> None:
         print(
             f"[bench_udp_test] ERROR: Nothing is LISTENING on UDP port {args.port}.\n"
             "  The bridge must be running first:\n"
-            "    1) Open NMEA Serial Bridge (desktop shortcut)\n"
+            "    1) Open Serial Link (desktop shortcut)\n"
             "    2) Apply bench preset -> Start bridge\n"
             f"    3) Log must say: UDP listen on ('0.0.0.0', {args.port})\n"
             "    4) Run this script again\n"

@@ -30,7 +30,7 @@ class BridgeWindowLogFirst(BridgeLogicMixin, QtWidgets.QWidget):
         self.setObjectName("BridgeRoot")
         self._ui_mode = "logfirst"
         self.setStyleSheet(bridge_stylesheet(self._ui_mode, load_theme_choice()))
-        self.setWindowTitle(f"NMEA Bridge (log) v{__version__}")
+        self.setWindowTitle(f"Serial Link (log) v{__version__}")
         self.resize(1020, 700)
         self._init_bridge_state()
         create_connection_controls(self)
@@ -144,8 +144,8 @@ class BridgeWindowLogFirst(BridgeLogicMixin, QtWidgets.QWidget):
         self.cmb_log_density.currentIndexChanged.connect(self._apply_log_density)
         r2.addWidget(self.cmb_log_density)
         self.btn_hud = QtWidgets.QPushButton("HUD")
-        self.btn_hud.setToolTip("Open corner HUD")
-        self.btn_hud.clicked.connect(self._open_stats_popout)
+        self.btn_hud.setToolTip("Open Survey HUD and Dashboard (metrics + bridge trust)")
+        self.btn_hud.clicked.connect(self._open_hud)
         r2.addWidget(self.btn_hud)
         r2.addStretch(1)
         sl.addLayout(r2)
@@ -221,10 +221,10 @@ class BridgeWindowLogFirst(BridgeLogicMixin, QtWidgets.QWidget):
         self._refresh_intent_hint()
 
     def _apply_log_density(self, _idx: int) -> None:
+        from ui.fonts import monospace_ui_font
+
         size = int(self.cmb_log_density.currentData() or 8)
-        f = QtGui.QFontDatabase.systemFont(QtGui.QFontDatabase.SystemFont.FixedFont)
-        f.setPointSize(size)
-        self.log_view.setFont(f)
+        self.log_view.setFont(monospace_ui_font(point_size=size))
         self._save_logfirst_ui_prefs()
 
     def _on_log_filter_rx(self, on: bool) -> None:

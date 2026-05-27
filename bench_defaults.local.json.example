@@ -1,0 +1,27 @@
+{
+  "_comment": "Copy to bench_defaults.local.json (gitignored). Merges over bench_defaults.json for dev builds and beside serial-link.exe for field kits. Not shipped in release zips.",
+  "com": "COM7",
+  "baud": 115200,
+  "udp_host": "0.0.0.0",
+  "udp_port": 10110,
+  "production": {
+    "com": "COM3",
+    "baud": 115200,
+    "udp_host": "0.0.0.0",
+    "udp_port": 10110,
+    "pc_ip": "192.168.1.4",
+    "subnet_mask": "255.255.255.0",
+    "ins_ip": "192.168.1.150",
+    "notes": "Example survey LAN — edit for your boat/desk."
+  },
+  "norbit_dct": {
+    "com": "COM3",
+    "baud": 115200,
+    "udp_host": "0.0.0.0",
+    "udp_port": 40810,
+    "pc_ip": "192.168.1.4",
+    "subnet_mask": "255.255.255.0",
+    "ins_ip": "192.168.1.150",
+    "notes": "Example DCT stack — see docs/NORBIT_DCT.md."
+  }
+}
