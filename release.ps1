@@ -59,7 +59,7 @@ if ($PublishOnly) {
 
     python "$PSScriptRoot\tools\check_frozen_web.py" $distDir
     if ($LASTEXITCODE -ne 0) {
-        throw "check_frozen_web failed — Web dashboard will not work in the zip"
+        throw "check_frozen_web failed - Web dashboard will not work in the zip"
     }
 
     Write-Host "Zipping -> dist\$zipName" -ForegroundColor Cyan
