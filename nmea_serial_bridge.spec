@@ -2,7 +2,7 @@
 # Build:  pyinstaller nmea_serial_bridge.spec --noconfirm
 from pathlib import Path
 
-from PyInstaller.utils.hooks import collect_all
+from PyInstaller.utils.hooks import collect_all, collect_submodules
 
 block_cipher = None
 root = Path(SPECPATH)
@@ -42,6 +42,20 @@ web_py_datas = [
     for py_file in sorted((root / "web").glob("*.py"))
 ]
 
+pty_datas: list = []
+pty_binaries: list = []
+pty_hidden: list = []
+for _pty_pkg in ("winpty", "pywinpty"):
+    try:
+        d, b, h = collect_all(_pty_pkg)
+        pty_datas += d
+        pty_binaries += b
+        pty_hidden += h
+    except Exception:
+        pass
+
+ui_hidden = collect_submodules("ui")
+
 HELPER_SCRIPTS = [
     "verify_all.py",
     "com_free.py",
@@ -63,6 +77,7 @@ HELPER_SCRIPTS = [
 HELPER_MODULES = [
     "bench_config.py",
     "bench_udp_test.py",
+    "bench_tcp_test.py",
     "nmea_codec.py",
     "bridge_core.py",
     "py_interpreter.py",
@@ -85,30 +100,18 @@ APP_HIDDEN = [
     "bench_config",
     "nmea_static_sample",
     "bench_udp_test",
-    "ui",
-    "ui.registry",
-    "ui.standard",
-    "ui.field",
-    "ui.minimal",
-    "ui.logfirst",
-    "ui.mixin",
-    "ui.controls",
-    "ui.tool_tabs",
-    "ui.stats_line",
-    "ui.stats_popout",
-    "ui.styles",
-    "ui.picker",
-    "ui.app_icon",
-    "ui.theme_choice",
-    "ui.theme_palette",
+    "bench_tcp_test",
+    "app_facade",
+    "discovery_service",
 ]
 
 a = Analysis(
     ["bridge_gui.py"],
     pathex=[str(root)],
-    binaries=pyside_binaries + web_binaries,
+    binaries=pyside_binaries + web_binaries + pty_binaries,
     datas=pyside_datas
     + web_datas
+    + pty_datas
     + web_py_datas
     + [(str(root / "bench_defaults.json"), ".")]
     + helper_datas
@@ -126,8 +129,10 @@ a = Analysis(
     ),
     hiddenimports=[
         *APP_HIDDEN,
+        *ui_hidden,
         *pyside_hidden,
         *web_hidden,
+        *pty_hidden,
         "app_facade",
         "web_api",
         "web_server",
@@ -135,6 +140,8 @@ a = Analysis(
         "web.phone_url",
         "web.qr_svg",
         "discovery_service",
+        "qrcode",
+        "qrcode.image.svg",
         "fastapi",
         "uvicorn",
         "uvicorn.logging",
@@ -150,6 +157,7 @@ a = Analysis(
         "starlette.routing",
         "starlette.responses",
         "pydantic",
+        "winpty",
     ],
     hookspath=[],
     hooksconfig={},

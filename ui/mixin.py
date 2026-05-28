@@ -2793,8 +2793,25 @@ class BridgeLogicMixin:
         port = int(prefs.get("port", 8765))
         try:
             from version import __version__
-            from web_api import create_app
+            from web_api import create_app, resolve_static_dir
             from web_server import WebServerThread, port_is_free
+
+            static = resolve_static_dir()
+            if static is None:
+                self._log_ui(
+                    "[Web] Dashboard files (web/static) are missing from this portable build. "
+                    "Download the latest serial-link zip from GitHub releases."
+                )
+                return
+            try:
+                import fastapi  # noqa: F401
+                import uvicorn  # noqa: F401
+            except ImportError as exc:
+                self._log_ui(
+                    f"[Web] Server libraries missing ({exc}). "
+                    "Reinstall from the latest GitHub release zip."
+                )
+                return
 
             if not port_is_free(
                 port,

@@ -22,6 +22,9 @@ if (Test-Path "assets\app-icon.png") {
     python tools\make_app_icon.py
 }
 python -m PyInstaller nmea_serial_bridge.spec --noconfirm
+if ($LASTEXITCODE -ne 0) { throw "PyInstaller failed" }
+python tools\check_frozen_bundle.py dist\serial-link
+if ($LASTEXITCODE -ne 0) { throw "check_frozen_bundle failed" }
 
 Write-Host ""
 Write-Host "Build output: dist\serial-link\serial-link.exe"

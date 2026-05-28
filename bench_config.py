@@ -56,6 +56,9 @@ def user_presets_path() -> Path:
 def _bench_defaults_roots() -> list[Path]:
     roots: list[Path] = []
     if getattr(sys, "frozen", False):
+        meipass = getattr(sys, "_MEIPASS", None)
+        if meipass:
+            roots.append(Path(meipass))
         roots.append(Path(sys.executable).resolve().parent)
     roots.append(Path(__file__).resolve().parent)
     return roots

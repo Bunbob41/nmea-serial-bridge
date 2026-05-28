@@ -43,10 +43,13 @@ if ($PublishOnly) {
         $ErrorActionPreference = "Continue"
         python -m pip install --upgrade pip -q 2>&1 | Out-Null
         python -m pip install -r requirements.txt -q 2>&1 | Out-Null
+        python -m pip install -r requirements-web.txt -q 2>&1 | Out-Null
         python -m pip install "pyinstaller>=6.0" -q 2>&1 | Out-Null
         $ErrorActionPreference = $prevEap
         python -m PyInstaller nmea_serial_bridge.spec --noconfirm
         if ($LASTEXITCODE -ne 0) { throw "PyInstaller failed" }
+        python "$PSScriptRoot\tools\check_frozen_bundle.py" $distDir
+        if ($LASTEXITCODE -ne 0) { throw "check_frozen_bundle failed" }
     } else {
         python "$PSScriptRoot\tools\sync_version_info.py"
         if ($LASTEXITCODE -ne 0) { throw "sync_version_info failed" }
@@ -57,9 +60,9 @@ if ($PublishOnly) {
         throw "Build failed: missing $distDir\serial-link.exe"
     }
 
-    python "$PSScriptRoot\tools\check_frozen_web.py" $distDir
+    python "$PSScriptRoot\tools\check_frozen_bundle.py" $distDir
     if ($LASTEXITCODE -ne 0) {
-        throw "check_frozen_web failed - Web dashboard will not work in the zip"
+        throw "check_frozen_bundle failed - Web dashboard will not work in the zip"
     }
 
     Write-Host "Zipping -> dist\$zipName" -ForegroundColor Cyan

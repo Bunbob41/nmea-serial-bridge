@@ -3,6 +3,10 @@
 High-level notes for **this fork / branch** (`2034-ui-journey-modernization` and descendants).  
  Version = `version.py` / Git tag when you run `.\release.ps1` or tag manually.
 
+## v1.17.38
+
+- **Portable build parity** — Bundle `bench_tcp_test.py` for Diagnostics P0 network auto; collect all `ui.*` submodules and pywinpty/winpty; resolve `bench_defaults.json` from `_MEIPASS`; clearer Web start errors when static or FastAPI/uvicorn missing. Post-build `check_frozen_bundle.py` validates helpers + dashboard assets (replaces narrow web-only check). `-SkipTests` release builds also install `requirements-web.txt`.
+
 ## v1.17.37
 
 - **Frozen Web dashboard fix** — PyInstaller build now installs `requirements-web.txt` and bundles FastAPI, uvicorn, and `web/static` so **http://127.0.0.1:8765/** serves the operator UI from the `.exe` (was missing deps → server failed or JSON-only `/`). Post-build `tools/check_frozen_web.py` guards the zip.

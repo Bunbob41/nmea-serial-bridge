@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import multiprocessing
 import os
 import sys
 
@@ -85,4 +86,6 @@ def main() -> None:
 
 
 if __name__ == "__main__":
+    if getattr(sys, "frozen", False):
+        multiprocessing.freeze_support()
     main()
