@@ -5,7 +5,11 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-from tools.frozen_bundle_manifest import (
+_ROOT = Path(__file__).resolve().parent.parent
+if str(_ROOT) not in sys.path:
+    sys.path.insert(0, str(_ROOT))
+
+from tools.frozen_bundle_manifest import (  # noqa: E402
     FROZEN_HELPER_FILES,
     FROZEN_PYTHON_PACKAGES,
     FROZEN_STATIC_FILES,
