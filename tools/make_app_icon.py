@@ -20,8 +20,9 @@ ICO = ROOT / "assets" / "app-icon.ico"
 CANVAS_RGB = (26, 29, 39)  # #1a1d27
 BORDER_RGB = (51, 65, 85)  # #334155 subtle edge
 CANVAS_SIZE = 512
-ARTWORK_SCALE = 0.78
-CORNER_RADIUS_RATIO = 0.2
+# Fill the squircle — small inner art reads as a dot at 32×32 (taskbar / shortcuts).
+ARTWORK_SCALE = 0.92
+CORNER_RADIUS_RATIO = 0.18
 WHITE_KEY_TOLERANCE = 28
 
 
@@ -128,7 +129,17 @@ def main() -> int:
 
     composed = _compose_icon(Image.open(src_path))
     composed.save(PNG, optimize=True)
-    sizes = [(16, 16), (24, 24), (32, 32), (48, 48), (64, 64), (128, 128), (256, 256)]
+    sizes = [
+        (16, 16),
+        (20, 20),
+        (24, 24),
+        (32, 32),
+        (40, 40),
+        (48, 48),
+        (64, 64),
+        (128, 128),
+        (256, 256),
+    ]
     composed.save(ICO, format="ICO", sizes=sizes)
     note = "from app-icon-source.png" if src_path == SOURCE else "from app-icon.png"
     print(f"[make_app_icon] wrote {PNG} and {ICO} (dark squircle, {note})")

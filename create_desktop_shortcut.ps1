@@ -12,7 +12,6 @@ $desk = [Environment]::GetFolderPath("Desktop")
 $w = New-Object -ComObject WScript.Shell
 
 $iconIco = Join-Path $proj "assets\app-icon.ico"
-$distExe = Join-Path $proj "dist\serial-link\serial-link.exe"
 
 function New-BridgeShortcut($name, $targetPath, $desc, $iconPath) {
     $lnk = Join-Path $desk $name
@@ -29,9 +28,17 @@ function New-BridgeShortcut($name, $targetPath, $desc, $iconPath) {
 
 $launchTarget = $bat
 $launchIcon = $iconIco
-if (Test-Path $distExe) {
-    $launchTarget = $distExe
-    $launchIcon = $distExe
+$exeCandidates = @(
+    (Join-Path $proj "serial-link.exe"),
+    (Join-Path $proj "dist\serial-link\serial-link.exe")
+)
+foreach ($exe in $exeCandidates) {
+    if (Test-Path $exe) {
+        $launchTarget = $exe
+        # Use the embedded exe icon (full multi-size .ico from the build).
+        $launchIcon = "$exe,0"
+        break
+    }
 }
 
 New-BridgeShortcut "Serial Link.lnk" $launchTarget "Serial Link: saved UI or layout picker" $launchIcon

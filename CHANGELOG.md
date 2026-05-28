@@ -3,6 +3,10 @@
 High-level notes for **this fork / branch** (`2034-ui-journey-modernization` and descendants).  
  Version = `version.py` / Git tag when you run `.\release.ps1` or tag manually.
 
+## v1.17.45
+
+- **App icon / shortcuts** — Regenerated `app-icon.ico` with larger in-frame artwork (~92% vs 78%) so the DB-9 glyph reads clearly on taskbar and desktop shortcuts; added 512px and extra Windows DPI sizes. Desktop shortcut script prefers the built `serial-link.exe` icon (`exe,0`) for release folders.
+
 ## v1.17.44
 
 - **In-app operator manuals** — **Tools → Guide** buttons (**Getting started…**, **Operator guide…**, **NORBIT DCT…**) and bench **Open operator guide** open formatted markdown inside Serial Link (Qt viewer, offline). Links between `.md` files stay in-app; http(s) links still use the system browser.
