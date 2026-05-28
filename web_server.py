@@ -96,6 +96,8 @@ class WebServerThread:
             port=self._port,
             log_level="warning",
             access_log=False,
+            log_config=None,
+            use_colors=False,
         )
         self._server = uvicorn.Server(config)
 

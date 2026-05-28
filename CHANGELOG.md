@@ -3,6 +3,11 @@
 High-level notes for **this fork / branch** (`2034-ui-journey-modernization` and descendants).  
  Version = `version.py` / Git tag when you run `.\release.ps1` or tag manually.
 
+## v1.17.39
+
+- **Web startup robustness** — Embedded uvicorn now runs with internal logging config disabled (fixes `Unable to configure formatter 'default'` on some PCs). Startup errors are reported accurately; non-bind failures no longer masquerade as `Port ... already in use`.
+- **Guide visibility hardening** — Guide tab HTML now sets explicit background/text colors to avoid all-white rendering on some Windows theme/driver combos.
+
 ## v1.17.38
 
 - **Portable build parity** — Bundle `bench_tcp_test.py` for Diagnostics P0 network auto; collect all `ui.*` submodules and pywinpty/winpty; resolve `bench_defaults.json` from `_MEIPASS`; clearer Web start errors when static or FastAPI/uvicorn missing. Post-build `check_frozen_bundle.py` validates helpers + dashboard assets (replaces narrow web-only check). `-SkipTests` release builds also install `requirements-web.txt`.

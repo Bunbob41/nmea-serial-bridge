@@ -2487,6 +2487,14 @@ class BridgeLogicMixin:
         self._log_ui(f"[Web] {msg}")
         self._web_server = None
 
+    def _report_web_start_failure(self, detail: str) -> None:
+        msg = f"Web API failed to start: {detail}"
+        lbl = getattr(self, "lbl_web_listen", None)
+        if lbl is not None:
+            lbl.setText(msg)
+        self._log_ui(f"[Web] {msg}")
+        self._web_server = None
+
     def _web_port_from_ui(self) -> int:
         spin = getattr(self, "spin_web_port", None)
         if spin is not None:
@@ -2849,7 +2857,11 @@ class BridgeLogicMixin:
         except Exception as exc:
             self._web_server = None
             self._log_ui(f"[Web] Start failed: {exc}")
-            self._report_web_bind_failure(port)
+            msg = str(exc).lower()
+            if "already in use" in msg or "10048" in msg or "address already in use" in msg:
+                self._report_web_bind_failure(port)
+            else:
+                self._report_web_start_failure(str(exc))
 
     def _stop_web_server(self) -> None:
         server = getattr(self, "_web_server", None)

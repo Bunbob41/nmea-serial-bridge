@@ -362,16 +362,16 @@ def wrap_main_tab_scroll(inner: QtWidgets.QWidget) -> QtWidgets.QScrollArea:
 
 
 _GUIDE_CSS = """
-body  { font-family: sans-serif; font-size: 13px; margin: 0; padding: 0; }
-h2    { font-size: 15px; font-weight: bold; margin: 0 0 4px 0; }
-h3    { font-size: 13px; font-weight: bold; margin: 10px 0 2px 0; }
+body  { font-family: sans-serif; font-size: 13px; margin: 0; padding: 0; background: #f8f3e8; color: #2a1e18; }
+h2    { font-size: 15px; font-weight: bold; margin: 0 0 4px 0; color: #2a1e18; }
+h3    { font-size: 13px; font-weight: bold; margin: 10px 0 2px 0; color: #2a1e18; }
 p     { margin: 4px 0 8px 0; }
 ol    { margin: 4px 0 8px 16px; padding: 0; }
 ul    { margin: 2px 0 4px 20px; padding: 0; }
 li    { margin-bottom: 3px; }
-hr    { border: none; border-top: 1px solid #555; margin: 10px 0; }
+hr    { border: none; border-top: 1px solid #8a7a66; margin: 10px 0; }
 code  { background: #2a2a2a; color: #e8e8e8; padding: 1px 4px; border-radius: 3px; font-size: 12px; }
-.note { color: #999; font-style: italic; margin-top: 6px; }
+.note { color: #6e5f50; font-style: italic; margin-top: 6px; }
 """
 
 _GUIDE_START = """
