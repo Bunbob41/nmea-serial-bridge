@@ -8,6 +8,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 
 from bridge_core import file_log_retention_hint
 from nmea_static_sample import SAMPLE_ALT_M, SAMPLE_LAT_DEG, SAMPLE_LON_DEG, build_gga
+from ui.doc_viewer import show_bundled_doc
 
 _WIDGET_SIZE_MAX = 16777215
 _DIAG_COLLAPSED_STRIP_MIN = 40
@@ -1002,7 +1003,8 @@ def build_guide_tab(parent: QtWidgets.QWidget) -> QtWidgets.QWidget:
 
     repo_root = Path(__file__).resolve().parent.parent
     doc_note = QtWidgets.QLabel(
-        "Full walkthrough: docs/GETTING_STARTED.md · Operator manual: docs/OPERATOR_GUIDE.md"
+        "Connection steps are on the tabs below. Manual buttons open formatted docs "
+        "inside Serial Link (offline)."
     )
     doc_note.setObjectName("tabNote")
     doc_note.setWordWrap(True)
@@ -1011,17 +1013,7 @@ def build_guide_tab(parent: QtWidgets.QWidget) -> QtWidgets.QWidget:
     doc_row.setSpacing(8)
 
     def _open_doc(rel: str, title: str) -> None:
-        path = repo_root / rel
-        if not path.is_file():
-            QtWidgets.QMessageBox.information(
-                parent,
-                title,
-                f"Document not found:\n{path}\n\nSee docs/ in the install or repo folder.",
-            )
-            return
-        QtGui.QDesktopServices.openUrl(
-            QtCore.QUrl.fromLocalFile(str(path.resolve()))
-        )
+        show_bundled_doc(parent, rel, window_title=title)
 
     for label, rel in (
         ("Getting started…", "docs/GETTING_STARTED.md"),
@@ -1029,7 +1021,7 @@ def build_guide_tab(parent: QtWidgets.QWidget) -> QtWidgets.QWidget:
         ("NORBIT DCT…", "docs/NORBIT_DCT.md"),
     ):
         btn = QtWidgets.QPushButton(label)
-        btn.setToolTip(f"Open {rel}")
+        btn.setToolTip(f"Open {rel} in this app (offline)")
         btn.clicked.connect(lambda _checked=False, r=rel, t=label: _open_doc(r, t))
         doc_row.addWidget(btn)
     doc_row.addStretch(1)

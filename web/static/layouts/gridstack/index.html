@@ -36,7 +36,7 @@
     <div class="inline-alert header-run-alert" id="run-alert" hidden role="status"></div>
   </header>
 
-  <main class="dashboard layout-gridstack-main">
+    <main class="dashboard layout-gridstack-main">
   <div class="grid-stack" id="dashboard-panels">
 
     <!-- ═══════════════════════════════ COM & PORTS (mobile-first) ═════════════════════ -->
@@ -48,7 +48,7 @@
         <span class="dashboard-panel-summary" id="panel-sum-com-setup">—</span>
       </button>
       <div class="dashboard-panel-body" id="panel-body-com-setup">
-        <p class="com-setup-hint">Same as the desktop app: pick a COM port on the bridge PC. <strong>Stop</strong> the bridge before changing. Tap a row or <strong>Select</strong> to apply. <strong>Unlock ports</strong> probes/releases a stuck COM and checks whether the UDP listen port is busy (stop the bridge first).</p>
+        <p class="com-setup-hint">Pick a COM port on the bridge PC. <strong>Stop</strong> the bridge before changing. Tap a row or <strong>Select</strong> to set the active port (saved like the Configuration tab). <strong>Test COM port</strong> only tries opening the chosen port. <strong>Unlock ports</strong> probes the saved port and checks UDP listen availability.</p>
         <div class="config-lock-banner" id="com-setup-lock-banner" hidden>
           Bridge is running — tap <strong>Stop</strong> above, then change COM.
         </div>
@@ -59,7 +59,7 @@
         <div class="com-setup-picker">
           <label class="cfg-label" for="com-quick-select">COM port</label>
           <select class="cfg-input mono com-quick-select" id="com-quick-select"></select>
-          <button type="button" class="btn btn-start" id="btn-com-apply" onclick="applyComPort()">Apply COM</button>
+          <button type="button" class="btn btn-tool" id="btn-com-apply" onclick="testComPort()">Test COM port</button>
         </div>
         <div class="com-setup-actions">
           <button type="button" class="btn btn-tool" id="btn-refresh-quick" onclick="refreshComPorts()">Refresh ports</button>
@@ -432,7 +432,7 @@
 
   <script src="/static/vendor/leaflet/leaflet.js"></script>
   <script src="/static/vendor/gridstack/gridstack-all.js"></script>
-  <script src="/static/dashboard.js?v=1.13.14"></script>
+  <script src="/static/dashboard.js?v=1.17.42"></script>
   <script src="/static/layouts/gridstack/gridstack-layout.js"></script>
 </body>
 </html>

@@ -193,6 +193,27 @@ class TestWebApi(unittest.TestCase):
         self.assertEqual(r.status_code, 200)
         self.assertTrue(r.json()["ok"])
 
+    def test_ports_probe_ok(self) -> None:
+        self.facade.request_probe_com_port = MagicMock(  # type: ignore[method-assign]
+            return_value=WebCommandResult(True, "COM7 probed open/close OK", None, "stopped")
+        )
+        r = self.client.post("/ports/probe", json={"com_port": "COM7"})
+        self.assertEqual(r.status_code, 200)
+        self.assertTrue(r.json()["ok"])
+
+    def test_ports_probe_failed(self) -> None:
+        self.facade.request_probe_com_port = MagicMock(  # type: ignore[method-assign]
+            return_value=WebCommandResult(
+                False,
+                "could not open port 'COM7': PermissionError(13, 'Access is denied.')",
+                "probe_failed",
+            )
+        )
+        r = self.client.post("/ports/probe", json={"com_port": "COM7"})
+        self.assertEqual(r.status_code, 400)
+        detail = r.json().get("detail", r.json())
+        self.assertFalse(detail["ok"])
+
     def test_ports_unlock_no_com(self) -> None:
         self.facade.request_unlock_ports = MagicMock(  # type: ignore[method-assign]
             return_value=WebCommandResult(False, "No COM port configured", "validation")

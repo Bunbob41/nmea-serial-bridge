@@ -7,7 +7,12 @@ from pathlib import Path
 from unittest.mock import patch
 
 from ui import ui_prefs
-from ui.terminal_ping import ping_pty_command, ping_subprocess_args, sanitize_ping_host
+from ui.terminal_ping import (
+    ping_pty_command,
+    ping_subprocess_args,
+    sanitize_ping_host,
+    suggested_ping_preset_name,
+)
 
 
 class TestTerminalPingHelpers(unittest.TestCase):
@@ -26,6 +31,27 @@ class TestTerminalPingHelpers(unittest.TestCase):
     def test_ping_subprocess_args_unix(self) -> None:
         args = ping_subprocess_args("gw.local", platform="linux")
         self.assertEqual(args, ["ping", "-c", "4", "gw.local"])
+
+    def test_suggested_preset_name_short_hostname(self) -> None:
+        self.assertEqual(suggested_ping_preset_name("pi-nd", {}), "pi-nd")
+        self.assertEqual(
+            suggested_ping_preset_name("boat.tail-abc.ts.net", {}),
+            "boat",
+        )
+
+    def test_suggested_preset_name_ipv4(self) -> None:
+        self.assertEqual(suggested_ping_preset_name("192.168.1.8", {}), "192.168.1.8")
+
+    def test_suggested_preset_name_existing_host(self) -> None:
+        presets = {"noah": "noah.tail.ts.net", "INS": "192.168.1.20"}
+        self.assertEqual(
+            suggested_ping_preset_name("noah.tail.ts.net", presets),
+            "noah",
+        )
+        self.assertEqual(
+            suggested_ping_preset_name("192.168.1.20", presets),
+            "INS",
+        )
 
 
 class TestTerminalPingPrefs(unittest.TestCase):

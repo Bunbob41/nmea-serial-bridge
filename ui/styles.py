@@ -821,6 +821,16 @@ QTextBrowser#guideTextBrowser {
     border: none;
     selection-background-color: #6b3a4a;
 }
+QDialog#operatorDocDialog {
+    background-color: #2f2329;
+}
+QTextBrowser#docViewerBrowser {
+    background-color: #f5ecd8;
+    color: #2a1e18;
+    border: 1px solid #6b3a4a;
+    border-radius: 4px;
+    selection-background-color: #d4af37;
+}
 """
 
 _TAB_PAGE_LIGHT = """
@@ -1037,6 +1047,16 @@ QTextBrowser#guideTextBrowser {
     background: transparent;
     color: #2a1e18;
     border: none;
+    selection-background-color: #d4af37;
+}
+QDialog#operatorDocDialog {
+    background-color: #f0ece6;
+}
+QTextBrowser#docViewerBrowser {
+    background-color: #f5ecd8;
+    color: #2a1e18;
+    border: 1px solid #a09888;
+    border-radius: 4px;
     selection-background-color: #d4af37;
 }
 """

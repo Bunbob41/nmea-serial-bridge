@@ -164,6 +164,49 @@ body {
   }
 }
 
+/* Phone landscape HUD: drop Start/Stop strip; keep brand, dot, one-line status */
+@media (orientation: landscape) and (max-height: 520px) and (max-width: 960px) {
+  .app-header .header-run-controls {
+    display: none !important;
+  }
+
+  .app-header .header-brand .brand-tagline,
+  .app-header .header-brand .version-tag {
+    display: none;
+  }
+
+  .app-header .header-status .conn-label {
+    display: none;
+  }
+
+  .app-header .layout-lock-wrap {
+    display: none !important;
+  }
+
+  .app-header .header-row {
+    flex-wrap: nowrap;
+    padding: 6px var(--gap-sm);
+    gap: 8px;
+  }
+
+  .app-header .header-brand {
+    flex: 0 0 auto;
+  }
+
+  .app-header .header-status-chip {
+    flex: 1 1 auto;
+    min-width: 0;
+    order: unset;
+    text-align: left;
+    font-size: 0.75rem;
+  }
+
+  .app-header .header-status {
+    flex: 0 0 auto;
+    order: unset;
+  }
+}
+
 .brand-name {
   font-size: 1.1rem;
   font-weight: 700;

@@ -316,7 +316,7 @@ Does **not** inject binary streams — NMEA text only.
 ### Guide (Tools → Guide)
 
 - **UDP / TCP Client / TCP Server / Checklist** — short HTML workflows (connection methods).
-- Buttons at the top open **GETTING_STARTED.md**, this guide, and **NORBIT_DCT.md** when running from a dev tree (frozen builds: open `docs\` beside the install folder).
+- Buttons at the top open **GETTING_STARTED.md**, this guide, and **NORBIT_DCT.md** inside Serial Link (offline viewer; same bundled `docs\` files in release zips).
 
 ### Diagnostics (Tools → Diagnostics)
 

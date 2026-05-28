@@ -4842,32 +4842,17 @@ class BridgeLogicMixin:
         return _REPO_ROOT / "docs" / "OPERATOR_GUIDE.md"
 
     def _open_operator_guide_bench(self) -> bool:
-        import os
-        import sys
+        from ui.doc_viewer import resolve_bundled_doc, show_bundled_doc
 
-        guide = self._operator_guide_path()
-        if not guide.is_file():
+        if resolve_bundled_doc("docs/OPERATOR_GUIDE.md") is None:
+            guide = self._operator_guide_path()
             QtWidgets.QMessageBox.warning(
                 self,
                 "Operator guide",
                 f"Guide not found:\n{guide}\n\nSee README.md bench section.",
             )
             return False
-        path = str(guide.resolve())
-        opened = QtGui.QDesktopServices.openUrl(QtCore.QUrl.fromLocalFile(path))
-        if not opened and sys.platform == "win32":
-            try:
-                os.startfile(path)  # type: ignore[attr-defined]
-                opened = True
-            except OSError:
-                opened = False
-        if not opened:
-            QtWidgets.QMessageBox.information(
-                self,
-                "Operator guide",
-                f"Could not open the guide automatically.\n\nOpen this file manually:\n{path}",
-            )
-            return False
+        show_bundled_doc(self, "docs/OPERATOR_GUIDE.md", window_title="Operator guide")
         return True
 
     def _open_bench_pair_setup(self) -> None:

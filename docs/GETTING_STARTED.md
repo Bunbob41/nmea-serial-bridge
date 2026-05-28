@@ -1,8 +1,11 @@
 # Getting started — Serial Link
 
-**Audience:** first-time operators and survey leads onboarding a new PC.  
-**Version:** read the window title (`Serial Link v…`) or `version.py`.  
+**For:** survey operators setting up a field or bench PC.  
+**Version:** read the window title (`Serial Link v…`).  
 **Full manual:** [OPERATOR_GUIDE.md](OPERATOR_GUIDE.md) · **NORBIT DCT:** [NORBIT_DCT.md](NORBIT_DCT.md)
+
+> **Developers / repo checkout?** Skip to [Appendix — developers](#appendix--developers) at the bottom.  
+> **In the app:** **Tools → Guide** → **Getting started…** / **Operator guide…** opens this manual inside Serial Link (offline, formatted).
 
 ---
 
@@ -10,27 +13,150 @@
 
 The bridge moves bytes between **Ethernet (UDP or TCP)** and a **Windows COM port**. Typical survey path:
 
-**INS / GNSS on the LAN → UDP to this PC → bridge → COM → downstream device** (DCT, sonar, display, com0com bench pair).
+**INS / GNSS on the LAN → UDP to this PC → bridge → COM → downstream device** (DCT, sonar, display, or a bench serial pair).
 
 It does **not** replace Applanix positioning, NORBIT acquisition, or Hypack — it only forwards the stream you configure.
 
 ---
 
-## Install (pick one path)
+## Install on a field PC (release zip)
 
-### A — Release zip (recommended for field PCs)
+| Step | What to do |
+| ---- | ---------- |
+| 1 | Download the latest **`serial-link-v…-win64.zip`** from GitHub Releases. |
+| 2 | Unzip the **whole folder** to a permanent place (e.g. `C:\Tools\serial-link\`). Keep **everything** in that folder together. |
+| 3 | Double-click **`serial-link.exe`**. |
+| 4 | If Windows SmartScreen appears: **More info** → **Run anyway**. (See [OPERATOR_GUIDE.md](OPERATOR_GUIDE.md) if the app is blocked.) |
+| 5 | **Layout picker** (first run only) → choose **Standard** for first-time setup. |
 
-| Step | Action |
-| ---- | ------ |
-| 1 | Download `serial-link-v<version>-win64.zip` from GitHub Releases. |
-| 2 | Unzip the **entire folder** (do not run only the `.exe` without its `_internal` tree). |
-| 3 | Double-click `serial-link.exe`. |
-| 4 | If Windows SmartScreen warns: **More info** → **Run anyway** (unsigned build until code signing). |
-| 5 | **Layout picker** appears once → choose **Standard** (best for first setup). |
+**Your settings** (presets, layout, phone dashboard options) are saved automatically for your Windows user — you do not edit files by hand for normal use.
 
-Release builds ship a neutral `bench_defaults.json`. For your survey LAN/COM, copy `bench_defaults.local.json.example` to `bench_defaults.local.json` beside the `.exe` (or in the repo root when developing).
+Optional: copy `bench_defaults.local.json.example` to `bench_defaults.local.json` **beside** `serial-link.exe` only if your team ships a site-specific default COM/UDP (see Appendix).
 
-### B — Developer / repo folder
+---
+
+## First 15 minutes — bench walkthrough (Standard layout)
+
+Goal: prove UDP → COM on your desk with com0com or a USB serial adapter.
+
+| # | Where | Do this | You should see |
+| - | ----- | ------- | ---------------- |
+| 1 | **Connect** tab | Load preset **Desk test** (survey bar **Presets** or **Tools → Presets → Load**) | COM, baud, UDP port filled; hint mentions `127.0.0.1` |
+| 2 | **Connect → Serial & network** | Confirm **COM** is the bridge leg (e.g. COM7), not the paired monitor port | Your ports shown in the connection hub |
+| 3 | **Connect → Run bridge** | Click **Start bridge** | Banner **Running**; log lines for UDP listen + serial open |
+| 4 | External | Open Tera Term (or similar) on the **paired** com0com port (e.g. COM12) | Do **not** open the bridge COM in another app |
+| 5 | **Tools → Diagnostics** | **Automated checks** → **UDP sample burst (2.5 s)** | Log + Tera Term show NMEA; status bar Hz > 0 |
+| 6 | **Log** tab | Skim traffic; try log preset **Survey ops** | Readable sentences, not a flood |
+| 7 | **Tools → NMEA** | Leave **Passthrough** for Trimble-style NMEA | Use **Strict** only when you need QA |
+| 8 | **Connect** | **Stop bridge** | COM released; banner **Stopped** |
+
+**Stuck?** **Tools → Diagnostics → Bench checklist** or survey bar **Checklists → Bench checklist**.
+
+---
+
+## Main window map (Standard)
+
+```
+Survey bar: View · Presets · Recent · HUD · UI editor · …
+Main tabs:  Connect | Log | Tools
+Tools sidebar: Presets | Phone | NMEA | Terminal | Diagnostics | Theme | Guide
+Status bar: Serial | Network | NMEA | GNSS | session stats
+```
+
+### Connect tab (daily driver)
+
+| Section | Purpose |
+| ------- | ------- |
+| **Run bridge** | Start / Stop |
+| **Serial & network** | COM, baud, UDP listen, discovery, unlock |
+| **Status hint** | Preset / workflow guidance |
+| **Quick log** | Small live log on Connect (optional) |
+| **Quick terminal** | Bench output (optional) |
+
+Reorder or hide sections: survey bar **UI editor…** → **Connect** tab.
+
+### Tools → Diagnostics
+
+| Card | When to use |
+| ---- | ----------- |
+| **Automated checks** | Bench/boat checklist, UDP burst, network demos |
+| **Rotating file log** | Optional survey archive on disk while Running |
+| **On-screen log** | Clear the main **Log** tab |
+| **Traffic & data quality** | Explains status-bar Hz / GNSS (not live data) |
+
+Use **Reorder cards…** to stack cards your way.
+
+### Tools → Phone
+
+Web dashboard on this PC (`http://127.0.0.1:8765/` on the bridge PC). Enable **Web API**, then **Copy phone setup link** for Tailscale/LAN phones (not `127.0.0.1` on the phone). Start/Stop and COM discovery mirror the desktop.
+
+### Tools → Guide
+
+**Start here**, UDP, TCP, and checklist tabs — same wording as **Connect**. Use these tabs on a phone or second monitor instead of opening markdown files in a browser.
+
+---
+
+## Field layout (after you know Standard)
+
+Switch via the launcher, **Diagnostics → Quick UI switch**, or the survey bar layout control.
+
+- Large **Log** and **Start / Stop** strip.  
+- COM/UDP at the bottom; **Tools** drawer for Presets, NMEA, Terminal, Diagnostics, Theme, Guide.  
+- Same bridge — only the shell changes.
+
+---
+
+## Boat / production (outline)
+
+1. Static IP on survey Ethernet; INS sends UDP **to** `pc_ip:port` (bridge **listens**).  
+2. Load boat-style preset → set real COM/baud → **Save**.  
+3. **NMEA → Passthrough** for text NMEA; **Raw binary** only for RTCM/binary.  
+4. **Start bridge** → confirm Hz on the status bar or **HUD**.  
+5. **Stop** when done.  
+6. **Checklists → Boat checklist** or Diagnostics → **Boat checklist**.
+
+See [NORBIT_DCT.md](NORBIT_DCT.md) for Applanix + iWBMSe UDP ports and DCT targets.
+
+**Network reliability (firewall, fan-out, TCP):** [OPERATOR_GUIDE.md](OPERATOR_GUIDE.md) section **6.4 Network reliability checklist**.
+
+---
+
+## Customize the UI (no code)
+
+| Goal | How |
+| ---- | --- |
+| Hide unused Connect sections | **UI editor…** → **Connect** → uncheck optional panels → **OK** |
+| Move Serial & network up | **UI editor…** → **Connect** → drag **Serial & network** under **Run** → **OK** |
+| Reorder survey bar chips | **UI editor…** → **Top bar** |
+| Reorder Diagnostics cards | **Tools → Diagnostics → Reorder cards…** |
+| Reorder main tabs | **UI editor…** → **Main tabs** |
+
+---
+
+## Next documents
+
+| Doc | Use when |
+| --- | -------- |
+| [OPERATOR_GUIDE.md](OPERATOR_GUIDE.md) | Full bench/boat workflows, troubleshooting |
+| [NORBIT_DCT.md](NORBIT_DCT.md) | NORBIT DCT + Applanix + INS UDP → COM |
+| [README.md](../README.md) | Features, building from source, tests |
+| `CHANGELOG.md` | What changed each release |
+
+---
+
+## Appendix — developers
+
+### Saved settings (JSON paths)
+
+Support / migration only — operators do not need these paths for daily use.
+
+| File | Purpose |
+| ---- | ------- |
+| `%USERPROFILE%\.cursor-udp-com-bridge\ui_choice.json` | Last UI layout (Standard / Field) |
+| `%USERPROFILE%\.cursor-udp-com-bridge\path_presets.json` | Named COM + UDP/TCP presets |
+| `%USERPROFILE%\.cursor-udp-com-bridge\ui_prefs.json` | Tabs, Connect panel order, web API, diagnostics cards |
+
+### Run from the git repo
 
 ```powershell
 cd C:\path\to\udp-com-bridge
@@ -43,9 +169,7 @@ python -m pip install -r requirements.txt
 
 Pick **1. Standard** in the launcher.
 
-### C — Desktop shortcut
-
-From the repo folder (after install):
+### Desktop shortcut (repo / dev tree)
 
 ```powershell
 .\create_desktop_shortcut.bat
@@ -53,135 +177,7 @@ From the repo folder (after install):
 
 Re-run if you move the project directory.
 
-### Saved settings location
-
-| File | Purpose |
-| ---- | ------- |
-| `%USERPROFILE%\.cursor-udp-com-bridge\ui_choice.json` | Last UI layout (Standard / Field) |
-| `%USERPROFILE%\.cursor-udp-com-bridge\path_presets.json` | Named COM + UDP/TCP presets |
-| `%USERPROFILE%\.cursor-udp-com-bridge\ui_prefs.json` | Tabs, Connect panel order, web API, diagnostics cards |
-
----
-
-## First 15 minutes — bench walkthrough (Standard layout)
-
-Goal: prove UDP → COM on your desk with com0com or a USB serial adapter.
-
-| # | Where | Do this | You should see |
-| - | ----- | ------- | ---------------- |
-| 1 | **Connect** tab | Load preset **Desk test** (survey bar **Presets** or **Tools → Presets → Load**) | COM, baud, UDP port filled; intent hint mentions `127.0.0.1` |
-| 2 | **Connect → Serial & network** | Confirm **COM** is the bridge leg (e.g. COM7), not the paired monitor port | Connection hub or manual fields show your ports |
-| 3 | **Connect → Run bridge** | Click **Start bridge** | Banner **Running**; log lines for UDP listen + serial open |
-| 4 | External | Open Tera Term (or similar) on the **paired** com0com port (e.g. COM12) | Do **not** open the bridge COM in another app |
-| 5 | **Tools → Diagnostics** | Expand **Automated checks** → **UDP sample burst (2.5 s)** | Log + Tera Term show NMEA; status bar Hz > 0 |
-| 6 | **Log** tab | Skim traffic; try log preset **Survey ops** | Readable sentences, not flood |
-| 7 | **Tools → NMEA** | Leave **Passthrough** for Trimble-style NMEA | Strict only when you need QA |
-| 8 | **Connect** | **Stop bridge** | COM released; banner **Stopped** |
-
-**Stuck?** **Tools → Diagnostics → Bench checklist** or survey bar **Checklists → Bench checklist**.
-
----
-
-## Main window map (Standard, current)
-
-```
-Survey bar: View · Presets · Recent · HUD · UI editor · …
-Main tabs:  Connect | Log | Tools
-Tools sidebar: Presets | Phone | NMEA | Terminal | Diagnostics | Theme | Guide
-Status bar: Serial | Network | NMEA | GNSS | session stats
-```
-
-### Connect tab (daily driver)
-
-Collapsible sections (reorder/hide via **UI editor…** on the survey bar or Connect toolbar):
-
-| Section | Purpose |
-| ------- | ------- |
-| **Run bridge** | Start / Stop |
-| **Serial & network** | Connection hub, COM, baud, UDP listen, discovery, unlock |
-| **Status hint** | One-line preset / workflow guidance |
-| **Quick log** | Small live log on Connect (optional) |
-| **Quick terminal** | Bench script output (optional) |
-
-**Tip:** Put **Serial & network** directly under **Run** (default since v1.9.27). Use **UI editor…** on the Connect toolbar to reorder or hide optional sections.
-
-### Tools → Diagnostics
-
-| Card | When to use |
-| ---- | ----------- |
-| **Automated checks** | `verify_all`, bench/boat checklist, UDP burst, TCP demos, capacity probe |
-| **Rotating file log** | Optional survey archive on disk while Running |
-| **On-screen log** | Clear the main **Log** tab panel |
-| **Traffic & data quality** | Legend for status-bar Hz / transport / GNSS (not live data) |
-
-Use **Reorder cards…** to stack cards your way; drag splitter lines between cards for height.
-
-### Tools → Phone
-
-Web API, Tailscale/LAN URL, API token, QR code, and setup link for the operator dashboard (`http://<PC>:8765/`).
-
-### Tools → Guide
-
-**Start here** (stuck on connect?) plus UDP / TCP client / TCP server / checklist tabs — labels match the **Connect** tab and **Advanced network** controls. Buttons open **GETTING_STARTED.md** / **OPERATOR_GUIDE.md**. Web/phone setup stays on **Tools → Phone**.
-
-### Optional — phone / second monitor dashboard
-
-1. **Tools → Phone** → enable **Web API** (port **8765**) and **Allow LAN / Tailscale** — a floating setup QR appears on **Connect** (drag to move; right-click to hide; toggle Web API off/on to show again).  
-2. For iPhone/Tailscale: **Detect Tailscale IP**, **Generate token**, **Copy phone setup link** (not `127.0.0.1`).  
-3. Open the dashboard in the phone browser; Start/Stop and discovery mirror desktop.  
-4. Details: `specs/005-hybrid-ui-webui/quickstart.md` and `specs/006-phase-b-dashboard/quickstart.md`.
-
----
-
-## Field layout (after you know Standard)
-
-Switch via launcher, **Diagnostics → Quick UI switch**, or survey bar layout control.
-
-- Large **Log** and **Start / Stop** strip.  
-- COM/UDP row at the bottom; **Tools** drawer holds Presets, NMEA, Terminal, Diagnostics, Theme, Guide.  
-- Same bridge engine — only the shell changes.
-
----
-
-## Boat / production (outline)
-
-1. Static IP on survey Ethernet; INS sends UDP **to** `pc_ip:port` (bridge **listens**).  
-2. Load boat-style preset → set real COM/baud → **Save**.  
-3. **NMEA → Passthrough** for text NMEA; **Raw binary** only for RTCM/binary.  
-4. **Start bridge** → confirm Hz on status bar or **HUD**.  
-5. **Stop** when done.  
-6. **Checklists → Boat checklist** or Diagnostics → **Boat checklist**.
-
-See [NORBIT_DCT.md](NORBIT_DCT.md) for Applanix + iWBMSe: **40810** on the boat PC; DCT target is **127.0.0.1** (DCT on boat), **192.168.1.8** (DCT on operator laptop / MikroTik wireless), or **VPN StaticIp** (Tailscale/ZeroTier).
-
-**Network reliability (UDP listen, fan-out, TCP):** see **OPERATOR_GUIDE.md** section **6.4 Network reliability checklist (P0)** — quick table for bind direction, firewall, Fan-out on vs last-sender only, Extra TCP output, and TCP client reconnect. Automated checks: `python bench_network_automation.py`, `python bench_fanout_automation.py` (or **Diagnostics → Network bench / Fan-out bench (auto)**).
-
----
-
-## Customize the UI (without editing code)
-
-| Goal | How |
-| ---- | --- |
-| Hide unused Connect sections | **UI editor…** → **Connect** tab → uncheck optional panels → **OK** |
-| Move Serial & network up | **UI editor…** → **Connect** → drag **Serial & network** under **Run** → **OK** |
-| Reorder survey bar chips | **UI editor…** → **Top bar** |
-| Reorder Diagnostics cards | **Tools → Diagnostics → Reorder cards…** |
-| Reorder main tabs | **UI editor…** → **Main tabs** |
-
----
-
-## Next documents
-
-| Doc | Use when |
-| --- | -------- |
-| [OPERATOR_GUIDE.md](OPERATOR_GUIDE.md) | Full bench/boat workflows, troubleshooting, screenshot list |
-| [NORBIT_DCT.md](NORBIT_DCT.md) | NORBIT DCT + Applanix + INS UDP → COM |
-| [README.md](../README.md) | Features, dev install, verify commands |
-| `CHANGELOG.md` | What changed each release |
-
----
-
-## Quick terminal checks (from repo folder)
+### Terminal checks (repo folder, bridge stopped)
 
 ```powershell
 python check_setup.py
@@ -189,4 +185,7 @@ python com_free.py
 python verify_all.py
 ```
 
-Run these with the bridge **Stopped** unless the checklist says otherwise.
+### Web UI specs (contributors)
+
+- `specs/005-hybrid-ui-webui/quickstart.md`
+- `specs/006-phase-b-dashboard/quickstart.md`

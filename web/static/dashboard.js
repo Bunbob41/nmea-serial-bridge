@@ -11,7 +11,39 @@ const MAP_ENABLED_KEY = "nmea-bridge-map-enabled";
 const MAP_BASE_LAYER_KEY = "nmea-bridge-map-base-layer";
 const MAP_TRACK_MAX = 120;
 /** Bumped when dashboard.js changes — used for ?v= cache bust on script tags. */
-const DASHBOARD_SCRIPT_REV = "1.15.1";
+const DASHBOARD_SCRIPT_REV = "1.15.3";
+
+/** Phone sideways: compact header (see dashboard.css landscape HUD media query). */
+const PHONE_LANDSCAPE_HEADER_MQ = "(orientation: landscape) and (max-height: 520px) and (max-width: 960px)";
+
+function isPhoneLandscapeHeader() {
+  return window.matchMedia(PHONE_LANDSCAPE_HEADER_MQ).matches;
+}
+
+function formatHeaderStatusChipText(status) {
+  if (!status) return "Offline";
+  const com = (status.com_port || "—").trim() || "—";
+  const run = status.running ? "Running" : "Stopped";
+  if (isPhoneLandscapeHeader()) {
+    return `${run} · ${com}`;
+  }
+  const port = status.udp_listen_port != null ? String(status.udp_listen_port) : "—";
+  const hz = fmtHz(status.hz_net_to_com);
+  return `${com} · ${port} · ${run} · ${hz} net→COM`;
+}
+
+function initPhoneLandscapeHeader() {
+  const mq = window.matchMedia(PHONE_LANDSCAPE_HEADER_MQ);
+  const refresh = () => {
+    if (lastDashboardStatus) updateHeaderStatusChip(lastDashboardStatus);
+  };
+  if (typeof mq.addEventListener === "function") {
+    mq.addEventListener("change", refresh);
+  } else if (typeof mq.addListener === "function") {
+    mq.addListener(refresh);
+  }
+  window.addEventListener("orientationchange", refresh);
+}
 let lastDashboardStatus = null;
 // Keep in sync with ui/connection_fields.py BAUD_PRESETS
 const BAUD_PRESETS = [4800, 9600, 19200, 38400, 57600, 115200, 230400, 460800];
@@ -356,6 +388,7 @@ async function init() {
     window.initGridstackDashboard();
   }
   initLayoutLockControl();
+  initPhoneLandscapeHeader();
 }
 
 function updateTokenSectionVisibility() {
@@ -500,14 +533,17 @@ function updateHeaderStatusChip(status) {
   chip.classList.remove("chip-running", "chip-stopped", "chip-offline");
   if (!status) {
     chip.textContent = "Offline";
+    chip.title = "Backend offline";
     chip.classList.add("chip-offline");
     return;
   }
+  const full = formatHeaderStatusChipText(status);
   const com = (status.com_port || "—").trim() || "—";
   const port = status.udp_listen_port != null ? String(status.udp_listen_port) : "—";
   const run = status.running ? "Running" : "Stopped";
   const hz = fmtHz(status.hz_net_to_com);
-  chip.textContent = `${com} · ${port} · ${run} · ${hz} net→COM`;
+  chip.textContent = full;
+  chip.title = `${com} · UDP ${port} · ${run} · ${hz} net→COM`;
   chip.classList.add(status.running ? "chip-running" : "chip-stopped");
 }
 
@@ -1790,9 +1826,10 @@ function syncDiscoveryNetworkRowInteractivity() {
   });
 }
 
-async function applyComPort() {
-  if (commandInFlight || bridgeRunning) {
-    showAlert("com-setup-alert", "Stop the bridge before changing COM.", "warn");
+async function testComPort() {
+  if (commandInFlight) return;
+  if (bridgeRunning) {
+    showAlert("com-setup-alert", "Stop the bridge before testing COM.", "warn");
     return;
   }
   if (!ensureCanMutate()) return;
@@ -1804,17 +1841,17 @@ async function applyComPort() {
   setCommandFlight(true);
   hideAlert("com-setup-alert");
   try {
-    const { ok, body } = await apiFetch("/config", {
-      method: "PATCH",
+    const { ok, body } = await apiFetch("/ports/probe", {
+      method: "POST",
       body: JSON.stringify({ com_port: port }),
     });
     if (ok) {
-      showAlert("com-setup-alert", `COM port set to ${port}.`, "ok");
-      await loadConfig();
+      const msg = body.message || `${port} is available.`;
+      showAlert("com-setup-alert", msg, "ok");
     } else {
       const detail = typeof body.detail === "object" ? body.detail : {};
       const cls = detail.error_code === "running_guard" ? "warn" : "error";
-      showAlert("com-setup-alert", extractApiError(body, "COM update failed."), cls);
+      showAlert("com-setup-alert", extractApiError(body, "COM port test failed."), cls);
     }
   } catch (e) {
     showAlert("com-setup-alert", "Network error: " + e.message, "error");
@@ -1822,6 +1859,8 @@ async function applyComPort() {
     setCommandFlight(false);
   }
 }
+
+window.testComPort = testComPort;
 
 async function saveConfig() {
   if (commandInFlight || bridgeRunning) return;

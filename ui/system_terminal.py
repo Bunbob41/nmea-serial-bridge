@@ -16,7 +16,12 @@ from PySide6 import QtCore, QtGui, QtWidgets
 
 from ui import ui_prefs
 from ui.fonts import monospace_ui_font
-from ui.terminal_ping import ping_pty_command, ping_subprocess_args, sanitize_ping_host
+from ui.terminal_ping import (
+    ping_pty_command,
+    ping_subprocess_args,
+    sanitize_ping_host,
+    suggested_ping_preset_name,
+)
 
 _ANSI_ESCAPE = re.compile(r"\x1b\[[0-9;?]*[ -/]*[@-~]|\x1b\].*?(?:\x07|\x1b\\)|\x1b[@-_]")
 _READ_CHUNK = 16_384
@@ -456,7 +461,9 @@ class SystemTerminalWidget(QtWidgets.QWidget):
         self._btn_ping = QtWidgets.QPushButton("Ping")
         self._btn_ping.setToolTip("Run ping in the shell below (starts a session if needed).")
         self._btn_ping_save = QtWidgets.QPushButton("Save…")
-        self._btn_ping_save.setToolTip("Save the host above as a named preset.")
+        self._btn_ping_save.setToolTip(
+            "Save the host above as a named preset (name prefilled from the current ping target)."
+        )
         self._btn_ping_delete = QtWidgets.QPushButton("Delete")
         self._btn_ping_delete.setToolTip("Remove the selected preset from the list.")
         self._btn_ping_delete.setEnabled(False)
@@ -526,6 +533,7 @@ class SystemTerminalWidget(QtWidgets.QWidget):
         self._ping_host.returnPressed.connect(self._on_ping_clicked)
 
         self._ping_process: QtCore.QProcess | None = None
+        self._ping_save_default_name: str = ""
         self._refresh_ping_presets_ui()
         self._refresh_availability()
 
@@ -810,9 +818,7 @@ class SystemTerminalWidget(QtWidgets.QWidget):
                 "Enter a valid IP address or hostname first.",
             )
             return
-        default_name = self._ping_preset_combo.currentText()
-        if default_name == "Presets…":
-            default_name = host
+        default_name = self._ping_save_default_name or suggested_ping_preset_name(host)
         name, ok = QtWidgets.QInputDialog.getText(
             self,
             "Save ping preset",
@@ -845,6 +851,11 @@ class SystemTerminalWidget(QtWidgets.QWidget):
             )
             return
         self._ping_host.setText(clean)
+        self._ping_save_default_name = suggested_ping_preset_name(clean)
+        self._ping_preset_combo.blockSignals(True)
+        self._ping_preset_combo.setCurrentIndex(0)
+        self._ping_preset_combo.blockSignals(False)
+        self._sync_ping_delete_button()
         if _HAS_WINPTY:
             cmd = ping_pty_command(clean)
             if not cmd:

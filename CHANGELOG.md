@@ -3,6 +3,26 @@
 High-level notes for **this fork / branch** (`2034-ui-journey-modernization` and descendants).  
  Version = `version.py` / Git tag when you run `.\release.ps1` or tag manually.
 
+## v1.17.44
+
+- **In-app operator manuals** — **Tools → Guide** buttons (**Getting started…**, **Operator guide…**, **NORBIT DCT…**) and bench **Open operator guide** open formatted markdown inside Serial Link (Qt viewer, offline). Links between `.md` files stay in-app; http(s) links still use the system browser.
+
+## v1.17.43
+
+- **GETTING_STARTED.md** — Operator-first layout: field install and 15-minute bench walkthrough up front; developer paths, JSON tables, and terminal commands moved to an appendix. Notes to use **Tools → Guide** in-app when browser shows raw markdown.
+
+## v1.17.42
+
+- **Web COM & ports** — **Test COM port** replaces **Apply COM** (probes open/close on the chosen port; use **Select** or Configuration to save the active COM). Unlock/probe failures no longer show as green success badges.
+
+## v1.17.41
+
+- **Terminal ping Save preset** — Save dialog prefills from the **current ping host** (updated on every Ping), not the last preset selected in the dropdown. Example: ping `pi-nd` then Save suggests `pi-nd`, not a previous name like `noah`.
+
+## v1.17.40
+
+- **Web phone landscape HUD** — On phone-sized landscape viewports, the dashboard header auto-hides Start/Stop and shows a compact line (`Running · COM7`) with brand and connection dot. Portrait layout unchanged; rotate to portrait to use run controls from the phone.
+
 ## v1.17.39
 
 - **Web startup robustness** — Embedded uvicorn now runs with internal logging config disabled (fixes `Unable to configure formatter 'default'` on some PCs). Startup errors are reported accurately; non-bind failures no longer masquerade as `Port ... already in use`.

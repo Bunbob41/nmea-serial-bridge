@@ -147,6 +147,10 @@ class DiscoveryResponse(BaseModel):
     errors: List[str]
 
 
+class ProbePortRequest(BaseModel):
+    com_port: str
+
+
 class CommandResponse(BaseModel):
     ok: bool
     message: str
@@ -375,6 +379,16 @@ def create_app(
         if not _auth_ok(request, lan_token):
             raise HTTPException(status_code=401, detail="Invalid or missing X-Bridge-Token")
         return _as_command_response(facade.request_unlock_ports(), facade)
+
+    @app.post("/ports/probe", response_model=CommandResponse)
+    def ports_probe(
+        body: ProbePortRequest,
+        request: Request,
+        x_bridge_token: Optional[str] = Header(default=None),
+    ) -> CommandResponse:
+        if not _auth_ok(request, lan_token):
+            raise HTTPException(status_code=401, detail="Invalid or missing X-Bridge-Token")
+        return _as_command_response(facade.request_probe_com_port(body.com_port), facade)
 
     # ------------------------------------------------------------------ static dashboard
     static = _static_dir()

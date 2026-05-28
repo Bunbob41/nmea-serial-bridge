@@ -631,7 +631,7 @@ class BridgeAppFacade(QtCore.QObject):
                 messages.append(hint)
             if hasattr(win, "refresh_ports"):
                 win.refresh_ports()
-            ok = state.safe_to_release or state.last_attempt_ok
+            ok = bool(state.last_attempt_ok)
             return WebCommandResult(
                 ok,
                 " | ".join(messages),
@@ -640,6 +640,41 @@ class BridgeAppFacade(QtCore.QObject):
             )
         except Exception as exc:
             return WebCommandResult(False, str(exc), "error")
+
+    def request_probe_com_port(self, com_port: str) -> WebCommandResult:
+        port = str(com_port or "").strip()
+
+        def _run(win: Any) -> WebCommandResult:
+            return self._probe_com_on_main(win, port)
+
+        return self._invoke_on_main(_run)
+
+    def _probe_com_on_main(self, win: Any, com_port: str) -> WebCommandResult:
+        from port_release import probe_com_lock
+
+        from ui.connection_fields import parse_baud, read_baud_widget
+
+        port = str(com_port or "").strip()
+        if not port:
+            return WebCommandResult(False, "Choose a COM port first.", "validation")
+        baud = parse_baud(read_baud_widget(win.baud_edit)) or 115200
+        running = win._is_bridge_running()
+        bridge_com = win.bridge.com if getattr(win, "bridge", None) else None
+        if running and bridge_com and port.upper() == bridge_com.upper():
+            return WebCommandResult(
+                False,
+                "Bridge is running on this COM — stop the bridge first",
+                "running_guard",
+                "running",
+            )
+        state = probe_com_lock(port, baud)
+        ok = bool(state.last_attempt_ok)
+        return WebCommandResult(
+            ok,
+            state.reason,
+            None if ok else "probe_failed",
+            "running" if running else "stopped",
+        )
 
     # ------------------------------------------------------------------ live log (web dashboard)
     def set_log_paused(self, paused: bool, *, dropped: int = 0) -> None:

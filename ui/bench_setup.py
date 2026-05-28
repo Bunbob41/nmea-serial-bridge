@@ -7,6 +7,7 @@ from typing import Optional
 
 from PySide6 import QtCore, QtWidgets
 
+from ui.doc_viewer import show_bundled_doc
 from ui.ui_prefs import load_bench_setup_prefs, save_bench_setup_prefs
 
 
@@ -72,8 +73,8 @@ def show_bench_setup_dialog(
     lay.addWidget(browser, 1)
 
     row = QtWidgets.QHBoxLayout()
-    btn_guide = QtWidgets.QPushButton("Open full guide externally")
-    btn_guide.setToolTip("Opens OPERATOR_GUIDE.md in your default editor or viewer")
+    btn_guide = QtWidgets.QPushButton("Open operator guide")
+    btn_guide.setToolTip("Opens the full operator manual inside Serial Link")
     btn_guide.clicked.connect(on_open_full_guide)
     btn_close = QtWidgets.QPushButton("Close")
     btn_close.clicked.connect(dlg.close)
