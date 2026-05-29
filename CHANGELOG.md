@@ -3,6 +3,10 @@
 High-level notes for **this fork / branch** (`2034-ui-journey-modernization` and descendants).  
  Version = `version.py` / Git tag when you run `.\release.ps1` or tag manually.
 
+## v1.17.46
+
+- **Taskbar / title bar icon** — ICO layers at 48px and below now use a high-contrast shell variant (lighter DB-9 glyph, lifted tile, subtle ring) so the logo stays visible on dark taskbars; larger sizes keep the detailed squircle.
+
 ## v1.17.45
 
 - **App icon / shortcuts** — Regenerated `app-icon.ico` with larger in-frame artwork (~92% vs 78%) so the DB-9 glyph reads clearly on taskbar and desktop shortcuts; added 512px and extra Windows DPI sizes. Desktop shortcut script prefers the built `serial-link.exe` icon (`exe,0`) for release folders.
