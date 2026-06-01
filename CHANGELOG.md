@@ -3,6 +3,10 @@
 High-level notes for **this fork / branch** (`2034-ui-journey-modernization` and descendants).  
  Version = `version.py` / Git tag when you run `.\release.ps1` or tag manually.
 
+## v1.17.47
+
+- **Taskbar / shortcut icon (shell tier)** — Small ICO layers now crop to connector ink, thicken strokes, and fill ~82% of the tile so the DB-9 logo stays visible (not a faint speck on a colored square).
+
 ## v1.17.46
 
 - **Taskbar / title bar icon** — ICO layers at 48px and below now use a high-contrast shell variant (lighter DB-9 glyph, lifted tile, subtle ring) so the logo stays visible on dark taskbars; larger sizes keep the detailed squircle.

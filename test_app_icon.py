@@ -38,7 +38,14 @@ class TestAppIconAssets(unittest.TestCase):
                     continue
                 if r + g + b > 420:
                     bright += 1
-        self.assertGreater(bright, 12, "32px layer should include visible light logo pixels")
+        self.assertGreater(bright, 40, "32px layer should show a bold light logo, not a speck")
+        ink = 0
+        for y in range(h):
+            for x in range(w):
+                r, g, b, a = small.getpixel((x, y))
+                if a >= 200 and r + g + b > 500:
+                    ink += 1
+        self.assertGreater(ink, 80, "32px connector should cover a solid region of pixels")
 
     def test_ico_includes_windows_dpi_sizes(self) -> None:
         from PIL import Image

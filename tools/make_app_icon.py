@@ -26,9 +26,12 @@ SHELL_BORDER_RGB = (120, 140, 175)
 SHELL_RING_RGB = (148, 163, 184)  # #94a3b8
 CANVAS_SIZE = 512
 ARTWORK_SCALE_DETAIL = 0.92
-ARTWORK_SCALE_SHELL = 0.96
+# Shell: scale ink (not loose bbox) to fill the tile — thin D-sub lines vanish otherwise
+SHELL_INK_FILL = 0.82
+SHELL_DILATE_PX = 10
 CORNER_RADIUS_RATIO = 0.18
 WHITE_KEY_TOLERANCE = 28
+INK_ALPHA_MIN = 160
 # ICO layers at or below this edge use the shell (high-contrast) master
 SHELL_MAX_PX = 48
 
@@ -103,13 +106,47 @@ def _remap_art_for_shell(art) -> object:
             if a < 24:
                 continue
             lum = _luminance(r, g, b)
-            if lum >= 210:
-                px[x, y] = (255, 255, 255, min(255, a + 30))
-            elif lum >= 120:
-                px[x, y] = (228, 236, 248, min(255, a + 20))
+            if lum >= 200:
+                px[x, y] = (255, 255, 255, 255)
+            elif lum >= 90:
+                px[x, y] = (235, 242, 255, 255)
             else:
-                px[x, y] = (168, 182, 210, min(255, a + 15))
+                px[x, y] = (190, 205, 235, 255)
     return out
+
+
+def _ink_bbox(img, *, alpha_min: int = INK_ALPHA_MIN) -> tuple[int, int, int, int] | None:
+    """Bounding box of actual connector pixels, not transparent padding in the crop."""
+    px = img.convert("RGBA").load()
+    w, h = img.size
+    min_x, min_y = w, h
+    max_x, max_y = -1, -1
+    for y in range(h):
+        for x in range(w):
+            if px[x, y][3] >= alpha_min:
+                min_x = min(min_x, x)
+                min_y = min(min_y, y)
+                max_x = max(max_x, x)
+                max_y = max(max_y, y)
+    if max_x < min_x:
+        return None
+    return (min_x, min_y, max_x + 1, max_y + 1)
+
+
+def _thicken_shell_art(art, *, radius: int) -> object:
+    """Bold strokes for taskbar — thin source art otherwise disappears at 16–32px."""
+    from PIL import Image, ImageFilter
+
+    if radius <= 0:
+        return art
+    out = art.copy()
+    alpha = out.split()[3]
+    for _ in range(radius):
+        alpha = alpha.filter(ImageFilter.MaxFilter(3))
+    out.putalpha(alpha)
+    rgb = Image.new("RGBA", out.size, (255, 255, 255, 0))
+    rgb.paste(out, (0, 0), alpha)
+    return _remap_art_for_shell(rgb)
 
 
 def _prepare_artwork(src, *, shell: bool):
@@ -122,7 +159,10 @@ def _prepare_artwork(src, *, shell: bool):
         return None
     cropped = rgba.crop(bbox)
     if shell:
-        cropped = _remap_art_for_shell(cropped)
+        ink = _ink_bbox(cropped)
+        if ink is not None:
+            cropped = cropped.crop(ink)
+        cropped = _thicken_shell_art(cropped, radius=SHELL_DILATE_PX)
     return cropped
 
 
@@ -132,8 +172,6 @@ def _compose_icon(source, *, shell: bool = False) -> object:
     size = CANVAS_SIZE
     canvas_rgb = SHELL_CANVAS_RGB if shell else CANVAS_RGB
     border_rgb = SHELL_BORDER_RGB if shell else BORDER_RGB
-    artwork_scale = ARTWORK_SCALE_SHELL if shell else ARTWORK_SCALE_DETAIL
-
     canvas = Image.new("RGBA", (size, size), (*canvas_rgb, 255))
     radius = max(8, int(size * CORNER_RADIUS_RATIO))
     mask = _rounded_mask(size, radius)
@@ -161,12 +199,18 @@ def _compose_icon(source, *, shell: bool = False) -> object:
 
     cropped = _prepare_artwork(source, shell=shell)
     if cropped is not None:
-        target = int(size * artwork_scale)
+        if shell:
+            pad = int(size * (1.0 - SHELL_INK_FILL) / 2)
+            target = size - 2 * pad
+        else:
+            pad = int(size * (1.0 - ARTWORK_SCALE_DETAIL) / 2)
+            target = size - 2 * pad
         cw, ch = cropped.size
         scale = min(target / cw, target / ch)
         nw = max(1, int(cw * scale))
         nh = max(1, int(ch * scale))
-        art = cropped.resize((nw, nh), Image.Resampling.LANCZOS)
+        resample = Image.Resampling.NEAREST if shell and max(nw, nh) < 96 else Image.Resampling.LANCZOS
+        art = cropped.resize((nw, nh), resample)
         ox = (size - nw) // 2
         oy = (size - nh) // 2
         canvas.alpha_composite(art, (ox, oy))
