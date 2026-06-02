@@ -185,6 +185,22 @@ class TestUiPrefs(unittest.TestCase):
                 loaded = ui_prefs.load_web_ui_prefs()
                 self.assertTrue(loaded["enabled"])
 
+    def test_web_dashboard_layout_roundtrip(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "ui_prefs.json"
+            with patch.object(ui_prefs, "CONFIG_PATH", path):
+                ui_prefs.save_web_dashboard_layout(
+                    layout_mode="gridstack",
+                    local_storage={
+                        "nmea-gridstack-layout-v2": '[{"id":"log"}]',
+                        "nmea-bridge-web-token": "must-strip",
+                    },
+                )
+                loaded = ui_prefs.load_web_dashboard_layout()
+                self.assertEqual(loaded["layout_mode"], "gridstack")
+                self.assertIn("nmea-gridstack-layout-v2", loaded["local_storage"])
+                self.assertNotIn("nmea-bridge-web-token", loaded["local_storage"])
+
     def test_web_ui_migration_enables_missing_block(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "ui_prefs.json"

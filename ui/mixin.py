@@ -415,6 +415,19 @@ class BridgeLogicMixin:
         act_ui_editor.setStatusTip(self._ui_editor_status_tip())
         act_ui_editor.triggered.connect(self._open_ui_editor)
         view_menu.addAction(act_ui_editor)
+        act_save_product_ui = QtGui.QAction("Save UI as product default…", self)
+        act_save_product_ui.setStatusTip(
+            "Export this PC's layout (Connect, tabs, top bar, web dashboard tiles) "
+            "for new installs — not COM/UDP presets."
+        )
+        act_save_product_ui.triggered.connect(self._save_ui_as_product_default)
+        view_menu.addAction(act_save_product_ui)
+        act_reset_product_ui = QtGui.QAction("Reset UI to product default…", self)
+        act_reset_product_ui.setStatusTip(
+            "Replace saved UI layout with the shipped or fleet product_ui_defaults file."
+        )
+        act_reset_product_ui.triggered.connect(self._reset_ui_to_product_default)
+        view_menu.addAction(act_reset_product_ui)
         act_bench = QtGui.QAction("Bench pair setup…", self)
         act_bench.setStatusTip(
             "Open the bench/com0com guide and run com_free + check_setup (same as preflight_bench.bat)"
@@ -607,6 +620,146 @@ class BridgeLogicMixin:
         from ui.ui_editor import open_ui_editor
 
         open_ui_editor(self)
+
+    def _save_ui_as_product_default(self) -> None:
+        from product_ui_defaults import (
+            capture_ui_layout_snapshot_from_user_profile,
+            save_product_ui_defaults_snapshot,
+        )
+
+        snapshot = capture_ui_layout_snapshot_from_user_profile()
+        ui_prefs = snapshot.get("ui_prefs") if isinstance(snapshot.get("ui_prefs"), dict) else {}
+        web_dash = ui_prefs.get("web_dashboard") if isinstance(ui_prefs.get("web_dashboard"), dict) else {}
+        web_ls = web_dash.get("local_storage") if isinstance(web_dash.get("local_storage"), dict) else {}
+        if not ui_prefs:
+            QtWidgets.QMessageBox.information(
+                self,
+                "Product UI default",
+                "No saved UI layout found on this PC yet.\n\n"
+                "Tune the layout (UI editor…), use the app normally so prefs save, "
+                "then try again.",
+            )
+            return
+        web_hint = ""
+        if not web_ls:
+            web_hint = (
+                "\n\nWeb dashboard tile layout was not saved yet. Open the phone/PC "
+                "dashboard once (with Web API on) so layout syncs, then save again."
+            )
+        write_repo = not getattr(__import__("sys"), "frozen", False)
+        paths = save_product_ui_defaults_snapshot(
+            snapshot,
+            write_local=True,
+            write_repo_assets=write_repo,
+        )
+        lines = "\n".join(str(p) for p in paths)
+        extra = (
+            "\n\nCommit assets/product_ui_defaults.json if you ship from the repo."
+            if write_repo
+            else ""
+        )
+        QtWidgets.QMessageBox.information(
+            self,
+            "Product UI default",
+            "Saved product UI layout (Standard desktop + web dashboard chrome):\n\n"
+            f"{lines}{extra}{web_hint}",
+        )
+        self._log_ui("[UI] Saved product UI default layout.")
+
+    def _reset_ui_to_product_default(self) -> None:
+        from product_ui_defaults import (
+            apply_product_ui_defaults_to_user,
+            load_merged_product_ui_defaults,
+        )
+
+        if not load_merged_product_ui_defaults():
+            QtWidgets.QMessageBox.warning(
+                self,
+                "Reset UI layout",
+                "No product_ui_defaults.json found beside the app or in assets/.",
+            )
+            return
+        answer = QtWidgets.QMessageBox.question(
+            self,
+            "Reset UI layout",
+            "Replace your saved UI layout (ui_prefs.json + layout choice) with the "
+            "product default?\n\n"
+            "COM/UDP presets, theme, and HUD layout are not changed. Reload the web "
+            "dashboard in the browser to pick up web tile layout.",
+            QtWidgets.QMessageBox.StandardButton.Yes
+            | QtWidgets.QMessageBox.StandardButton.No,
+            QtWidgets.QMessageBox.StandardButton.No,
+        )
+        if answer != QtWidgets.QMessageBox.StandardButton.Yes:
+            return
+        if not apply_product_ui_defaults_to_user(overwrite=True):
+            QtWidgets.QMessageBox.warning(self, "Reset UI layout", "Reset failed.")
+            return
+        self._reload_ui_layout_from_saved_prefs()
+        QtWidgets.QMessageBox.information(
+            self,
+            "Reset UI layout",
+            "UI layout reset to product default.\n\n"
+            "If something still looks wrong, restart Serial Link once.",
+        )
+        self._log_ui("[UI] Reset layout to product default.")
+
+    def _reload_ui_layout_from_saved_prefs(self) -> None:
+        from ui.ui_editor import migrate_topbar_hidden, migrate_topbar_order
+        from ui.ui_prefs import load_hidden_tabs, load_top_bar_prefs
+
+        ui_mode = getattr(self, "_ui_mode", "standard")
+        prefs = load_top_bar_prefs(ui_mode)
+        self._topbar_order = migrate_topbar_order(list(prefs.get("order", [])))
+        self._topbar_hidden = migrate_topbar_hidden(set(prefs.get("hidden", [])))
+        weights = prefs.get("chip_weights")
+        self._topbar_chip_weights = (
+            dict(weights) if isinstance(weights, dict) else {}
+        )
+        self._shortcuts_visible = bool(prefs.get("shortcuts_visible", False))
+        self._topbar_position = (
+            "bottom"
+            if str(prefs.get("position", "top")).strip().lower() == "bottom"
+            else "top"
+        )
+        self._rebuild_top_bar_widgets()
+
+        if ui_mode == "standard":
+            from ui.connect_panels import (
+                _rebuild_connect_panels,
+                _schedule_connect_splitter_sizes,
+                apply_connect_toolbar_order,
+                sync_connect_panel_layout,
+            )
+            from ui.connect_row_style import apply_connect_row_style
+
+            try:
+                _rebuild_connect_panels(self)
+                apply_connect_row_style(self)
+                sync_connect_panel_layout(self)
+                apply_connect_toolbar_order(self)
+                _schedule_connect_splitter_sizes(self)
+            except Exception as exc:
+                self._log_ui(f"[UI] Connect reload after product reset: {exc}")
+
+        main_tabs = getattr(self, "_main_tabs", None)
+        if main_tabs is not None and "main_tabs" in getattr(self, "_tab_catalog", {}):
+            self._tab_hidden["main_tabs"] = set(
+                load_hidden_tabs(ui_mode, "main_tabs")
+            )
+            self._rebuild_tabs_from_state(main_tabs, "main_tabs")
+
+        if getattr(self, "_tools_nav", None) is not None:
+            self._tab_hidden["tools_tabs"] = set(
+                load_hidden_tabs(ui_mode, "tools_tabs")
+            )
+            self._rebuild_tools_nav_from_state("tools_tabs")
+
+        drawer = getattr(self, "_drawer_tabs", None)
+        if drawer is not None and "tools_tabs" in getattr(self, "_tab_catalog", {}):
+            key = "tools_tabs"
+            self._tab_hidden[key] = set(load_hidden_tabs(ui_mode, key))
+            self._rebuild_tabs_from_state(drawer, key)
 
     def _persist_top_bar_from_bar(
         self,

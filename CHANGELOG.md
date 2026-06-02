@@ -3,6 +3,26 @@
 High-level notes for **this fork / branch** (`2034-ui-journey-modernization` and descendants).  
  Version = `version.py` / Git tag when you run `.\release.ps1` or tag manually.
 
+## v1.17.52
+
+- **Web dashboard log** — Removed non-working **Expand log (full screen)** from the log panel context menu and toolbar; clears any stale expand state on load.
+
+## v1.17.51
+
+- **GridStack reset** — **Reset layout** now destroys and rebuilds the grid from the real panel widgets (prunes empty placeholder tiles left by a bad `load()`). Saved layouts with fewer than four tiles are ignored on boot.
+
+## v1.17.50
+
+- **Web dashboard layout guard** — Ignore/sync-reject grid layouts with fewer than four tiles (fixes a one-panel dashboard after a bad save or dev test writing to real `ui_prefs.json`). API tests now use an isolated prefs file.
+
+## v1.17.49
+
+- **Product UI defaults — web dashboard layout** — Grid/classic dashboard tile order, collapse, chrome, map, and log panel prefs sync to `ui_prefs.json` via `GET`/`PUT /dashboard-layout` (debounced from the browser). **Save UI as product default** now includes `web_dashboard` (API token and log search text excluded). Open the dashboard once before saving so layout syncs from the browser.
+
+## v1.17.48
+
+- **Product UI defaults** — New installs and missing `ui_prefs.json` seed **Standard** layout from `assets/product_ui_defaults.json` (optional `product_ui_defaults.local.json` beside the exe for fleet overrides). **View → Save UI as product default…** exports layout chrome only (not COM/UDP path presets). **View → Reset UI to product default…** restores shipped/fleet layout for power users without wiping other prefs.
+
 ## v1.17.47
 
 - **Taskbar / shortcut icon (shell tier)** — Small ICO layers now crop to connector ink, thicken strokes, and fill ~82% of the tile so the DB-9 logo stays visible (not a faint speck on a colored square).

@@ -1,7 +1,9 @@
 """FastAPI contract tests for Web control plane."""
 from __future__ import annotations
 
+import tempfile
 import unittest
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from app_facade import (
@@ -266,6 +268,49 @@ class TestWebApi(unittest.TestCase):
             )
         self.assertEqual(r.status_code, 200)
         self.assertIn("svg", r.headers.get("content-type", ""))
+
+    def test_dashboard_layout_roundtrip(self) -> None:
+        import ui.ui_prefs as ui_prefs_mod
+
+        grid = (
+            '[{"id":"com-setup","x":0,"y":0,"w":6,"h":4},'
+            '{"id":"status","x":6,"y":0,"w":6,"h":5},'
+            '{"id":"map","x":0,"y":5,"w":6,"h":4},'
+            '{"id":"log","x":0,"y":13,"w":12,"h":6}]'
+        )
+        payload = {
+            "layout_mode": "gridstack",
+            "local_storage": {"nmea-gridstack-layout-v2": grid},
+        }
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "ui_prefs.json"
+            with patch.object(ui_prefs_mod, "CONFIG_PATH", path):
+                r = self.client.put("/dashboard-layout", json=payload)
+                self.assertEqual(r.status_code, 200)
+                self.assertEqual(r.json()["layout_mode"], "gridstack")
+                r2 = self.client.get("/dashboard-layout")
+                self.assertEqual(r2.status_code, 200)
+                self.assertEqual(
+                    r2.json()["local_storage"]["nmea-gridstack-layout-v2"],
+                    grid,
+                )
+
+    def test_dashboard_layout_rejects_tiny_gridstack_save(self) -> None:
+        import ui.ui_prefs as ui_prefs_mod
+
+        tiny = {
+            "layout_mode": "gridstack",
+            "local_storage": {
+                "nmea-gridstack-layout-v2": '[{"id":"status","x":0,"y":0,"w":6,"h":4}]',
+            },
+        }
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "ui_prefs.json"
+            with patch.object(ui_prefs_mod, "CONFIG_PATH", path):
+                r = self.client.put("/dashboard-layout", json=tiny)
+                self.assertEqual(r.status_code, 200)
+                r2 = self.client.get("/dashboard-layout")
+                self.assertEqual(r2.json()["local_storage"], {})
 
     def test_auth_required_when_token_set(self) -> None:
         app = create_app(self.facade, version="test", lan_token="secret")

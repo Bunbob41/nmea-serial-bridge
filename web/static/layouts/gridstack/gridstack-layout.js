@@ -77,6 +77,9 @@ function persistGridstackLayout() {
   } catch (_) {
     /* ignore quota */
   }
+  if (typeof window.schedulePersistDashboardLayoutToServer === "function") {
+    window.schedulePersistDashboardLayoutToServer();
+  }
 }
 
 function gridstackNodeForId(id) {
@@ -272,6 +275,99 @@ function isGridstackLayoutLocked() {
   return localStorage.getItem(GRIDSTACK_LAYOUT_LOCK_KEY) === "1";
 }
 
+function gridstackLayoutJsonViable(raw) {
+  if (typeof window.isViableGridstackLayoutJson === "function") {
+    return window.isViableGridstackLayoutJson(raw);
+  }
+  try {
+    const layout = JSON.parse(raw);
+    return Array.isArray(layout) && layout.length >= 4;
+  } catch (_) {
+    return false;
+  }
+}
+
+/** Empty shells left by a bad GridStack load — strip before relayout. */
+function pruneOrphanGridItems(root) {
+  if (!root) return;
+  root.querySelectorAll(".grid-stack-item").forEach((item) => {
+    if (!item.querySelector(".dashboard-panel")) item.remove();
+  });
+}
+
+function ensureGridstackWidgetsRegistered(root) {
+  if (!gridstackGrid || !root) return;
+  root.querySelectorAll(".grid-stack-item[gs-id]").forEach((el) => {
+    const known = (gridstackGrid.engine.nodes || []).some((n) => n.el === el);
+    if (!known) gridstackGrid.makeWidget(el);
+  });
+}
+
+function applyGridstackLayoutNodes(layout) {
+  const root = document.querySelector(".grid-stack#dashboard-panels");
+  if (!root || !gridstackGrid || !Array.isArray(layout) || !layout.length) return;
+  pruneOrphanGridItems(root);
+  ensureGridstackWidgetsRegistered(root);
+  layout.forEach((n) => {
+    if (n.id && n.h > GRIDSTACK_COLLAPSED_ROWS) {
+      gridstackExpandedHeights[n.id] = n.h;
+    }
+  });
+  gridstackGrid.load(layout, false);
+  applyGridstackCollapseFromSavedPanels();
+  persistGridstackLayout();
+}
+
+const GRIDSTACK_INIT_OPTS = {
+  column: 12,
+  cellHeight: 80,
+  margin: 10,
+  float: false,
+  animate: true,
+  alwaysShowResizeHandle: true,
+  draggable: {
+    handle:
+      ".dashboard-panel-toggle, .dashboard-panel.chrome-header-hidden",
+    cancel:
+      ".panel-nudge-btn, .panel-nudge-group, .panel-chrome-menu-btn, .panel-chrome-fab, .grid-tile-resize-grip, .dashboard-chrome-menu, .dashboard-chrome-menu-item",
+  },
+  resizable: {
+    handles: "se, s, e",
+    autoHide: false,
+  },
+};
+
+function wireGridstackGridEvents() {
+  if (!gridstackGrid) return;
+  gridstackGrid.on("change", () => {
+    persistGridstackLayout();
+  });
+  gridstackGrid.on("resizestop", (_e, el) => {
+    const id = el.getAttribute("gs-id");
+    const nodes = gridstackGrid.engine.nodes || [];
+    const node = nodes.find((n) => n.el === el);
+    if (id && node) rememberExpandedHeight(id, node.h);
+  });
+}
+
+function hardResetGridstackToDefault() {
+  const root = document.querySelector(".grid-stack#dashboard-panels");
+  if (!root || typeof GridStack === "undefined") return;
+  if (gridstackGrid) {
+    gridstackGrid.destroy(false);
+    gridstackGrid = null;
+  }
+  pruneOrphanGridItems(root);
+  gridstackGrid = GridStack.init(GRIDSTACK_INIT_OPTS, root);
+  wireGridstackGridEvents();
+  GRIDSTACK_DEFAULT_LAYOUT.forEach((n) => {
+    gridstackExpandedHeights[n.id] = n.h;
+  });
+  applyGridstackLayoutNodes(GRIDSTACK_DEFAULT_LAYOUT);
+  installGridstackTouchResizeGrips(root);
+  applyGridstackLayoutLock(isGridstackLayoutLocked());
+}
+
 function applyGridstackLayoutLock(locked) {
   document.body.classList.toggle("layout-gridstack-locked", !!locked);
   const chk = document.getElementById("layout-lock");
@@ -298,86 +394,41 @@ function initGridstackDashboard() {
     return;
   }
 
-  gridstackGrid = GridStack.init(
-    {
-      column: 12,
-      cellHeight: 80,
-      margin: 10,
-      float: false,
-      animate: true,
-      /* iPhone has no hover — must show handles always (default "mobile" autohide breaks resize) */
-      alwaysShowResizeHandle: true,
-      draggable: {
-        handle:
-          ".dashboard-panel-toggle, .dashboard-panel.chrome-header-hidden",
-        cancel:
-          ".panel-nudge-btn, .panel-nudge-group, .panel-chrome-menu-btn, .panel-chrome-fab, .grid-tile-resize-grip, .dashboard-chrome-menu, .dashboard-chrome-menu-item",
-      },
-      resizable: {
-        handles: "se, s, e",
-        autoHide: false,
-      },
-    },
-    root
-  );
+  gridstackGrid = GridStack.init(GRIDSTACK_INIT_OPTS, root);
+  wireGridstackGridEvents();
 
-  const applyDefaultLayout = () => {
-    GRIDSTACK_DEFAULT_LAYOUT.forEach((n) => {
-      gridstackExpandedHeights[n.id] = n.h;
-    });
-    gridstackGrid.load(GRIDSTACK_DEFAULT_LAYOUT, true);
-    applyGridstackCollapseFromSavedPanels();
-    persistGridstackLayout();
-  };
-
-  let usedSaved = false;
+  let layoutToApply = GRIDSTACK_DEFAULT_LAYOUT;
   try {
     const raw = localStorage.getItem(GRIDSTACK_LAYOUT_KEY);
-    if (raw) {
-      const layout = JSON.parse(raw);
-      if (Array.isArray(layout) && layout.length) {
-        layout.forEach((n) => {
-          if (n.id && n.h > GRIDSTACK_COLLAPSED_ROWS) {
-            gridstackExpandedHeights[n.id] = n.h;
-          }
-        });
-        gridstackGrid.load(layout, true);
-        usedSaved = true;
-      }
+    if (raw && gridstackLayoutJsonViable(raw)) {
+      layoutToApply = JSON.parse(raw);
     }
   } catch (_) {
     /* ignore corrupt layout */
   }
-  if (!usedSaved) {
-    applyDefaultLayout();
-  } else {
-    applyGridstackCollapseFromSavedPanels();
-  }
+  applyGridstackLayoutNodes(layoutToApply);
 
   installGridstackTouchResizeGrips(root);
   applyGridstackLayoutLock(isGridstackLayoutLocked());
 
-  gridstackGrid.on("change", () => {
-    persistGridstackLayout();
-  });
-
-  gridstackGrid.on("resizestop", (_e, el) => {
-    const id = el.getAttribute("gs-id");
-    const nodes = gridstackGrid.engine.nodes || [];
-    const node = nodes.find((n) => n.el === el);
-    if (id && node) rememberExpandedHeight(id, node.h);
-  });
-
   const resetBtn = document.getElementById("btn-gridstack-reset");
-  if (resetBtn) {
+  if (resetBtn && !resetBtn.dataset.gridstackResetWired) {
+    resetBtn.dataset.gridstackResetWired = "1";
     resetBtn.addEventListener("click", () => {
       localStorage.removeItem(GRIDSTACK_LAYOUT_KEY);
       localStorage.removeItem("nmea-gridstack-layout-v1");
-      applyDefaultLayout();
-      installGridstackTouchResizeGrips(root);
+      localStorage.removeItem(GRIDSTACK_LAYOUT_LOCK_KEY);
+      const lockChk = document.getElementById("layout-lock");
+      if (lockChk) lockChk.checked = false;
+      hardResetGridstackToDefault();
+      if (typeof window.schedulePersistDashboardLayoutToServer === "function") {
+        window.schedulePersistDashboardLayoutToServer();
+      }
     });
   }
 }
+
+window.hardResetGridstackToDefault = hardResetGridstackToDefault;
 
 window.initGridstackDashboard = initGridstackDashboard;
 window.syncGridstackPanelCollapse = syncGridstackPanelCollapse;

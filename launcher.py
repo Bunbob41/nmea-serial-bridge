@@ -168,8 +168,19 @@ def main() -> int:
     saved = _load_choice()
     if saved:
         _spawn_gui(["--ui", saved], foreground=foreground)
-    else:
-        _spawn_gui(["--pick-ui"], foreground=foreground)
+        return 0
+    try:
+        from product_ui_defaults import default_ui_layout_id, seed_user_ui_prefs_if_missing
+
+        seed_user_ui_prefs_if_missing()
+        product_ui = default_ui_layout_id()
+        if product_ui:
+            _save_choice(product_ui)
+            _spawn_gui(["--ui", product_ui], foreground=foreground)
+            return 0
+    except Exception:
+        pass
+    _spawn_gui(["--pick-ui"], foreground=foreground)
     return 0
 
 

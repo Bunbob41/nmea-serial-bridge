@@ -67,6 +67,16 @@ class MetaResponse(BaseModel):
     commands_ready: bool = True
 
 
+class DashboardLayoutResponse(BaseModel):
+    layout_mode: str = "gridstack"
+    local_storage: dict[str, str] = {}
+
+
+class DashboardLayoutPatch(BaseModel):
+    layout_mode: Optional[str] = None
+    local_storage: Optional[dict[str, str]] = None
+
+
 class StatusResponse(BaseModel):
     running: bool
     com_port: str
@@ -389,6 +399,40 @@ def create_app(
         if not _auth_ok(request, lan_token):
             raise HTTPException(status_code=401, detail="Invalid or missing X-Bridge-Token")
         return _as_command_response(facade.request_probe_com_port(body.com_port), facade)
+
+    # ------------------------------------------------------------------ dashboard layout (product defaults)
+    @app.get("/dashboard-layout", response_model=DashboardLayoutResponse)
+    def get_dashboard_layout() -> DashboardLayoutResponse:
+        try:
+            from ui.ui_prefs import load_web_dashboard_layout
+
+            payload = load_web_dashboard_layout()
+        except Exception:
+            payload = {"layout_mode": "gridstack", "local_storage": {}}
+        return DashboardLayoutResponse(**payload)
+
+    @app.put("/dashboard-layout", response_model=DashboardLayoutResponse)
+    def put_dashboard_layout(
+        body: DashboardLayoutPatch,
+        request: Request,
+        x_bridge_token: Optional[str] = Header(default=None),
+    ) -> DashboardLayoutResponse:
+        if not _auth_ok(request, lan_token):
+            raise HTTPException(status_code=401, detail="Invalid or missing X-Bridge-Token")
+        try:
+            from ui.ui_prefs import load_web_dashboard_layout, save_web_dashboard_layout
+        except Exception as exc:
+            raise HTTPException(status_code=500, detail=str(exc)) from exc
+        prev = load_web_dashboard_layout()
+        mode = body.layout_mode if body.layout_mode is not None else prev["layout_mode"]
+        storage = (
+            body.local_storage
+            if body.local_storage is not None
+            else prev["local_storage"]
+        )
+        save_web_dashboard_layout(layout_mode=str(mode), local_storage=dict(storage or {}))
+        updated = load_web_dashboard_layout()
+        return DashboardLayoutResponse(**updated)
 
     # ------------------------------------------------------------------ static dashboard
     static = _static_dir()

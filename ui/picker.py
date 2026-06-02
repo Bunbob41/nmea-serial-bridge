@@ -182,7 +182,7 @@ def pick_ui_dialog(parent: Optional[QtWidgets.QWidget] = None) -> Optional[str]:
 
 
 def resolve_ui_id(cli_ui: Optional[str], *, show_picker: bool) -> str:
-    """CLI --ui > saved config > picker (if show_picker) > default."""
+    """CLI --ui > saved config > product default > picker (if show_picker) > field."""
     if cli_ui:
         ui = normalize_ui_id(cli_ui)
         if ui in UI_ORDER:
@@ -192,6 +192,16 @@ def resolve_ui_id(cli_ui: Optional[str], *, show_picker: bool) -> str:
     saved = load_saved_ui()
     if saved:
         return saved
+    try:
+        from product_ui_defaults import default_ui_layout_id, seed_user_ui_prefs_if_missing
+
+        seed_user_ui_prefs_if_missing()
+        product_ui = default_ui_layout_id()
+        if product_ui in UI_ORDER:
+            save_ui_choice(product_ui)
+            return product_ui
+    except Exception:
+        pass
     if show_picker:
         picked = pick_ui_dialog()
         if picked:

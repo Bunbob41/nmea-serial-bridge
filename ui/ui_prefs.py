@@ -32,6 +32,13 @@ RECENT_SESSIONS_MAX = 5
 
 
 def _read_json() -> dict[str, Any]:
+    if not CONFIG_PATH.is_file():
+        try:
+            from product_ui_defaults import seed_user_ui_prefs_if_missing
+
+            seed_user_ui_prefs_if_missing()
+        except Exception:
+            pass
     try:
         raw = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError, TypeError):
@@ -963,6 +970,89 @@ def save_web_ui_prefs(
         "token": (token or "").strip() or None,
         "phone_base_url": phone_s,
     }
+    _write_json(data)
+
+
+# Web operator dashboard layout (browser localStorage mirror for product defaults).
+WEB_DASHBOARD_STORAGE_KEYS: tuple[str, ...] = (
+    "nmea-gridstack-layout-v2",
+    "nmea-dashboard-chrome-v1",
+    "nmea-dashboard-layout-locked",
+    "nmea-monitor-collapse",
+    "nmea-dashboard-panels",
+    "nmea-dashboard-order",
+    "nmea-bridge-map-enabled",
+    "nmea-bridge-map-base-layer",
+    "nmea-bridge-show-qr",
+    "nmea-bridge-log-view",
+    "nmea-bridge-log-filter",
+    "nmea-bridge-log-nmea-types",
+)
+WEB_DASHBOARD_STRIP_STORAGE_KEYS = frozenset(
+    {"nmea-bridge-web-token", "nmea-bridge-log-text"}
+)
+_WEB_DASHBOARD_MAX_BYTES = 256 * 1024
+_VALID_WEB_DASHBOARD_MODES = frozenset({"classic", "gridstack"})
+
+
+def _gridstack_layout_tile_count(raw_json: str) -> int:
+    try:
+        layout = json.loads(raw_json)
+    except (TypeError, json.JSONDecodeError):
+        return 0
+    if not isinstance(layout, list):
+        return 0
+    return sum(1 for node in layout if isinstance(node, dict) and node.get("id"))
+
+
+def _sanitize_web_dashboard_local_storage(raw: Any) -> dict[str, str]:
+    if not isinstance(raw, dict):
+        return {}
+    out: dict[str, str] = {}
+    total = 0
+    allowed = frozenset(WEB_DASHBOARD_STORAGE_KEYS) - WEB_DASHBOARD_STRIP_STORAGE_KEYS
+    for key, val in raw.items():
+        if key not in allowed:
+            continue
+        if val is None:
+            continue
+        s = val if isinstance(val, str) else json.dumps(val, separators=(",", ":"))
+        if not s:
+            continue
+        if key == "nmea-gridstack-layout-v2" and _gridstack_layout_tile_count(s) < 4:
+            continue
+        total += len(key) + len(s)
+        if total > _WEB_DASHBOARD_MAX_BYTES:
+            break
+        out[str(key)] = s
+    return out
+
+
+def load_web_dashboard_layout() -> dict[str, Any]:
+    data = _read_json()
+    raw = data.get("web_dashboard")
+    if not isinstance(raw, dict):
+        return {"layout_mode": "gridstack", "local_storage": {}}
+    mode = str(raw.get("layout_mode") or "gridstack").strip().lower()
+    if mode not in _VALID_WEB_DASHBOARD_MODES:
+        mode = "gridstack"
+    return {
+        "layout_mode": mode,
+        "local_storage": _sanitize_web_dashboard_local_storage(raw.get("local_storage")),
+    }
+
+
+def save_web_dashboard_layout(
+    *,
+    layout_mode: str,
+    local_storage: dict[str, Any],
+) -> None:
+    mode = str(layout_mode or "gridstack").strip().lower()
+    if mode not in _VALID_WEB_DASHBOARD_MODES:
+        mode = "gridstack"
+    clean = _sanitize_web_dashboard_local_storage(local_storage)
+    data = _read_json()
+    data["web_dashboard"] = {"layout_mode": mode, "local_storage": clean}
     _write_json(data)
 
 

@@ -333,6 +333,116 @@ function authHeaders() {
   return h;
 }
 
+// Keep in sync with ui.ui_prefs.WEB_DASHBOARD_STORAGE_KEYS (product default export).
+const WEB_DASHBOARD_SYNC_KEYS = [
+  "nmea-gridstack-layout-v2",
+  "nmea-dashboard-chrome-v1",
+  "nmea-dashboard-layout-locked",
+  "nmea-monitor-collapse",
+  "nmea-dashboard-panels",
+  "nmea-dashboard-order",
+  "nmea-bridge-map-enabled",
+  "nmea-bridge-map-base-layer",
+  "nmea-bridge-show-qr",
+  "nmea-bridge-log-view",
+  "nmea-bridge-log-filter",
+  "nmea-bridge-log-nmea-types",
+];
+
+const GRIDSTACK_LAYOUT_STORAGE_KEY = "nmea-gridstack-layout-v2";
+const MIN_GRIDSTACK_SAVED_TILES = 4;
+
+function isViableGridstackLayoutJson(raw) {
+  if (!raw) return false;
+  try {
+    const layout = JSON.parse(raw);
+    if (!Array.isArray(layout) || layout.length < MIN_GRIDSTACK_SAVED_TILES) return false;
+    const ids = new Set(layout.map((n) => n && n.id).filter(Boolean));
+    return ids.has("status") && (ids.has("log") || ids.has("com-setup"));
+  } catch (_) {
+    return false;
+  }
+}
+
+function collectDashboardLayoutForServer() {
+  const local_storage = {};
+  WEB_DASHBOARD_SYNC_KEYS.forEach((key) => {
+    const v = localStorage.getItem(key);
+    if (v !== null && v !== "") local_storage[key] = v;
+  });
+  if (isGridstackLayoutPage()) {
+    const gridRaw = local_storage[GRIDSTACK_LAYOUT_STORAGE_KEY];
+    if (gridRaw && !isViableGridstackLayoutJson(gridRaw)) {
+      delete local_storage[GRIDSTACK_LAYOUT_STORAGE_KEY];
+    }
+  }
+  return {
+    layout_mode: isGridstackLayoutPage() ? "gridstack" : "classic",
+    local_storage,
+  };
+}
+
+function applyDashboardLayoutFromServer(payload) {
+  if (!payload || typeof payload.local_storage !== "object") return;
+  const ls = payload.local_storage;
+  WEB_DASHBOARD_SYNC_KEYS.forEach((key) => {
+    if (!(key in ls)) return;
+    const v = ls[key];
+    if (
+      key === GRIDSTACK_LAYOUT_STORAGE_KEY &&
+      v &&
+      !isViableGridstackLayoutJson(String(v))
+    ) {
+      return;
+    }
+    if (v === null || v === undefined || v === "") localStorage.removeItem(key);
+    else localStorage.setItem(key, String(v));
+  });
+}
+
+let dashboardLayoutPersistTimer = null;
+function schedulePersistDashboardLayoutToServer() {
+  clearTimeout(dashboardLayoutPersistTimer);
+  dashboardLayoutPersistTimer = setTimeout(persistDashboardLayoutToServer, 800);
+}
+
+async function loadServerDashboardLayout() {
+  try {
+    const { ok, body } = await apiFetch("/dashboard-layout");
+    if (ok && body) applyDashboardLayoutFromServer(body);
+  } catch (_) {
+    /* offline or API unavailable */
+  }
+}
+
+async function persistDashboardLayoutToServer() {
+  try {
+    await apiFetch("/dashboard-layout", {
+      method: "PUT",
+      body: JSON.stringify(collectDashboardLayoutForServer()),
+    });
+  } catch (_) {
+    /* ignore */
+  }
+}
+
+window.schedulePersistDashboardLayoutToServer = schedulePersistDashboardLayoutToServer;
+window.isViableGridstackLayoutJson = isViableGridstackLayoutJson;
+
+(function patchLocalStorageDashboardSync() {
+  const sync = new Set(WEB_DASHBOARD_SYNC_KEYS);
+  const origSet = localStorage.setItem.bind(localStorage);
+  const origRemove = localStorage.removeItem.bind(localStorage);
+  localStorage.setItem = function (key, value) {
+    origSet(key, value);
+    if (sync.has(key)) schedulePersistDashboardLayoutToServer();
+  };
+  localStorage.removeItem = function (key) {
+    origRemove(key);
+    if (sync.has(key)) schedulePersistDashboardLayoutToServer();
+  };
+})();
+
 // ── API error extraction ──────────────────────────────────────────────────────
 // FastAPI detail can be a string (e.g. 401) or an object with .message (our models).
 function extractApiError(body, fallback) {
@@ -363,6 +473,7 @@ async function init() {
     if (modeSel) modeSel.addEventListener("change", updateConfigModeFields);
     await loadMeta();
     await loadConfig();
+    await loadServerDashboardLayout();
     await pollDiscovery();
     updateTransferHint();
     updateQrDisplay();
@@ -389,6 +500,7 @@ async function init() {
   }
   initLayoutLockControl();
   initPhoneLandscapeHeader();
+  schedulePersistDashboardLayoutToServer();
 }
 
 function updateTokenSectionVisibility() {
@@ -1250,11 +1362,6 @@ function buildChromeMenuItems(panelId) {
     items.push({
       label: "Clear log view",
       action: () => clearWebLogView(),
-    });
-    const logExpanded = document.body.classList.contains("dashboard-log-expanded");
-    items.push({
-      label: logExpanded ? "✓ Expand log (full screen)" : "Expand log (full screen)",
-      action: () => setLogExpanded(!logExpanded),
     });
   }
 
@@ -2427,10 +2534,10 @@ function initWebLog() {
 }
 
 function initLogExpand() {
-  const chk = document.getElementById("log-expand");
-  const restored = localStorage.getItem(LOG_EXPAND_KEY) === "1";
-  if (chk) chk.checked = restored;
-  if (restored) setLogExpanded(true, false);
+  if (localStorage.getItem(LOG_EXPAND_KEY) === "1") {
+    localStorage.removeItem(LOG_EXPAND_KEY);
+    setLogExpanded(false, false);
+  }
 
   const logToggle = document.getElementById("panel-toggle-log");
   if (logToggle) {
