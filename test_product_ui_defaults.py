@@ -35,6 +35,11 @@ class TestProductUiDefaults(unittest.TestCase):
         self.assertNotIn("nmea-bridge-web-token", ls)
         self.assertIn("nmea-gridstack-layout-v2", ls)
 
+    def test_sanitize_strips_machine_phone_url(self) -> None:
+        raw = {"web_ui": {"phone_base_url": "http://100.1.2.3:10110", "port": 10110}}
+        clean = sanitize_ui_prefs_for_product_export(raw)
+        self.assertNotIn("phone_base_url", clean["web_ui"])
+
     def test_sanitize_strips_operator_keys(self) -> None:
         raw = {
             "recent_sessions": [{"com": "COM7"}],

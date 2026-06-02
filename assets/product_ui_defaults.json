@@ -235,8 +235,7 @@
       "enabled": true,
       "host": "127.0.0.1",
       "port": 10110,
-      "lan_bind": true,
-      "phone_base_url": "http://100.108.156.78:10110"
+      "lan_bind": true
     },
     "qr_overlay": {
       "user_positioned": true,

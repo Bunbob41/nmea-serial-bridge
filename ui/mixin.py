@@ -2867,27 +2867,37 @@ class BridgeLogicMixin:
             app.clipboard().setText(token)
         self._log_ui("[Web] API token copied to clipboard.")
 
+    def _detect_phone_url(self, *, force: bool = False) -> bool:
+        """Fill Phone dashboard URL from Tailscale CLI or LAN adapters."""
+        from web.phone_url import suggest_phone_base_urls
+
+        if not force:
+            return self._maybe_autofill_phone_url()
+        port = self._web_port_from_ui()
+        urls = suggest_phone_base_urls(port)
+        if not urls:
+            return False
+        edit = getattr(self, "edit_web_phone_url", None)
+        if edit is None:
+            return False
+        edit.setText(urls[0])
+        self._persist_web_ui_prefs()
+        self._log_ui(f"[Web] Phone dashboard URL set to {urls[0]} (detected).")
+        return True
+
     def _on_web_detect_phone_url(self) -> None:
-        if self._maybe_autofill_phone_url():
+        if self._detect_phone_url(force=True):
             self._refresh_web_token_qr()
             return
         self._log_ui(
-            "[Web] Could not detect a Tailscale/LAN IP — run `tailscale ip -4` and paste "
-            "http://THAT-IP:8765 into Phone dashboard URL."
+            "[Web] Could not detect a Tailscale/LAN IP — run `tailscale ip` in cmd and paste "
+            "http://THAT-IP:PORT into Phone dashboard URL."
         )
 
     def _on_web_open_dashboard(self) -> None:
-        if not self._web_lan_bind_from_ui():
-            base = self._web_dashboard_local_url()
-        else:
-            base = self._phone_dashboard_base_url()
-            if not base:
-                if self._maybe_autofill_phone_url():
-                    base = self._phone_dashboard_base_url()
+        base = self._web_dashboard_local_url()
         if not base:
-            self._log_ui(
-                "[Web] Set Phone dashboard URL (Tailscale/LAN IP) or click Detect Tailscale IP."
-            )
+            self._log_ui("[Web] Set a valid Web API port, then open the dashboard again.")
             return
         QtGui.QDesktopServices.openUrl(QtCore.QUrl(base.rstrip("/") + "/"))
         self._log_ui(f"[Web] Opened dashboard in browser ({base}).")

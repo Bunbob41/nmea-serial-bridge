@@ -858,7 +858,7 @@ def build_phone_dashboard_tab(parent: QtWidgets.QWidget) -> QtWidgets.QWidget:
     parent.edit_web_phone_url.setPlaceholderText("http://100.x.x.x:8765")
     parent.edit_web_phone_url.setToolTip(
         "URL your phone opens in the browser — use this PC's Tailscale or LAN IP, not 127.0.0.1. "
-        "Run tailscale ip -4 if unsure. Used for QR and setup links."
+        "Run tailscale ip in cmd if unsure. Used for QR and setup links."
     )
     sp = QtWidgets.QStyle.StandardPixmap
     parent.btn_web_detect_phone_url = _phone_icon_tool_button(

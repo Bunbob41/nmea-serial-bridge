@@ -122,6 +122,7 @@ def sanitize_ui_prefs_for_product_export(prefs: dict[str, Any]) -> dict[str, Any
     if isinstance(web, dict):
         clean_web = dict(web)
         clean_web.pop("token", None)
+        clean_web.pop("phone_base_url", None)
         out["web_ui"] = clean_web
     web_dash = _sanitize_web_dashboard_for_export(out.get("web_dashboard"))
     if web_dash is not None:

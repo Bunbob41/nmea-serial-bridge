@@ -35,25 +35,39 @@ def normalize_phone_base_url(text: str) -> str:
     return normalize_base_url(s)
 
 
-def _tailscale_ipv4() -> List[str]:
+def _parse_tailscale_stdout_ipv4(stdout: str) -> List[str]:
+    """IPv4 lines from ``tailscale ip`` or ``tailscale ip -4`` (mixed v4/v6 on some builds)."""
     out: List[str] = []
-    try:
-        kwargs: dict = {
-            "capture_output": True,
-            "text": True,
-            "timeout": 3,
-            "errors": "replace",
-        }
-        if sys.platform == "win32":
-            kwargs["creationflags"] = getattr(subprocess, "CREATE_NO_WINDOW", 0)
-        proc = subprocess.run(["tailscale", "ip", "-4"], **kwargs)
-        for line in (proc.stdout or "").splitlines():
-            ip = line.strip().split()[0] if line.strip() else ""
-            if ip and "." in ip:
-                out.append(ip)
-    except (OSError, subprocess.TimeoutExpired, FileNotFoundError):
-        pass
+    for line in (stdout or "").splitlines():
+        token = line.strip().split()[0] if line.strip() else ""
+        if not token or ":" in token:
+            continue
+        if "." in token:
+            out.append(token)
     return out
+
+
+def _tailscale_ipv4() -> List[str]:
+    """Run Tailscale CLI; some Windows installs reject ``ip -4`` but accept ``ip``."""
+    kwargs: dict = {
+        "capture_output": True,
+        "text": True,
+        "timeout": 5,
+        "errors": "replace",
+    }
+    if sys.platform == "win32":
+        kwargs["creationflags"] = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+    for args in (["ip", "-4"], ["ip"]):
+        try:
+            proc = subprocess.run(["tailscale", *args], **kwargs)
+        except (OSError, subprocess.TimeoutExpired, FileNotFoundError):
+            continue
+        if proc.returncode != 0:
+            continue
+        ips = _parse_tailscale_stdout_ipv4(proc.stdout or "")
+        if ips:
+            return ips
+    return []
 
 
 def _hostname_ipv4() -> List[str]:

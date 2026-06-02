@@ -3,6 +3,10 @@
 High-level notes for **this fork / branch** (`2034-ui-journey-modernization` and descendants).  
  Version = `version.py` / Git tag when you run `.\release.ps1` or tag manually.
 
+## v1.17.53
+
+- **Phone — Detect Tailscale / LAN** — Detect button now **overwrites** the Phone dashboard URL (fixes “nothing happens” when a stale URL was seeded from another PC). Tailscale CLI tries `tailscale ip -4` then `tailscale ip` when `-4` fails on Windows. **Open local dashboard** always opens `http://127.0.0.1:PORT/` on this PC. Product UI defaults no longer ship a machine-specific `phone_base_url`.
+
 ## v1.17.52
 
 - **Web dashboard log** — Removed non-working **Expand log (full screen)** from the log panel context menu and toolbar; clears any stale expand state on load.
