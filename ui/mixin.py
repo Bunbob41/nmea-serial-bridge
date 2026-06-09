@@ -449,6 +449,11 @@ class BridgeLogicMixin:
             lambda: self._set_top_bar_position("top" if self._topbar_position == "bottom" else "bottom")
         )
         view_menu.addAction(act_move_bar)
+        view_menu.addSeparator()
+        self._act_switch_layout = QtGui.QAction("", self)
+        self._act_switch_layout.triggered.connect(self._switch_layout_from_view_menu)
+        view_menu.addAction(self._act_switch_layout)
+        view_menu.aboutToShow.connect(self._refresh_switch_layout_menu)
 
         view_btn.setMenu(view_menu)
         configure_topbar_button(
@@ -2066,24 +2071,48 @@ class BridgeLogicMixin:
         self._log_ui(f"[UI] Random seed lock: {state}")
         self._sync_random_theme_actions()
 
-    def _toggle_ui_layout(self) -> None:
-        """Switch Standard ↔ Field (double-click Layout on the survey bar)."""
+    def _toggle_ui_layout(self) -> bool:
+        """Switch Standard ↔ Field (Layout chip on the survey bar)."""
         cur = normalize_ui_id(getattr(self, "_ui_mode", "standard"))
         other = "field" if cur == "standard" else "standard"
-        self._switch_ui_layout(other)
+        return self._switch_ui_layout(other)
 
-    def _switch_ui_layout(self, ui_id: str) -> None:
-        if getattr(self, "_layout_switch_in_progress", False):
+    def _refresh_switch_layout_menu(self) -> None:
+        act = getattr(self, "_act_switch_layout", None)
+        if act is None:
             return
+        cur = normalize_ui_id(getattr(self, "_ui_mode", "standard"))
+        if cur == "standard":
+            act.setText("Switch to Field layout")
+            self._switch_layout_target = "field"
+        else:
+            act.setText("Switch to Standard layout")
+            self._switch_layout_target = "standard"
+        running = self.bridge is not None or (
+            self._worker is not None and self._worker.isRunning()
+        )
+        act.setEnabled(not running)
+        if running:
+            act.setStatusTip("Stop the bridge before switching layout.")
+        else:
+            act.setStatusTip("Reload the window in the other workspace layout.")
+
+    def _switch_layout_from_view_menu(self) -> None:
+        target = str(getattr(self, "_switch_layout_target", "field"))
+        self._switch_ui_layout(target)
+
+    def _switch_ui_layout(self, ui_id: str) -> bool:
+        if getattr(self, "_layout_switch_in_progress", False):
+            return False
         if self.bridge is not None or (self._worker is not None and self._worker.isRunning()):
             QtWidgets.QMessageBox.information(
                 self,
                 "Layout",
                 "Stop the bridge before switching layout.",
             )
-            return
+            return False
         if ui_id == getattr(self, "_ui_mode", ""):
-            return
+            return False
         btn = getattr(self, "btn_ui_layout", None)
         try:
             self._layout_switch_in_progress = True
@@ -2102,6 +2131,7 @@ class BridgeLogicMixin:
             nw.raise_()
             nw.activateWindow()
             self.close()
+            return True
         except Exception as exc:
             QtWidgets.QMessageBox.warning(
                 self,
@@ -2111,6 +2141,7 @@ class BridgeLogicMixin:
             self._layout_switch_in_progress = False
             if btn is not None:
                 btn.setEnabled(True)
+            return False
 
     def _toggle_fullscreen(self) -> None:
         if self.isFullScreen():

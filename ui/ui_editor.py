@@ -35,7 +35,7 @@ TOP_BAR_CHIP_LABELS: dict[str, str] = {
     "ui_editor": "UI editor",
     "shortcuts": "Shortcuts legend",
     "copy_stats": "Copy stats",
-    "ui_switch": "Layout (double-click toggles Standard / Field)",
+    "ui_switch": "Layout (click toggles Standard / Field)",
 }
 
 CONNECT_PANEL_HINTS: dict[str, str] = {

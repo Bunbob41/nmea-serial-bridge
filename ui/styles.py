@@ -174,6 +174,45 @@ QComboBox#connectBaudCombo::drop-down {
     width: 24px;
     border: none;
 }
+QWidget#connectionHub {
+    background: transparent;
+}
+QLabel#connectionHubTitle {
+    color: #e8e4de;
+    font-weight: 600;
+}
+QLabel#connectionHubRefreshHint {
+    color: #9aa3b0;
+    font-size: 9pt;
+}
+QLabel#connectionHubEmptyHint {
+    color: #b8b0a8;
+}
+QFrame#endpointCard {
+    background-color: #2a2230;
+    border: 1px solid #6a5a68;
+    border-radius: 8px;
+}
+QFrame#endpointCard:hover {
+    border-color: #8d6a84;
+    background-color: #322838;
+}
+QFrame#endpointCard[selected="true"] {
+    border-color: #c9a227;
+    background-color: #3d3440;
+}
+QLabel#endpointCardTitle {
+    color: #f4f0ea;
+    font-weight: 600;
+}
+QLabel#endpointCardSubtitle {
+    color: #c8c0b8;
+}
+QLabel#endpointCardStatus {
+    color: #d8e8d0;
+    font-size: 8.5pt;
+    font-weight: 600;
+}
 """
 _CONNECT_ROW_VARIANTS_DARK = """
 /* Default (pill) when connectRowStyle is not yet set on first paint */
@@ -435,6 +474,45 @@ QComboBox#connectBaudCombo::drop-down {
     subcontrol-position: top right;
     width: 24px;
     border: none;
+}
+QWidget#connectionHub {
+    background: transparent;
+}
+QLabel#connectionHubTitle {
+    color: #1e2834;
+    font-weight: 600;
+}
+QLabel#connectionHubRefreshHint {
+    color: #5a6472;
+    font-size: 9pt;
+}
+QLabel#connectionHubEmptyHint {
+    color: #5a6472;
+}
+QFrame#endpointCard {
+    background-color: #f0f4f8;
+    border: 1px solid #b8c4d4;
+    border-radius: 8px;
+}
+QFrame#endpointCard:hover {
+    border-color: #4a8fd4;
+    background-color: #e8eef6;
+}
+QFrame#endpointCard[selected="true"] {
+    border-color: #2f6fad;
+    background-color: #dce8f4;
+}
+QLabel#endpointCardTitle {
+    color: #1a1a1a;
+    font-weight: 600;
+}
+QLabel#endpointCardSubtitle {
+    color: #3d4654;
+}
+QLabel#endpointCardStatus {
+    color: #1f4d2a;
+    font-size: 8.5pt;
+    font-weight: 600;
 }
 """
 _CONNECT_ROW_VARIANTS_LIGHT = """
@@ -1061,6 +1139,119 @@ QTextBrowser#docViewerBrowser {
 }
 """
 
+_READABILITY_SCROLL_DARK = """
+QScrollBar:vertical {
+    background-color: #1a1418;
+    width: 12px;
+    margin: 0;
+}
+QScrollBar::handle:vertical {
+    background-color: #8a7868;
+    border: 1px solid #a89888;
+    border-radius: 5px;
+    min-height: 36px;
+}
+QScrollBar::handle:vertical:hover {
+    background-color: #c9a227;
+}
+QScrollBar::add-line:vertical,
+QScrollBar::sub-line:vertical,
+QScrollBar::add-page:vertical,
+QScrollBar::sub-page:vertical {
+    background: none;
+    height: 0;
+}
+QScrollBar:horizontal {
+    background-color: #1a1418;
+    height: 12px;
+    margin: 0;
+}
+QScrollBar::handle:horizontal {
+    background-color: #8a7868;
+    border: 1px solid #a89888;
+    border-radius: 5px;
+    min-width: 36px;
+}
+QScrollBar::handle:horizontal:hover {
+    background-color: #c9a227;
+}
+QScrollBar::add-line:horizontal,
+QScrollBar::sub-line:horizontal,
+QScrollBar::add-page:horizontal,
+QScrollBar::sub-page:horizontal {
+    background: none;
+    width: 0;
+}
+QComboBox QAbstractItemView {
+    background-color: #2a1d22;
+    color: #f4f0ea;
+    border: 1px solid #8d6a34;
+    selection-background-color: #6b3a4a;
+    selection-color: #fff8ec;
+    outline: none;
+}
+QWidget#toolTabScrollHost QLabel,
+QWidget#connectMainScrollHost QLabel,
+QWidget#connectionHub QLabel,
+QGroupBox QLabel {
+    color: #e8e4de;
+}
+QLabel#tabNote {
+    color: #d4ccc0;
+}
+"""
+
+_READABILITY_SCROLL_LIGHT = """
+QScrollBar:vertical {
+    background-color: #e4e0da;
+    width: 12px;
+    margin: 0;
+}
+QScrollBar::handle:vertical {
+    background-color: #9a8a78;
+    border: 1px solid #7a6a58;
+    border-radius: 5px;
+    min-height: 36px;
+}
+QScrollBar::handle:vertical:hover {
+    background-color: #8a6a30;
+}
+QScrollBar::add-line:vertical,
+QScrollBar::sub-line:vertical,
+QScrollBar::add-page:vertical,
+QScrollBar::sub-page:vertical {
+    background: none;
+    height: 0;
+}
+QScrollBar:horizontal {
+    background-color: #e4e0da;
+    height: 12px;
+}
+QScrollBar::handle:horizontal {
+    background-color: #9a8a78;
+    border: 1px solid #7a6a58;
+    border-radius: 5px;
+    min-width: 36px;
+}
+QScrollBar::handle:horizontal:hover {
+    background-color: #8a6a30;
+}
+QScrollBar::add-line:horizontal,
+QScrollBar::sub-line:horizontal,
+QScrollBar::add-page:horizontal,
+QScrollBar::sub-page:horizontal {
+    background: none;
+    width: 0;
+}
+QComboBox QAbstractItemView {
+    background-color: #f8faf6;
+    color: #1a1a1a;
+    border: 1px solid #a8b4c4;
+    selection-background-color: #d9c6a1;
+    selection-color: #1a1a1a;
+}
+"""
+
 BRIDGE_STYLESHEET_STANDARD = (
     """
 QWidget#BridgeRoot {
@@ -1233,6 +1424,7 @@ QComboBox:focus, QLineEdit:focus, QSpinBox:focus { border: 1px solid #c9a227; }
     + _CONNECT_SHARED_DARK
     + _CONNECT_ROW_VARIANTS_DARK
     + _APPLE_ROUND_DARK
+    + _READABILITY_SCROLL_DARK
 )
 
 BRIDGE_STYLESHEET_MINIMAL = (
@@ -1348,6 +1540,7 @@ QComboBox:focus, QLineEdit:focus, QSpinBox:focus { border: 1px solid #6a5a40; }
     + _CONNECT_SHARED_LIGHT
     + _CONNECT_ROW_VARIANTS_LIGHT
     + _APPLE_ROUND_LIGHT
+    + _READABILITY_SCROLL_LIGHT
 )
 
 BRIDGE_STYLESHEET_LOGFIRST = (
@@ -1496,6 +1689,7 @@ QCheckBox { color: #f0ebe4; }
     + _CONNECT_SHARED_DARK
     + _CONNECT_ROW_VARIANTS_DARK
     + _APPLE_ROUND_DARK
+    + _READABILITY_SCROLL_DARK
 )
 
 # First-run / dev UI layout picker (modal dialog)

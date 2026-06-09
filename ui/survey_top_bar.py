@@ -44,7 +44,8 @@ TOPBAR_SHORT_LABEL: dict[str, str] = {
 # Preferred compact words before abbreviations (try smaller font first).
 TOPBAR_COMPACT_WORD_LABEL: dict[str, str] = {
     "randomize_theme": "Random",
-    "standardize_theme": "Standard",
+    # Not "Standard" — that reads like the Standard *layout* next to the Layout chip.
+    "standardize_theme": "Slate",
 }
 
 # Back-compat alias for tests.
@@ -945,30 +946,37 @@ class SurveyTopBar(QtWidgets.QWidget):
 
 
 class _LayoutToggleButton(QtWidgets.QToolButton):
-    """Always shows «Layout»; double-click switches Standard ↔ Field."""
+    """Always shows «Layout»; click switches Standard ↔ Field."""
 
-    def __init__(self, on_toggle: Callable[[], None], parent: QtWidgets.QWidget | None = None) -> None:
+    def __init__(self, on_toggle: Callable[[], bool], parent: QtWidgets.QWidget | None = None) -> None:
         super().__init__(parent)
         self._on_toggle = on_toggle
-        self._toggle_fired = False
+        self._toggle_busy = False
         self.setObjectName("surveyQuickBtn")
         configure_topbar_button(
             self,
             "Layout",
             tooltip=(
-                "Double-click to switch layout (Standard ↔ Field). "
-                "Stop the bridge first."
+                "Switch layout (Standard ↔ Field). "
+                "Also under View. Stop the bridge first."
             ),
         )
+        self.clicked.connect(self._request_toggle)
+
+    def _request_toggle(self) -> None:
+        if self._toggle_busy:
+            return
+        self._toggle_busy = True
+        try:
+            ok = bool(self._on_toggle())
+        except Exception:
+            ok = False
+        if not ok:
+            self._toggle_busy = False
 
     def mouseDoubleClickEvent(self, event: QtGui.QMouseEvent) -> None:
         if event.button() == QtCore.Qt.MouseButton.LeftButton:
-            if self._toggle_fired:
-                event.accept()
-                return
-            self._toggle_fired = True
-            self.setEnabled(False)
-            self._on_toggle()
+            self._request_toggle()
             event.accept()
             return
         super().mouseDoubleClickEvent(event)
@@ -977,9 +985,9 @@ class _LayoutToggleButton(QtWidgets.QToolButton):
 def build_ui_switch_inner(
     parent: QtWidgets.QWidget,
     *,
-    on_toggle: Callable[[], None],
+    on_toggle: Callable[[], bool],
 ) -> QtWidgets.QToolButton:
-    """Single Layout control — double-click toggles the other workspace."""
+    """Single Layout control — click toggles the other workspace."""
     btn = _LayoutToggleButton(on_toggle, parent)
     parent.btn_ui_layout = btn  # type: ignore[attr-defined]
     return btn

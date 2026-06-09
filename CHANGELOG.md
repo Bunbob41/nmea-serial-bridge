@@ -3,6 +3,18 @@
 High-level notes for **this fork / branch** (`2034-ui-journey-modernization` and descendants).  
  Version = `version.py` / Git tag when you run `.\release.ps1` or tag manually.
 
+## v1.17.56
+
+- **Layout switch** — Top-bar **Layout** chip now works on a **single click** (was double-click only). Failed switches (bridge still running) no longer leave the chip disabled. **View → Switch to Field layout** / **Switch to Standard layout** as a fallback. Compact **Standardize theme** tile reads **Slate** so it is not confused with Standard workspace layout.
+
+## v1.17.55
+
+- **Readability sweep (work PC)** — Brighter web scrollbars (11px, visible thumb on dark tracks). Dashboard `<strong>` hints no longer render browser-default black on dark panels. Desktop: styled `QScrollBar` handles, COM dropdown lists, and Tools/Connect/Discovery labels on dark tab surfaces.
+
+## v1.17.54
+
+- **Discovery COM contrast** — Web dashboard serial rows and COM `<select>` controls use explicit dark-surface backgrounds and readable text (fixes white-on-white COM lists on some work PCs). Desktop Connection Hub endpoint cards get matching QSS so COM/LAN cards are not unreadable on default Windows panel chrome.
+
 ## v1.17.53
 
 - **Phone — Detect Tailscale / LAN** — Detect button now **overwrites** the Phone dashboard URL (fixes “nothing happens” when a stale URL was seeded from another PC). Tailscale CLI tries `tailscale ip -4` then `tailscale ip` when `-4` fails on Windows. **Open local dashboard** always opens `http://127.0.0.1:PORT/` on this PC. Product UI defaults no longer ship a machine-specific `phone_base_url`.

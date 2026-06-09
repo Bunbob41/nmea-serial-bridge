@@ -42,6 +42,12 @@ class TestConnectSectionStyles(unittest.TestCase):
         self.assertIn("connectSectionBody", css)
         self.assertIn("connectPanelRow", css)
 
+    def test_standard_stylesheet_includes_visible_scrollbars(self) -> None:
+        css = bridge_stylesheet("standard", "maroon_classic")
+        self.assertIn("QScrollBar::handle:vertical", css)
+        self.assertIn("QComboBox QAbstractItemView", css)
+        self.assertIn("endpointCard", css)
+
 
 if __name__ == "__main__":
     unittest.main()

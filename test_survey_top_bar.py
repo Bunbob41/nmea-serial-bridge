@@ -40,7 +40,7 @@ class SurveyTopBarTests(unittest.TestCase):
 
     def test_preferred_compact_words_for_random_and_standardize(self) -> None:
         self.assertEqual(preferred_compact_for("randomize_theme", "Randomize theme"), "Random")
-        self.assertEqual(preferred_compact_for("standardize_theme", "Standardize theme"), "Standard")
+        self.assertEqual(preferred_compact_for("standardize_theme", "Standardize theme"), "Slate")
 
     def test_layout_button_always_says_layout(self) -> None:
         app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
@@ -50,21 +50,46 @@ class SurveyTopBarTests(unittest.TestCase):
             _ui_mode = "standard"
 
         host = _Host()
-        btn = build_ui_switch_inner(host, on_toggle=lambda: toggled.append("ok"))
+        btn = build_ui_switch_inner(host, on_toggle=lambda: toggled.append("ok") or True)
         self.assertEqual(btn.text(), "Layout")
         self.assertEqual(str(btn.property("topBarFullText") or ""), "Layout")
+
+    def test_layout_button_single_click_toggles(self) -> None:
+        app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+        toggled: list[str] = []
+        host = QtWidgets.QWidget()
+        btn = build_ui_switch_inner(host, on_toggle=lambda: toggled.append("ok") or True)
+        host.resize(120, 40)
+        host.show()
+        app.processEvents()
+        QtTest.QTest.mouseClick(btn, QtCore.Qt.MouseButton.LeftButton)
+        app.processEvents()
+        self.assertEqual(toggled, ["ok"])
+        self.assertTrue(btn.isEnabled())
 
     def test_layout_button_double_click_toggles(self) -> None:
         app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
         toggled: list[str] = []
         host = QtWidgets.QWidget()
-        btn = build_ui_switch_inner(host, on_toggle=lambda: toggled.append("ok"))
+        btn = build_ui_switch_inner(host, on_toggle=lambda: toggled.append("ok") or True)
         host.resize(120, 40)
         host.show()
         app.processEvents()
         QtTest.QTest.mouseDClick(btn, QtCore.Qt.MouseButton.LeftButton)
         app.processEvents()
         self.assertEqual(toggled, ["ok"])
+        self.assertTrue(btn.isEnabled())
+
+    def test_layout_button_stays_enabled_when_toggle_fails(self) -> None:
+        app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+        host = QtWidgets.QWidget()
+        btn = build_ui_switch_inner(host, on_toggle=lambda: False)
+        host.resize(120, 40)
+        host.show()
+        app.processEvents()
+        QtTest.QTest.mouseClick(btn, QtCore.Qt.MouseButton.LeftButton)
+        app.processEvents()
+        self.assertTrue(btn.isEnabled())
 
     def test_compact_chip_prefers_word_before_abbreviation(self) -> None:
         app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])

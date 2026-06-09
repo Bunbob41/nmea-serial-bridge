@@ -8,9 +8,11 @@
 
 /* ── Custom properties ────────────────────────────────────────── */
 :root {
+  color-scheme: dark;
   --bg:          #0f1117;
   --bg-card:     #1a1d27;
   --bg-card-alt: #1e2233;
+  --card-bg:     #1a1d27;
   --border:      #2d3148;
   --text:        #e2e8f0;
   --text-muted:  #8b93a8;
@@ -30,6 +32,11 @@
   --transition: 140ms ease;
   --gap:   16px;
   --gap-sm: 8px;
+  --scrollbar-size: 11px;
+  --scrollbar-track: #151820;
+  --scrollbar-thumb: #6b7a94;
+  --scrollbar-thumb-hover: #8eb8f0;
+  --scrollbar-thumb-border: #8a9ab4;
 }
 
 /* ── Reset / base ─────────────────────────────────────────────── */
@@ -44,6 +51,18 @@ body {
   min-height: 100vh;
   display: flex;
   flex-direction: column;
+}
+
+/* Browser defaults often paint <strong> black — unreadable on dark panels */
+.dashboard strong,
+.dashboard b,
+.dashboard-panel-body strong,
+.dashboard-panel-body b,
+.device-section strong,
+.com-setup-hint strong,
+.discovery-net-hint strong {
+  color: var(--text);
+  font-weight: 600;
 }
 
 /* ── Typography ───────────────────────────────────────────────── */
@@ -1036,6 +1055,19 @@ body {
   color: var(--text);
   font-size: 0.95rem;
   padding: 8px 10px;
+  color-scheme: dark;
+}
+
+select.cfg-input,
+select.com-quick-select {
+  background-color: var(--bg);
+  color: var(--text);
+}
+
+select.cfg-input option,
+select.com-quick-select option {
+  background-color: var(--bg-card);
+  color: var(--text);
 }
 
 .cfg-input:disabled {
@@ -1237,12 +1269,14 @@ body {
   border-radius: var(--radius-sm);
   cursor: pointer;
   -webkit-tap-highlight-color: rgba(96, 165, 250, 0.2);
-  border: 1px solid transparent;
+  border: 1px solid var(--border);
+  background: var(--bg-card-alt);
+  color: var(--text);
   transition: background var(--transition), border-color var(--transition);
   min-height: 44px;
 }
 
-.device-row:hover  { background: var(--bg-card-alt); border-color: var(--border); }
+.device-row:hover  { background: #252a3d; border-color: var(--accent); }
 .device-row.active { background: #1a3050; border-color: var(--accent); }
 
 .device-row.device-row-net-live {
@@ -1275,10 +1309,15 @@ body {
   gap: 2px;
   align-items: flex-start;
 }
-.device-port { font-size: 0.88rem; font-weight: 600; color: var(--text-mono); font-family: monospace; }
+.device-port {
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: #e2e8f0;
+  font-family: monospace;
+}
 .device-desc {
   font-size: 0.75rem;
-  color: var(--text-muted);
+  color: #a8b4c8;
   line-height: 1.3;
   max-width: 100%;
   overflow: hidden;
@@ -1470,6 +1509,11 @@ body {
   border-radius: var(--radius-sm);
   padding: 6px 10px;
   font-size: 0.82rem;
+  color-scheme: dark;
+}
+
+.log-chk input[type="checkbox"] {
+  accent-color: var(--accent);
 }
 
 .log-nmea-filter-wrap {
@@ -2128,8 +2172,40 @@ body.layout-gridstack .log-card.log-terminal-only .grid-stack-item-content .dash
   height: 100%;
 }
 
-/* ── Scrollbar ────────────────────────────────────────────────── */
-::-webkit-scrollbar { width: 6px; }
-::-webkit-scrollbar-track { background: var(--bg); }
-::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
-::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+/* ── Scrollbars (visible on dark survey theme / work laptops) ─── */
+.device-list,
+.log-panel,
+.log-nmea-menu,
+.log-nmea-dialog,
+.dashboard-panel-body,
+.monitor-panel {
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+}
+
+::-webkit-scrollbar {
+  width: var(--scrollbar-size);
+  height: var(--scrollbar-size);
+}
+
+::-webkit-scrollbar-track {
+  background: var(--scrollbar-track);
+  border-left: 1px solid var(--border);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+  border: 2px solid var(--scrollbar-track);
+  border-radius: 6px;
+  min-height: 40px;
+  min-width: 40px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover);
+  border-color: var(--scrollbar-thumb-border);
+}
+
+::-webkit-scrollbar-corner {
+  background: var(--scrollbar-track);
+}

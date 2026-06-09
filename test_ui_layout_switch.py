@@ -49,14 +49,24 @@ class TestUiLayoutSwitch(unittest.TestCase):
         ) as create, patch.object(host, "_shutdown_background_services") as shutdown, patch(
             "ui.tray_support.destroy_tray_icon"
         ):
-            host._switch_ui_layout("field")
-            host._switch_ui_layout("field")
+            self.assertTrue(host._switch_ui_layout("field"))
+            self.assertFalse(host._switch_ui_layout("field"))
         self.assertTrue(host.closed)
         self.assertTrue(host._layout_switch_in_progress)
         self.assertFalse(host.quit_requested)
         self.assertEqual(create.call_count, 1)
         self.assertEqual(save_choice.call_count, 1)
         shutdown.assert_called()
+
+    def test_switch_layout_returns_false_when_bridge_running(self) -> None:
+        host = _LayoutHost()
+        host.bridge = object()
+        with patch.object(host, "_close_auxiliary_windows"), patch(
+            "ui.mixin.create_window", return_value=_FakeWindow()
+        ) as create, patch("ui.mixin.QtWidgets.QMessageBox.information"):
+            self.assertFalse(host._switch_ui_layout("field"))
+        self.assertFalse(host.closed)
+        create.assert_not_called()
 
     def test_switch_layout_stops_background_before_new_window(self) -> None:
         host = _LayoutHost()
