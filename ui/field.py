@@ -198,6 +198,7 @@ class BridgeWindowField(BridgeLogicMixin, QtWidgets.QWidget):
         self.stop_btn.setText("Stop bridge")
         run_l.addWidget(self.start_btn, 2)
         run_l.addWidget(self.stop_btn, 1)
+        run_l.addWidget(self.com_lock_chip, 3)
 
         self.statusBar = QtWidgets.QStatusBar()
         self.status_serial = QtWidgets.QLabel("Serial: stopped")

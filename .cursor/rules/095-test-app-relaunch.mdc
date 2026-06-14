@@ -1,0 +1,41 @@
+---
+description: Stop prior test launches before starting Serial Link again for operator verification
+alwaysApply: true
+---
+
+# Test App Relaunch
+
+When you launch **Serial Link** for the user to test after completing a task (`python bridge_gui.py`, `serial-link.exe`, or a background shell launch), **always stop the previous agent-started instance first**, then start **one** fresh instance.
+
+## Why
+
+- Avoids duplicate windows, tray icons, and COM port locks from stale processes.
+- Prevents the single-instance lock from blocking the new build.
+- Ensures the user tests the **current** code, not an earlier background launch.
+
+## Required workflow
+
+1. Finish the code change (and tests if applicable).
+2. **Stop** any prior test instance you started in this session (or a still-running background shell).
+3. **Start** the app once for handoff.
+4. Tell the user the app is ready and what to verify.
+
+## How to stop (Windows)
+
+Prefer targeted cleanup before relaunch:
+
+```powershell
+# Processes whose command line includes bridge_gui
+Get-CimInstance Win32_Process -Filter "Name='python.exe' OR Name='pythonw.exe'" |
+  Where-Object { $_.CommandLine -match 'bridge_gui' } |
+  ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+```
+
+Also check background terminals from earlier `bridge_gui.py` launches; do not leave a prior shell running the GUI.
+
+Frozen builds: close or end-task `serial-link.exe` under `dist\serial-link\` before launching a new zip test.
+
+## Do not
+
+- Launch a second instance on top of an existing agent-started one without closing the first.
+- Assume exit code 0 means the user closed it — verify no `bridge_gui` process remains before relaunching.

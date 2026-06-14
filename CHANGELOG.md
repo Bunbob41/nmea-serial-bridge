@@ -3,6 +3,26 @@
 High-level notes for **this fork / branch** (`2034-ui-journey-modernization` and descendants).  
  Version = `version.py` / Git tag when you run `.\release.ps1` or tag manually.
 
+## v1.17.61
+
+- **Web network mode save** — Saving TCP client/server or UDP remote no longer snaps back to UDP listen. The web API was forcing UDP listen whenever listen host/port were in the patch; remote host/port now map to the correct desktop fields for each mode.
+
+## v1.17.60
+
+- **Web COM lock freeze** — `/ports/probe` and `/ports/unlock` no longer open COM on the Qt main thread (was blocking the UI for up to 5s). `/status` is read-only again (no main-thread wait on every poll).
+
+## v1.17.59
+
+- **Web COM lock** — Phone/dashboard `/status` exposes COM availability (checking / available / in use). **Start** is disabled when the configured port is busy, with a COM lock chip in the header and COM & ports panel (matches desktop Connect chip). **Test COM**, **Unlock**, and **Refresh** re-sync lock state. Server-side start validation blocks busy ports.
+
+## v1.17.58
+
+- **COM lock probe** — Fix chip stuck on “checking availability…”: probe results use primitive Qt signals (queued), no GUI-thread `wait()` on the worker, 4s watchdog timeout, and fewer duplicate probes during port refresh.
+
+## v1.17.57
+
+- **P0 COM reliability** — Background COM exclusivity probe on Connect: **COM lock chip** shows available vs in use, **Start** stays disabled while another app holds the port. Discovery hub marks the selected serial card **Port busy**. **Unlock** + **Refresh** re-probe. Serial auto-reconnect tracks USB **hwid** and follows COM re-enumeration (e.g. COM7 → COM12 after cable bump).
+
 ## v1.17.56
 
 - **Layout switch** — Top-bar **Layout** chip now works on a **single click** (was double-click only). Failed switches (bridge still running) no longer leave the chip disabled. **View → Switch to Field layout** / **Switch to Standard layout** as a fallback. Compact **Standardize theme** tile reads **Slate** so it is not confused with Standard workspace layout.

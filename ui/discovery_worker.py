@@ -49,6 +49,10 @@ class DiscoveryScanWorker(QtCore.QThread):
                 udp_port=int(self._params.get("udp_port", 10110)),
                 selected_port=self._params.get("selected_port"),
                 network_scan_results=network_results,
+                probe_baud=int(self._params.get("probe_baud") or 115200),
+                bridge_running=bool(self._params.get("bridge_running")),
+                bridge_com=self._params.get("bridge_com"),
+                probe_serial_locks=bool(self._full_network_scan),
             )
             if not self._cancelled:
                 self.snapshot_ready.emit(snap, counts)

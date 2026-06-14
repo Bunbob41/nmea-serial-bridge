@@ -52,6 +52,9 @@ class TestWebApi(unittest.TestCase):
         self.assertIn("running", props)
         self.assertIn("position_lat", props)
         self.assertIn("position_lon", props)
+        self.assertIn("com_port_available", props)
+        self.assertIn("com_port_lock_reason", props)
+        self.assertIn("com_lock_checking", props)
 
     def test_openapi_documents_discovery_fields(self) -> None:
         schema = self.app.openapi()
@@ -71,6 +74,27 @@ class TestWebApi(unittest.TestCase):
         body = r.json()
         self.assertEqual(body["com_port"], "COM7")
         self.assertFalse(body["running"])
+        self.assertIn("com_port_available", body)
+        self.assertIn("com_port_lock_reason", body)
+        self.assertIn("com_lock_checking", body)
+
+    def test_com_lock_fields_from_window_busy(self) -> None:
+        from port_release import PortLockState
+
+        win = MagicMock()
+        win._is_bridge_running.return_value = False
+        win._starting = False
+        win.com_cb.currentText.return_value = "COM7"
+        win.baud_edit = MagicMock()
+        win._com_lock_probe_inflight = ("", 0)
+        win._com_lock_worker = None
+        win._com_lock_state = PortLockState(
+            "COM7", True, "Access is denied", True, False
+        )
+        fields = self.facade._com_lock_fields_from_window(win)
+        self.assertFalse(fields["com_port_available"])
+        self.assertIn("denied", fields["com_port_lock_reason"].lower())
+        self.assertFalse(fields["com_lock_checking"])
 
     def test_get_config(self) -> None:
         self.facade.get_config = MagicMock(  # type: ignore[method-assign]

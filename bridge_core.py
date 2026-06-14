@@ -127,6 +127,31 @@ def _open_serial_port_timed(port: str, baud: int, timeout_s: float) -> serial.Se
     return result[0]
 
 
+def _lookup_serial_hwid(com: str) -> Optional[str]:
+    import serial.tools.list_ports
+
+    target = (com or "").strip().upper()
+    if not target:
+        return None
+    for port in serial.tools.list_ports.comports():
+        if (port.device or "").strip().upper() == target:
+            hwid = (port.hwid or "").strip()
+            return hwid if hwid else None
+    return None
+
+
+def _find_com_by_hwid(hwid: Optional[str]) -> Optional[str]:
+    if not hwid:
+        return None
+    import serial.tools.list_ports
+
+    for port in serial.tools.list_ports.comports():
+        if (port.hwid or "").strip() == hwid:
+            device = (port.device or "").strip()
+            return device if device else None
+    return None
+
+
 def _friendly_serial_error(exc: BaseException, port: str) -> str:
     msg = str(exc).strip()
     if isinstance(exc, asyncio.TimeoutError):
@@ -434,6 +459,7 @@ class SerialNetBridge:
         self._teardown = False
         self._tasks: list[asyncio.Task] = []
         self._serial_open = False
+        self._serial_hwid: Optional[str] = None
         self._network_ready = False
         self._serial_io_err_last_msg: Optional[str] = None
         self._serial_io_err_last_mono: float = 0.0
@@ -874,6 +900,7 @@ class SerialNetBridge:
             return False
 
         self._serial_open = True
+        self._serial_hwid = _lookup_serial_hwid(self.com)
         self.running = True
         self._set_status(f"Serial: {self.com} @ {self.baud} — open", "Network: opening…")
 
@@ -1112,25 +1139,47 @@ class SerialNetBridge:
         if writer is not None:
             await self._await_closed(writer, "Serial")
 
-    async def _try_reopen_serial(self) -> bool:
-        try:
-            self.serial_reader, self.serial_writer = await self._open_serial_stream()
-        except asyncio.TimeoutError:
-            self._ui_log_serial_coalesced(
-                f"Serial reconnect timed out opening {self.com} ({SERIAL_OPEN_TIMEOUT_S:.0f}s)"
-            )
+    def _maybe_remap_com_after_reenum(self, err_text: str) -> bool:
+        """USB unplug/replug may change COM number while hwid stays stable."""
+        low = (err_text or "").lower()
+        if "not found" not in low and "no such file" not in low:
             return False
-        except Exception as e:
-            self._ui_log_serial_coalesced(_friendly_serial_error(e, self.com))
+        if not self._serial_hwid:
+            self._serial_hwid = _lookup_serial_hwid(self.com)
+        new_com = _find_com_by_hwid(self._serial_hwid)
+        if not new_com or new_com.upper() == self.com.upper():
             return False
-        self._serial_open = True
-        self._reset_serial_decode_state()
-        self._set_status(
-            f"Serial: {self.com} @ {self.baud} — open (reconnected)",
-            self._last_network_status,
-        )
-        self._ui_log(f"Serial reconnected on {self.com} @ {self.baud}")
+        old = self.com
+        self.com = new_com
+        self._ui_log(f"Serial adapter re-enumerated: {old} → {new_com}")
         return True
+
+    async def _try_reopen_serial(self) -> bool:
+        for attempt in range(2):
+            try:
+                self.serial_reader, self.serial_writer = await self._open_serial_stream()
+            except asyncio.TimeoutError:
+                self._ui_log_serial_coalesced(
+                    f"Serial reconnect timed out opening {self.com} ({SERIAL_OPEN_TIMEOUT_S:.0f}s)"
+                )
+                return False
+            except Exception as e:
+                err = _friendly_serial_error(e, self.com)
+                if attempt == 0 and self._maybe_remap_com_after_reenum(err):
+                    continue
+                self._ui_log_serial_coalesced(err)
+                return False
+            self._serial_open = True
+            if not self._serial_hwid:
+                self._serial_hwid = _lookup_serial_hwid(self.com)
+            self._reset_serial_decode_state()
+            self._set_status(
+                f"Serial: {self.com} @ {self.baud} — open (reconnected)",
+                self._last_network_status,
+            )
+            self._ui_log(f"Serial reconnected on {self.com} @ {self.baud}")
+            return True
+        return False
 
     async def _serial_read_until_disconnect(self) -> bool:
         """Read until error/EOF. Returns True if the session ended unexpectedly (retry)."""

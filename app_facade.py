@@ -48,6 +48,9 @@ class WebSessionState:
     position_source: str = ""
     position_stale: bool = True
     last_error: Optional[str] = None
+    com_port_available: Optional[bool] = None
+    com_port_lock_reason: str = ""
+    com_lock_checking: bool = False
     updated_mono: float = 0.0
 
     def to_dict(self) -> dict[str, Any]:
@@ -280,13 +283,29 @@ class BridgeAppFacade(QtCore.QObject):
             port = 10110
         remote_host = ""
         remote_port = 10110
-        if hasattr(win, "remote_host"):
+        if mode == "tcp_client":
+            if hasattr(win, "tcp_cli_host"):
+                remote_host = win.tcp_cli_host.text().strip()
+            if hasattr(win, "tcp_cli_port"):
+                try:
+                    remote_port = int(win.tcp_cli_port.text().strip())
+                except ValueError:
+                    remote_port = 4001
+        elif mode == "tcp_server":
+            if hasattr(win, "tcp_srv_host"):
+                remote_host = win.tcp_srv_host.text().strip()
+            if hasattr(win, "tcp_srv_port"):
+                try:
+                    remote_port = int(win.tcp_srv_port.text().strip())
+                except ValueError:
+                    remote_port = 4001
+        elif hasattr(win, "remote_host"):
             remote_host = win.remote_host.text().strip()
-        if hasattr(win, "remote_port"):
-            try:
-                remote_port = int(win.remote_port.text().strip())
-            except ValueError:
-                remote_port = 10110
+            if hasattr(win, "remote_port"):
+                try:
+                    remote_port = int(win.remote_port.text().strip())
+                except ValueError:
+                    remote_port = 10110
         return WebConfigPayload(
             com_port=win.com_cb.currentText().strip(),
             baud=baud,
@@ -422,10 +441,34 @@ class BridgeAppFacade(QtCore.QObject):
             if err:
                 return WebCommandResult(False, err, "validation")
 
-        if "remote_host" in patch and hasattr(win, "remote_host"):
-            win.remote_host.setText(str(patch["remote_host"]))
-        if "remote_port" in patch and hasattr(win, "remote_port"):
-            win.remote_port.setText(str(int(patch["remote_port"])))
+        if "remote_host" in patch or "remote_port" in patch:
+            mode = str(patch.get("network_mode", "")).strip()
+            if not mode:
+                if getattr(win, "rb_tcp_server", None) and win.rb_tcp_server.isChecked():
+                    mode = "tcp_server"
+                elif getattr(win, "rb_tcp_client", None) and win.rb_tcp_client.isChecked():
+                    mode = "tcp_client"
+                elif getattr(win, "rb_udp_remote", None) and win.rb_udp_remote.isChecked():
+                    mode = "udp_remote"
+                else:
+                    mode = "udp_listen"
+            host = str(patch.get("remote_host", "")).strip()
+            port_text = str(patch.get("remote_port", "")).strip()
+            if mode == "tcp_client":
+                if "remote_host" in patch and hasattr(win, "tcp_cli_host"):
+                    win.tcp_cli_host.setText(host)
+                if "remote_port" in patch and hasattr(win, "tcp_cli_port"):
+                    win.tcp_cli_port.setText(port_text or "4001")
+            elif mode == "tcp_server":
+                if "remote_host" in patch and hasattr(win, "tcp_srv_host"):
+                    win.tcp_srv_host.setText(host or "0.0.0.0")
+                if "remote_port" in patch and hasattr(win, "tcp_srv_port"):
+                    win.tcp_srv_port.setText(port_text or "4001")
+            else:
+                if "remote_host" in patch and hasattr(win, "remote_host"):
+                    win.remote_host.setText(host)
+                if "remote_port" in patch and hasattr(win, "remote_port"):
+                    win.remote_port.setText(port_text or "10110")
         if "network_mode" in patch:
             mode = str(patch["network_mode"]).strip()
             adv = getattr(win, "chk_advanced_net", None)
@@ -440,6 +483,8 @@ class BridgeAppFacade(QtCore.QObject):
             rb = rb_map.get(mode)
             if rb is not None:
                 rb.setChecked(True)
+            if hasattr(win, "_mode_toggle"):
+                win._mode_toggle()
         if "hub_device_id" in patch and patch["hub_device_id"]:
             device_id = str(patch["hub_device_id"])
             hub = getattr(win, "connection_hub", None)
@@ -478,12 +523,18 @@ class BridgeAppFacade(QtCore.QObject):
             win.udp_host.setText(str(patch["udp_listen_host"]).strip() or "0.0.0.0")
         if "udp_listen_port" in patch:
             win.udp_port.setText(str(int(patch["udp_listen_port"])))
-        if ("udp_listen_host" in patch or "udp_listen_port" in patch) and hasattr(
-            win, "_mode_toggle"
+        listen_mode = str(patch.get("network_mode", "")).strip() or "udp_listen"
+        if (
+            listen_mode == "udp_listen"
+            and ("udp_listen_host" in patch or "udp_listen_port" in patch)
+            and hasattr(win, "_mode_toggle")
         ):
             rb = getattr(win, "rb_udp_listen", None)
             if rb is not None:
                 rb.setChecked(True)
+            adv = getattr(win, "chk_advanced_net", None)
+            if adv is not None:
+                adv.setChecked(False)
             win._mode_toggle()
         if "manual_override" in patch:
             hub = getattr(win, "connection_hub", None)
@@ -602,79 +653,183 @@ class BridgeAppFacade(QtCore.QObject):
             return WebCommandResult(False, str(exc), "error")
 
     def request_unlock_ports(self) -> WebCommandResult:
-        return self._invoke_on_main(self._unlock_ports_on_main)
+        ctx: dict[str, Any] = {}
 
-    def _unlock_ports_on_main(self, win: Any) -> WebCommandResult:
-        try:
-            from port_release import hint_udp_listen_busy, smart_release_com
-
+        def _prepare(win: Any) -> WebCommandResult:
             from ui.connection_fields import parse_baud, read_baud_widget
 
             com = win.com_cb.currentText().strip()
             if not com:
                 return WebCommandResult(False, "No COM port configured", "validation")
-            baud = parse_baud(read_baud_widget(win.baud_edit)) or 115200
-            running = win._is_bridge_running()
-            bridge_com = win.bridge.com if getattr(win, "bridge", None) else None
-            state = smart_release_com(com, baud, bridge_running=running, bridge_com=bridge_com)
-            messages: list[str] = [state.reason]
+            ctx["com"] = com
+            ctx["baud"] = parse_baud(read_baud_widget(win.baud_edit)) or 115200
+            ctx["running"] = win._is_bridge_running()
+            bridge = getattr(win, "bridge", None)
+            ctx["bridge_com"] = bridge.com if bridge is not None else None
             try:
-                udp_port = int(win.udp_port.text().strip())
+                ctx["udp_port"] = int(win.udp_port.text().strip())
             except (ValueError, AttributeError):
-                udp_port = 10110
+                ctx["udp_port"] = 10110
             try:
-                udp_host = win.udp_host.text().strip() or "0.0.0.0"
+                ctx["udp_host"] = win.udp_host.text().strip() or "0.0.0.0"
             except AttributeError:
-                udp_host = "0.0.0.0"
-            hint = hint_udp_listen_busy(udp_host, udp_port)
+                ctx["udp_host"] = "0.0.0.0"
+            return WebCommandResult(True, "", None, "stopped")
+
+        prep = self._invoke_on_main(_prepare)
+        if not prep.ok:
+            return prep
+        try:
+            from port_release import hint_udp_listen_busy, smart_release_com
+
+            state = smart_release_com(
+                ctx["com"],
+                ctx["baud"],
+                bridge_running=bool(ctx["running"]),
+                bridge_com=ctx.get("bridge_com"),
+            )
+            messages: list[str] = [state.reason]
+            hint = hint_udp_listen_busy(ctx["udp_host"], int(ctx["udp_port"]))
             if hint:
                 messages.append(hint)
-            if hasattr(win, "refresh_ports"):
-                win.refresh_ports()
-            ok = bool(state.last_attempt_ok)
-            return WebCommandResult(
-                ok,
-                " | ".join(messages),
-                None if ok else "release_failed",
-                "running" if running else "stopped",
-            )
+            ctx["state"] = state
+            ctx["message"] = " | ".join(messages)
         except Exception as exc:
             return WebCommandResult(False, str(exc), "error")
 
+        def _finish(win: Any) -> WebCommandResult:
+            try:
+                if hasattr(win, "refresh_ports"):
+                    win.refresh_ports()
+                state = ctx["state"]
+                self._apply_com_lock_state_on_main(win, state)
+                ok = bool(state.last_attempt_ok)
+                running = bool(ctx["running"])
+                return WebCommandResult(
+                    ok,
+                    ctx["message"],
+                    None if ok else "release_failed",
+                    "running" if running else "stopped",
+                )
+            except Exception as exc:
+                return WebCommandResult(False, str(exc), "error")
+
+        return self._invoke_on_main(_finish)
+
     def request_probe_com_port(self, com_port: str) -> WebCommandResult:
-        port = str(com_port or "").strip()
-
-        def _run(win: Any) -> WebCommandResult:
-            return self._probe_com_on_main(win, port)
-
-        return self._invoke_on_main(_run)
-
-    def _probe_com_on_main(self, win: Any, com_port: str) -> WebCommandResult:
-        from port_release import probe_com_lock
-
-        from ui.connection_fields import parse_baud, read_baud_widget
-
         port = str(com_port or "").strip()
         if not port:
             return WebCommandResult(False, "Choose a COM port first.", "validation")
-        baud = parse_baud(read_baud_widget(win.baud_edit)) or 115200
-        running = win._is_bridge_running()
-        bridge_com = win.bridge.com if getattr(win, "bridge", None) else None
-        if running and bridge_com and port.upper() == bridge_com.upper():
+        ctx: dict[str, Any] = {"port": port}
+
+        def _prepare(win: Any) -> WebCommandResult:
+            from ui.connection_fields import parse_baud, read_baud_widget
+
+            baud = parse_baud(read_baud_widget(win.baud_edit)) or 115200
+            running = win._is_bridge_running()
+            bridge = getattr(win, "bridge", None)
+            bridge_com = bridge.com if bridge is not None else None
+            if running and bridge_com and port.upper() == bridge_com.upper():
+                return WebCommandResult(
+                    False,
+                    "Bridge is running on this COM — stop the bridge first",
+                    "running_guard",
+                    "running",
+                )
+            ctx["baud"] = baud
+            ctx["running"] = running
+            return WebCommandResult(True, "", None, "running" if running else "stopped")
+
+        prep = self._invoke_on_main(_prepare)
+        if not prep.ok:
+            return prep
+        try:
+            from port_release import probe_com_lock
+
+            ctx["state"] = probe_com_lock(port, int(ctx["baud"]), timeout_s=1.5)
+        except Exception as exc:
+            return WebCommandResult(False, str(exc), "error")
+
+        def _finish(win: Any) -> WebCommandResult:
+            state = ctx["state"]
+            self._apply_com_lock_state_on_main(win, state)
+            ok = bool(state.last_attempt_ok)
+            running = bool(ctx["running"])
             return WebCommandResult(
-                False,
-                "Bridge is running on this COM — stop the bridge first",
-                "running_guard",
-                "running",
+                ok,
+                state.reason,
+                None if ok else "probe_failed",
+                "running" if running else "stopped",
             )
-        state = probe_com_lock(port, baud)
-        ok = bool(state.last_attempt_ok)
-        return WebCommandResult(
-            ok,
-            state.reason,
-            None if ok else "probe_failed",
-            "running" if running else "stopped",
+
+        return self._invoke_on_main(_finish)
+
+    def _apply_com_lock_state_on_main(self, win: Any, state: Any) -> None:
+        win._com_lock_state = state
+        if hasattr(win, "_apply_com_lock_chrome_idle"):
+            ok = bool(getattr(state, "last_attempt_ok", False))
+            locked = bool(getattr(state, "locked", False))
+            win._apply_com_lock_chrome_idle(
+                available=ok and not locked,
+                reason=str(getattr(state, "reason", "") or ""),
+            )
+        if hasattr(win, "_sync_run_button_state"):
+            win._sync_run_button_state()
+        fields = self._com_lock_fields_from_window(win)
+        with self._lock:
+            for key, value in fields.items():
+                if hasattr(self._snapshot, key):
+                    setattr(self._snapshot, key, value)
+            self._snapshot.updated_mono = time.monotonic()
+
+    def _com_lock_fields_from_window(self, win: Any) -> dict[str, Any]:
+        from ui.connection_fields import parse_baud, read_baud_widget
+
+        running = win._is_bridge_running()
+        starting = bool(getattr(win, "_starting", False))
+        com = win.com_cb.currentText().strip()
+        if running or starting:
+            display = com or "COM"
+            return {
+                "com_port_available": True,
+                "com_port_lock_reason": f"{display}: bridge running on this port",
+                "com_lock_checking": False,
+            }
+        if not com or com.startswith("("):
+            return {
+                "com_port_available": False,
+                "com_port_lock_reason": "Select a COM port",
+                "com_lock_checking": False,
+            }
+        baud = parse_baud(read_baud_widget(win.baud_edit)) or 115200
+        key = (com, baud)
+        inflight = getattr(win, "_com_lock_probe_inflight", ("", 0))
+        worker = getattr(win, "_com_lock_worker", None)
+        checking = bool(
+            inflight == key and worker is not None and worker.isRunning()
         )
+        if checking:
+            return {
+                "com_port_available": None,
+                "com_port_lock_reason": f"{com}: checking availability…",
+                "com_lock_checking": True,
+            }
+        state = getattr(win, "_com_lock_state", None)
+        if state is None:
+            return {
+                "com_port_available": None,
+                "com_port_lock_reason": "",
+                "com_lock_checking": False,
+            }
+        locked = bool(getattr(state, "locked", False))
+        last_ok = getattr(state, "last_attempt_ok", True)
+        reason = str(getattr(state, "reason", "") or "")
+        available = bool(last_ok) and not locked
+        return {
+            "com_port_available": available,
+            "com_port_lock_reason": reason,
+            "com_lock_checking": False,
+        }
 
     # ------------------------------------------------------------------ live log (web dashboard)
     def set_log_paused(self, paused: bool, *, dropped: int = 0) -> None:
@@ -764,6 +919,7 @@ class BridgeAppFacade(QtCore.QObject):
             bridge = getattr(win, "bridge", None)
             if bridge is not None:
                 runtime_com = (getattr(bridge, "com", None) or "").strip() or configured_com
+        com_lock = self._com_lock_fields_from_window(win)
         self.update_snapshot(
             running=running,
             com_port=runtime_com,
@@ -798,6 +954,9 @@ class BridgeAppFacade(QtCore.QObject):
             position_source=str(merged.get("position_source") or ""),
             position_stale=bool(merged.get("position_stale", True)),
             last_error=self._last_facade_error,
+            com_port_available=com_lock["com_port_available"],
+            com_port_lock_reason=com_lock["com_port_lock_reason"],
+            com_lock_checking=com_lock["com_lock_checking"],
         )
 
 

@@ -1026,6 +1026,39 @@ body {
   margin-bottom: var(--gap-sm);
 }
 
+.com-lock-chip {
+  font-size: 0.82rem;
+  line-height: 1.35;
+  padding: 6px 10px;
+  border-radius: var(--radius-sm);
+  margin-bottom: var(--gap-sm);
+  color: #c8d0dc;
+  background: #2a2230;
+  border: 1px solid #4a5568;
+}
+
+.com-lock-chip[data-lock-kind="ok"] {
+  color: #d4f4dd;
+  background: #1a3328;
+  border-color: #3d8b62;
+}
+
+.com-lock-chip[data-lock-kind="busy"] {
+  color: #ffe8e8;
+  background: #4a1c24;
+  border-color: #c45c6a;
+}
+
+.com-lock-chip[data-lock-kind="running"] {
+  color: #e8f0ff;
+  background: #1e2a44;
+  border-color: #5a7ab0;
+}
+
+.com-lock-chip-header {
+  margin: 0 var(--gap) var(--gap-xs);
+}
+
 .config-form-grid {
   display: grid;
   grid-template-columns: 1fr;

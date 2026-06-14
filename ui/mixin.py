@@ -262,6 +262,9 @@ class BridgeLogicMixin:
         self._web_start_retry_gen = 0
         self._layout_switch_in_progress = False
         self._serial_retry_refresh_mono = 0.0
+        self._com_lock_state: Optional[object] = None
+        self._com_lock_probe_key: tuple[str, int] = ("", 0)
+        self._com_lock_probe_inflight: tuple[str, int] = ("", 0)
 
     @staticmethod
     def _qt_widget_alive(widget: Optional[QtWidgets.QWidget]) -> bool:
@@ -351,6 +354,8 @@ class BridgeLogicMixin:
         self._on_ui_ready()
         self._init_web_and_facade()
         self._start_auto_discovery_thread()
+        self._wire_com_lock_probe()
+        QtCore.QTimer.singleShot(200, self._schedule_com_lock_probe)
 
     def _log_startup_self_check(self) -> None:
         from version import __version__
@@ -3146,6 +3151,11 @@ class BridgeLogicMixin:
 
             if self.bridge.mode == NetMode.UDP_LISTEN:
                 skip_bind = int(self.bridge.udp_listen[1])
+        from ui.connection_fields import parse_baud
+
+        running = self._is_bridge_running()
+        bridge_com = self.bridge.com if self.bridge else None
+        baud = parse_baud(read_baud_widget(self.baud_edit)) or 115200
         return {
             "stable_counts": getattr(self, "_discovery_stable_counts", None),
             "presets": presets,
@@ -3155,6 +3165,9 @@ class BridgeLogicMixin:
             "udp_port": udp_port,
             "selected_port": self.com_cb.currentText().strip() or None,
             "skip_bind_port": skip_bind,
+            "probe_baud": baud,
+            "bridge_running": running,
+            "bridge_com": bridge_com,
         }
 
     def _cancel_discovery_worker(self) -> None:
@@ -3244,6 +3257,7 @@ class BridgeLogicMixin:
         if hint:
             self._log_ui(f"[Unlock] {hint}")
         self.refresh_ports()
+        self._schedule_com_lock_probe()
         if hub is not None:
             self._on_hub_refresh_discovery()
 
@@ -3262,6 +3276,10 @@ class BridgeLogicMixin:
             udp_port=params.get("udp_port"),
             selected_port=params.get("selected_port"),
             network_scan_results=None,
+            probe_baud=int(params.get("probe_baud") or 115200),
+            bridge_running=bool(params.get("bridge_running")),
+            bridge_com=params.get("bridge_com"),
+            probe_serial_locks=False,
         )
         hub = getattr(self, "connection_hub", None)
         if hub is not None:
@@ -3432,12 +3450,219 @@ class BridgeLogicMixin:
 
     def _preflight_com(self, com: str, baud: int) -> Optional[str]:
         """Quick COM probe on GUI thread before async start."""
+        state = getattr(self, "_com_lock_state", None)
+        if state is not None and getattr(state, "locked", False):
+            return str(getattr(state, "reason", "") or f"Cannot open {com}.")
         try:
             ser = _open_serial_port_timed(com, baud, SERIAL_OPEN_TIMEOUT_S)
             ser.close()
             return None
         except Exception as exc:
             return _friendly_serial_error(exc, com)
+
+    def _wire_com_lock_probe(self) -> None:
+        timer = QtCore.QTimer(self)
+        timer.setSingleShot(True)
+        timer.setInterval(350)
+        timer.timeout.connect(self._run_com_lock_probe)
+        self._com_lock_probe_timer = timer
+        watchdog = QtCore.QTimer(self)
+        watchdog.setSingleShot(True)
+        watchdog.setInterval(4000)
+        watchdog.timeout.connect(self._com_lock_probe_watchdog)
+        self._com_lock_probe_watchdog_timer = watchdog
+        self.com_cb.currentTextChanged.connect(self._schedule_com_lock_probe)
+        self.baud_edit.currentTextChanged.connect(self._schedule_com_lock_probe)
+
+    def _current_com_lock_key(self) -> tuple[str, int]:
+        from ui.connection_fields import parse_baud
+
+        com = self.com_cb.currentText().strip()
+        baud = parse_baud(read_baud_widget(self.baud_edit)) or 115200
+        return (com, baud)
+
+    def _schedule_com_lock_probe(self) -> None:
+        if self._is_bridge_running() or self._starting:
+            self._apply_com_lock_chrome_running()
+            return
+        key = self._current_com_lock_key()
+        inflight = getattr(self, "_com_lock_probe_inflight", ("", 0))
+        worker = getattr(self, "_com_lock_worker", None)
+        if key == inflight and worker is not None and worker.isRunning():
+            return
+        timer = getattr(self, "_com_lock_probe_timer", None)
+        if timer is not None:
+            timer.start()
+
+    def _detach_com_lock_worker(self) -> None:
+        worker = getattr(self, "_com_lock_worker", None)
+        if worker is None:
+            return
+        try:
+            worker.result_ready.disconnect(self._on_com_lock_probe_done)
+        except (RuntimeError, TypeError):
+            pass
+        self._com_lock_worker = None
+
+    def _com_lock_probe_watchdog(self) -> None:
+        key = self._current_com_lock_key()
+        if key != getattr(self, "_com_lock_probe_inflight", ("", 0)):
+            return
+        com = key[0] or "COM"
+        from port_release import PortLockState
+
+        self._com_lock_state = PortLockState(
+            com,
+            True,
+            f"Probe timed out for {com} — click Refresh or Unlock",
+            True,
+            False,
+        )
+        self._apply_com_lock_chrome_idle(
+            available=False,
+            reason=str(self._com_lock_state.reason),
+        )
+        self._sync_run_button_state()
+        self._detach_com_lock_worker()
+
+    @QtCore.Slot(str, str, int, bool, str, bool)
+    def _on_com_lock_probe_done(
+        self,
+        request_port: str,
+        state_port: str,
+        baud: int,
+        locked: bool,
+        reason: str,
+        last_ok: bool,
+    ) -> None:
+        watchdog = getattr(self, "_com_lock_probe_watchdog_timer", None)
+        if watchdog is not None:
+            watchdog.stop()
+        key = self._current_com_lock_key()
+        if (request_port.strip(), baud) != getattr(self, "_com_lock_probe_inflight", ("", 0)):
+            return
+        if key != (request_port.strip(), baud):
+            return
+        from port_release import PortLockState
+
+        self._com_lock_probe_inflight = ("", 0)
+        self._com_lock_state = PortLockState(
+            state_port or request_port,
+            locked,
+            reason,
+            True,
+            last_ok,
+        )
+        self._apply_com_lock_chrome_idle(
+            available=last_ok and not locked,
+            reason=reason,
+        )
+        self._sync_run_button_state()
+
+    def _run_com_lock_probe(self) -> None:
+        if self._is_bridge_running() or self._starting:
+            self._apply_com_lock_chrome_running()
+            return
+        from ui.com_lock_probe import ComLockProbeWorker
+
+        com, baud = self._current_com_lock_key()
+        if not com or com.startswith("("):
+            self._com_lock_state = None
+            self._com_lock_probe_inflight = ("", 0)
+            self._apply_com_lock_chrome_idle(available=False, reason="Select a COM port")
+            self._sync_run_button_state()
+            return
+        self._com_lock_probe_key = (com, baud)
+        self._com_lock_probe_inflight = (com, baud)
+        chip = getattr(self, "com_lock_chip", None)
+        if chip is not None:
+            chip.setText(f"{com}: checking availability…")
+            chip.setProperty("lockKind", "unknown")
+            chip.style().unpolish(chip)
+            chip.style().polish(chip)
+        self._detach_com_lock_worker()
+        worker = ComLockProbeWorker(com, baud)
+        self._com_lock_worker = worker
+        worker.result_ready.connect(
+            self._on_com_lock_probe_done,
+            QtCore.Qt.ConnectionType.QueuedConnection,
+        )
+        worker.finished.connect(worker.deleteLater)
+        watchdog = getattr(self, "_com_lock_probe_watchdog_timer", None)
+        if watchdog is not None:
+            watchdog.start()
+        worker.start()
+
+    def _com_lock_blocks_start(self) -> bool:
+        if self._is_bridge_running() or self._starting:
+            return False
+        com = self.com_cb.currentText().strip()
+        if not com or com.startswith("("):
+            return True
+        state = getattr(self, "_com_lock_state", None)
+        if state is None:
+            return False
+        if getattr(state, "locked", False):
+            return True
+        return not bool(getattr(state, "last_attempt_ok", True))
+
+    def _apply_com_lock_chrome_running(self) -> None:
+        chip = getattr(self, "com_lock_chip", None)
+        com = self.com_cb.currentText().strip() or "COM"
+        if chip is not None:
+            chip.setText(f"{com}: bridge running on this port")
+            chip.setProperty("lockKind", "running")
+            chip.style().unpolish(chip)
+            chip.style().polish(chip)
+        self._sync_run_button_state()
+
+    def _apply_com_lock_chrome_idle(self, *, available: bool, reason: str) -> None:
+        chip = getattr(self, "com_lock_chip", None)
+        com = self.com_cb.currentText().strip() or "COM"
+        if chip is None:
+            return
+        if available:
+            chip.setText(f"{com}: available — ready to Start")
+            chip.setProperty("lockKind", "ok")
+        else:
+            short = reason.strip() or f"{com} is not available"
+            if len(short) > 72:
+                short = short[:69] + "…"
+            chip.setText(f"{com}: in use — {short}")
+            chip.setProperty("lockKind", "busy")
+        chip.style().unpolish(chip)
+        chip.style().polish(chip)
+
+    def _sync_run_button_state(self) -> None:
+        running = self._is_bridge_running()
+        starting = bool(self._starting)
+        blocked = self._com_lock_blocks_start()
+        self.start_btn.setEnabled(not running and not starting and not blocked)
+        if blocked and not running and not starting:
+            com = self.com_cb.currentText().strip() or "COM"
+            self.start_btn.setToolTip(
+                f"{com} is in use or not ready. Use Unlock, close other apps, then Refresh."
+            )
+        else:
+            self.start_btn.setToolTip("Start UDP/TCP ↔ serial bridging with current settings")
+
+    def _sync_com_cb_from_bridge(self) -> None:
+        bridge = self.bridge
+        if bridge is None or not getattr(bridge, "running", False):
+            return
+        live = str(getattr(bridge, "com", "") or "").strip()
+        if not live:
+            return
+        cur = self.com_cb.currentText().strip()
+        if cur == live:
+            return
+        idx = self.com_cb.findText(live)
+        if idx >= 0:
+            self.com_cb.setCurrentIndex(idx)
+        else:
+            self.com_cb.insertItem(0, live)
+            self.com_cb.setCurrentIndex(0)
+        self._log_ui(f"[Serial] COM selection updated to {live} (adapter re-enumerated).")
 
     def _main_tab_index_by_label(self, label: str) -> int:
         tabs = getattr(self, "_main_tabs", None)
@@ -3617,6 +3842,14 @@ class BridgeLogicMixin:
             return "Start already in progress."
         if not self.com_cb.currentText().strip():
             return "Select a COM port (Refresh ports if the list is empty)."
+        if self._com_lock_blocks_start():
+            com = self.com_cb.currentText().strip() or "COM"
+            state = getattr(self, "_com_lock_state", None)
+            detail = str(getattr(state, "reason", "") or "") if state else ""
+            return self._compose_com_preflight_error(
+                com,
+                detail or f"{com} is in use or not ready.",
+            )
         from ui.connection_fields import validate_baud, validate_udp_port
 
         baud_err = validate_baud(read_baud_widget(self.baud_edit))
@@ -4668,10 +4901,14 @@ class BridgeLogicMixin:
             w.setEnabled(not locked)
         for w in getattr(self, "_nmea_widgets", []):
             w.setEnabled(not locked)
-        self.start_btn.setEnabled(not locked)
         self.stop_btn.setEnabled(locked)
-        if not locked:
+        if locked:
+            self.start_btn.setEnabled(False)
+            self._apply_com_lock_chrome_running()
+        else:
             self._mode_toggle()
+            self._schedule_com_lock_probe()
+            self._sync_run_button_state()
 
     def _stats_tooltip(self) -> str:
         return (
@@ -4752,6 +4989,7 @@ class BridgeLogicMixin:
     def _stats_from_bridge(self, _d: dict) -> None:
         if not self.bridge:
             return
+        self._sync_com_cb_from_bridge()
         merged = self._merge_bridge_stats(_d)
         self._bridge_stats_cache = dict(merged)
         import time as _time
@@ -5339,21 +5577,26 @@ class BridgeLogicMixin:
 
     def refresh_ports(self) -> None:
         prev = self.com_cb.currentText().strip()
-        self.com_cb.clear()
-        ports = [p.device for p in serial.tools.list_ports.comports()]
-        if not ports:
-            self.com_cb.addItem("(no ports — click Refresh)")
+        self.com_cb.blockSignals(True)
+        try:
+            self.com_cb.clear()
+            ports = [p.device for p in serial.tools.list_ports.comports()]
+            if not ports:
+                self.com_cb.addItem("(no ports — click Refresh)")
+                self.com_cb.setInsertPolicy(QtWidgets.QComboBox.InsertPolicy.NoInsert)
+                return
+            for device in ports:
+                self.com_cb.addItem(device)
             self.com_cb.setInsertPolicy(QtWidgets.QComboBox.InsertPolicy.NoInsert)
-            return
-        for device in ports:
-            self.com_cb.addItem(device)
-        self.com_cb.setInsertPolicy(QtWidgets.QComboBox.InsertPolicy.NoInsert)
-        if prev:
-            idx = self.com_cb.findText(prev)
-            if idx >= 0:
-                self.com_cb.setCurrentIndex(idx)
-            else:
-                self.com_cb.setCurrentText(prev)
+            if prev:
+                idx = self.com_cb.findText(prev)
+                if idx >= 0:
+                    self.com_cb.setCurrentIndex(idx)
+                else:
+                    self.com_cb.setCurrentText(prev)
+        finally:
+            self.com_cb.blockSignals(False)
+        self._schedule_com_lock_probe()
 
     def _send_raw_manual(self, where: str, raw: str) -> None:
         if not self._is_bridge_running():

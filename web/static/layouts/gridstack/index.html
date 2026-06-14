@@ -33,6 +33,7 @@
         <span class="conn-label" id="conn-label">Connecting…</span>
       </div>
     </div>
+    <div class="com-lock-chip com-lock-chip-header" id="header-com-lock-chip" role="status" hidden></div>
     <div class="inline-alert header-run-alert" id="run-alert" hidden role="status"></div>
   </header>
 
@@ -56,6 +57,7 @@
           <span class="com-setup-current-label">Active COM</span>
           <span class="com-setup-current-value mono" id="com-setup-current">—</span>
         </div>
+        <div class="com-lock-chip" id="com-lock-chip" data-lock-kind="unknown" role="status" hidden></div>
         <div class="com-setup-picker">
           <label class="cfg-label" for="com-quick-select">COM port</label>
           <select class="cfg-input mono com-quick-select" id="com-quick-select"></select>
@@ -428,7 +430,7 @@
 
   <script src="/static/vendor/leaflet/leaflet.js"></script>
   <script src="/static/vendor/gridstack/gridstack-all.js"></script>
-  <script src="/static/dashboard.js?v=1.17.42"></script>
+  <script src="/static/dashboard.js?v=1.17.61"></script>
   <script src="/static/layouts/gridstack/gridstack-layout.js"></script>
 </body>
 </html>

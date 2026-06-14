@@ -111,6 +111,9 @@ class StatusResponse(BaseModel):
     position_source: str = ""
     position_stale: bool = True
     last_error: Optional[str] = None
+    com_port_available: Optional[bool] = None
+    com_port_lock_reason: str = ""
+    com_lock_checking: bool = False
     updated_mono: float
 
 

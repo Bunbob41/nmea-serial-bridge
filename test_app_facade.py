@@ -4,7 +4,7 @@ from __future__ import annotations
 import threading
 import time
 import unittest
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 from PySide6.QtWidgets import QApplication, QWidget
 
@@ -62,15 +62,55 @@ class TestBridgeAppFacade(unittest.TestCase):
         win.rb_tcp_server = MagicMock()
         win.remote_host = MagicMock()
         win.remote_port = MagicMock()
-        win.remote_host.text.return_value = "10.0.0.1"
-        win.remote_port.text.return_value = "5000"
+        win.tcp_cli_host = MagicMock()
+        win.tcp_cli_port = MagicMock()
+        win.udp_host = MagicMock()
+        win.udp_port = MagicMock()
+        win._mode_toggle = MagicMock()
         result = facade._apply_config_on_main(
             win,
-            {"network_mode": "tcp_client", "remote_host": "10.0.0.1", "remote_port": 5000},
+            {
+                "network_mode": "tcp_client",
+                "remote_host": "10.0.0.1",
+                "remote_port": 5000,
+                "udp_listen_host": "0.0.0.0",
+                "udp_listen_port": 10110,
+            },
         )
         self.assertTrue(result.ok)
         win.chk_advanced_net.setChecked.assert_called_with(True)
         win.rb_tcp_client.setChecked.assert_called_with(True)
+        win.tcp_cli_host.setText.assert_called_with("10.0.0.1")
+        win.tcp_cli_port.setText.assert_called_with("5000")
+        win.rb_udp_listen.setChecked.assert_not_called()
+
+    def test_read_config_tcp_client_remote_fields(self) -> None:
+        facade = BridgeAppFacade()
+        win = MagicMock()
+        win.com_cb.currentText.return_value = "COM7"
+        win.baud_edit = MagicMock()
+        win.chk_advanced_net = MagicMock()
+        win.chk_advanced_net.isChecked.return_value = True
+        win.rb_tcp_server = MagicMock()
+        win.rb_tcp_server.isChecked.return_value = False
+        win.rb_tcp_client = MagicMock()
+        win.rb_tcp_client.isChecked.return_value = True
+        win.rb_udp_remote = MagicMock()
+        win.rb_udp_remote.isChecked.return_value = False
+        win.udp_host = MagicMock()
+        win.udp_host.text.return_value = "0.0.0.0"
+        win.udp_port = MagicMock()
+        win.udp_port.text.return_value = "10110"
+        win.tcp_cli_host = MagicMock()
+        win.tcp_cli_host.text.return_value = "10.0.0.5"
+        win.tcp_cli_port = MagicMock()
+        win.tcp_cli_port.text.return_value = "4001"
+        with patch("ui.connection_fields.read_baud_widget", return_value="115200"):
+            with patch("ui.connection_fields.parse_baud", return_value=115200):
+                cfg = facade._read_config_from_window(win)
+        self.assertEqual(cfg.network_mode, "tcp_client")
+        self.assertEqual(cfg.remote_host, "10.0.0.5")
+        self.assertEqual(cfg.remote_port, 4001)
 
     def test_apply_config_com_port_wins_over_hub_lkg(self) -> None:
         facade = BridgeAppFacade()
@@ -202,10 +242,12 @@ class TestBridgeAppFacade(unittest.TestCase):
         self.assertEqual(result.error_code, "unavailable")
 
     def test_unlock_ports_no_com_port(self) -> None:
+        app = QApplication.instance() or QApplication([])
         facade = BridgeAppFacade()
         win = MagicMock()
         win.com_cb.currentText.return_value = ""
-        result = facade._unlock_ports_on_main(win)
+        facade.attach_window(win)
+        result = facade.request_unlock_ports()
         self.assertFalse(result.ok)
         self.assertEqual(result.error_code, "validation")
 

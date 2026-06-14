@@ -174,6 +174,29 @@ QComboBox#connectBaudCombo::drop-down {
     width: 24px;
     border: none;
 }
+QLabel#comLockChip {
+    color: #c8d0dc;
+    font-size: 9pt;
+    padding: 4px 8px;
+    border-radius: 6px;
+    background-color: #2a2230;
+    border: 1px solid #4a5568;
+}
+QLabel#comLockChip[lockKind="ok"] {
+    color: #d4f4dd;
+    background-color: #1a3328;
+    border-color: #3d8b62;
+}
+QLabel#comLockChip[lockKind="busy"] {
+    color: #ffe8e8;
+    background-color: #4a1c24;
+    border-color: #c45c6a;
+}
+QLabel#comLockChip[lockKind="running"] {
+    color: #e8f0ff;
+    background-color: #1e2a44;
+    border-color: #5a7ab0;
+}
 QWidget#connectionHub {
     background: transparent;
 }
@@ -474,6 +497,29 @@ QComboBox#connectBaudCombo::drop-down {
     subcontrol-position: top right;
     width: 24px;
     border: none;
+}
+QLabel#comLockChip {
+    color: #3d4a5c;
+    font-size: 9pt;
+    padding: 4px 8px;
+    border-radius: 6px;
+    background-color: #eef2f7;
+    border: 1px solid #b8c4d4;
+}
+QLabel#comLockChip[lockKind="ok"] {
+    color: #1f5c38;
+    background-color: #e6f5ec;
+    border-color: #6fbf8f;
+}
+QLabel#comLockChip[lockKind="busy"] {
+    color: #8b1c2e;
+    background-color: #fde8ec;
+    border-color: #e07080;
+}
+QLabel#comLockChip[lockKind="running"] {
+    color: #1e3a6e;
+    background-color: #e8f0ff;
+    border-color: #6a8fc8;
 }
 QWidget#connectionHub {
     background: transparent;

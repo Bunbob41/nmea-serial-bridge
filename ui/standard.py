@@ -234,6 +234,7 @@ class BridgeWindowStandard(BridgeLogicMixin, QtWidgets.QWidget):
         cw = QtWidgets.QWidget()
         cw.setLayout(row)
         sf.addRow("COM:", cw)
+        sf.addRow("", self.com_lock_chip)
         sf.addRow("Baud:", self.baud_edit)
         sf.addRow("", self.chk_serial_auto_reconnect)
         sf.addRow("", self.chk_auto_discover)

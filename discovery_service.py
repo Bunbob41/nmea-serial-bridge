@@ -4,7 +4,7 @@ from __future__ import annotations
 import re
 import socket
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any, Optional, Sequence
 
 import serial.tools.list_ports
@@ -392,6 +392,34 @@ def resolve_network_bind_from_device_id(
     return None
 
 
+def annotate_serial_lock_status(
+    devices: list[SerialDeviceInfo],
+    *,
+    selected_port: Optional[str],
+    baud: int,
+    bridge_running: bool = False,
+    bridge_com: Optional[str] = None,
+    probe_all: bool = False,
+) -> list[SerialDeviceInfo]:
+    """Probe COM exclusivity for hub cards (selected port always; all ports on full refresh)."""
+    from port_release import serial_port_discovery_status
+
+    sel = (selected_port or "").strip()
+    out: list[SerialDeviceInfo] = []
+    for dev in devices:
+        if not probe_all and (not sel or dev.port != sel):
+            out.append(dev)
+            continue
+        status = serial_port_discovery_status(
+            dev.port,
+            baud,
+            bridge_running=bridge_running,
+            bridge_com=bridge_com,
+        )
+        out.append(replace(dev, status=status))
+    return out
+
+
 def build_snapshot(
     *,
     keywords: Sequence[str] = DEFAULT_KEYWORDS,
@@ -403,10 +431,22 @@ def build_snapshot(
     udp_port: int = 10110,
     selected_port: Optional[str] = None,
     network_scan_results: Optional[list] = None,
+    probe_baud: int = 115200,
+    bridge_running: bool = False,
+    bridge_com: Optional[str] = None,
+    probe_serial_locks: bool = False,
 ) -> tuple[DiscoverySnapshot, dict[str, int]]:
     serial_devices = list_all_serial_ports(
         keywords=keywords,
         selected_port=selected_port,
+    )
+    serial_devices = annotate_serial_lock_status(
+        serial_devices,
+        selected_port=selected_port,
+        baud=int(probe_baud or 115200),
+        bridge_running=bridge_running,
+        bridge_com=bridge_com,
+        probe_all=bool(probe_serial_locks),
     )
     _, counts = scan_serial_ports(
         keywords=keywords,
@@ -443,6 +483,9 @@ def build_snapshot(
     except Exception:
         pass
     errors: list[str] = []
+    for dev in serial_devices:
+        if dev.status == "port_busy":
+            errors.append(f"{dev.port} is in use by another program")
     for card in network_cards:
         if card.status == "port_busy":
             errors.append(f"UDP port {card.port} in use on {card.host}")

@@ -246,6 +246,14 @@ def create_connection_controls(parent: QtWidgets.QWidget) -> None:
     p.com_cb.setObjectName("connectComCombo")
     _style_connect_serial_combo(p.com_cb)
     p.refresh_btn = QtWidgets.QPushButton("Refresh")
+    p.com_lock_chip = QtWidgets.QLabel("COM: checking…")
+    p.com_lock_chip.setObjectName("comLockChip")
+    p.com_lock_chip.setProperty("lockKind", "unknown")
+    p.com_lock_chip.setWordWrap(True)
+    p.com_lock_chip.setToolTip(
+        "Probes whether the selected COM port can be opened exclusively. "
+        "Start is blocked while another program holds the port."
+    )
     p.baud_edit = NoWheelComboBox()
     p.baud_edit.setObjectName("connectBaudCombo")
     _style_connect_serial_combo(p.baud_edit)

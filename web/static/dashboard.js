@@ -11,7 +11,7 @@ const MAP_ENABLED_KEY = "nmea-bridge-map-enabled";
 const MAP_BASE_LAYER_KEY = "nmea-bridge-map-base-layer";
 const MAP_TRACK_MAX = 120;
 /** Bumped when dashboard.js changes — used for ?v= cache bust on script tags. */
-const DASHBOARD_SCRIPT_REV = "1.15.3";
+const DASHBOARD_SCRIPT_REV = "1.17.61";
 
 /** Phone sideways: compact header (see dashboard.css landscape HUD media query). */
 const PHONE_LANDSCAPE_HEADER_MQ = "(orientation: landscape) and (max-height: 520px) and (max-width: 960px)";
@@ -635,8 +635,72 @@ function setOnline(status) {
   updateMonitorSummaries(status);
   updateDashboardPanelSummaries(status);
   updateHeaderStatusChip(status);
+  syncComLockChrome(status);
   lastDashboardStatus = status;
   updatePositionMap(status);
+}
+
+function truncateComLockReason(text, maxLen = 72) {
+  const s = String(text || "").trim();
+  if (s.length <= maxLen) return s;
+  return s.slice(0, maxLen - 1) + "…";
+}
+
+function comLockBlocksStart(status) {
+  if (!status || status.running) return false;
+  const com = (status.configured_com_port || status.com_port || "").trim();
+  if (!com || com.startsWith("(")) return true;
+  if (status.com_lock_checking) return false;
+  if (status.com_port_available === false) return true;
+  return false;
+}
+
+function syncComLockChrome(status) {
+  const running = !!status?.running;
+  const checking = !!status?.com_lock_checking;
+  const available = status?.com_port_available;
+  const reason = (status?.com_port_lock_reason || "").trim();
+  const com = (status?.configured_com_port || status?.com_port || "COM").trim() || "COM";
+
+  let kind = "unknown";
+  let text = `${com}: checking availability…`;
+  if (running) {
+    kind = "running";
+    text = `${com}: bridge running on this port`;
+  } else if (checking || available === null || available === undefined) {
+    if (reason) text = reason;
+  } else if (available) {
+    kind = "ok";
+    text = `${com}: available — ready to Start`;
+  } else {
+    kind = "busy";
+    const short = truncateComLockReason(reason || `${com} is not available`);
+    text = `${com}: in use — ${short}`;
+  }
+
+  ["com-lock-chip", "header-com-lock-chip"].forEach((id) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.hidden = !connected;
+    el.dataset.lockKind = kind;
+    el.textContent = text;
+    el.title = reason || text;
+  });
+  syncStartButtonForComLock(status);
+}
+
+function syncStartButtonForComLock(status) {
+  const btn = document.getElementById("btn-start");
+  if (!btn) return;
+  const running = !!status?.running;
+  const blocked = comLockBlocksStart(status);
+  btn.disabled = running || commandInFlight || blocked;
+  if (blocked) {
+    const com = (status?.configured_com_port || status?.com_port || "COM").trim() || "COM";
+    btn.title = `${com} is in use or not ready. Use Unlock, close other apps, then Refresh.`;
+  } else if (!running) {
+    btn.title = "Start UDP/TCP ↔ serial bridging with current settings";
+  }
 }
 
 function updateHeaderStatusChip(status) {
@@ -1683,6 +1747,7 @@ async function refreshComPorts() {
     const disc = await apiFetch("/discovery");
     if (disc.ok) renderDiscovery(disc.body);
     showComAlerts(body.message || "Ports refreshed.", "ok");
+    await pollStatus();
   } catch (e) {
     showComAlerts("Network error: " + e.message, "error");
   } finally {
@@ -1827,6 +1892,10 @@ function setOffline() {
   const badgeEl = document.getElementById("stat-state");
   if (badgeEl) { badgeEl.textContent = "offline"; badgeEl.className = "stat-value state-badge"; }
   updateHeaderStatusChip(null);
+  ["com-lock-chip", "header-com-lock-chip"].forEach((id) => {
+    const el = document.getElementById(id);
+    if (el) el.hidden = true;
+  });
   lastDashboardStatus = null;
 }
 
@@ -1955,6 +2024,7 @@ async function testComPort() {
     if (ok) {
       const msg = body.message || `${port} is available.`;
       showAlert("com-setup-alert", msg, "ok");
+      await pollStatus();
     } else {
       const detail = typeof body.detail === "object" ? body.detail : {};
       const cls = detail.error_code === "running_guard" ? "warn" : "error";
@@ -1997,12 +2067,13 @@ function buildConfigPatch() {
   const mode = document.getElementById("cfg-netmode-select")?.value || "udp_listen";
   const patch = {
     com_port: document.getElementById("cfg-com-select")?.value || "",
-    baud: parseInt(document.getElementById("cfg-baud-input")?.value || "115200", 10),
+    baud: parseInt(document.getElementById("cfg-baud-select")?.value || "115200", 10),
     network_mode: mode,
-    udp_listen_host: document.getElementById("cfg-udp-host")?.value || "0.0.0.0",
-    udp_listen_port: parseInt(document.getElementById("cfg-udp-port")?.value || "10110", 10),
   };
-  if (mode !== "udp_listen") {
+  if (mode === "udp_listen") {
+    patch.udp_listen_host = document.getElementById("cfg-udp-host")?.value || "0.0.0.0";
+    patch.udp_listen_port = parseInt(document.getElementById("cfg-udp-port")?.value || "10110", 10);
+  } else {
     patch.remote_host = document.getElementById("cfg-remote-host")?.value || "";
     patch.remote_port = parseInt(document.getElementById("cfg-remote-port")?.value || "10110", 10);
   }
@@ -2105,6 +2176,15 @@ function ensureCanMutate(focusAlertId) {
 async function startBridge() {
   if (commandInFlight) return;
   if (!ensureCanMutate()) return;
+  if (lastDashboardStatus && comLockBlocksStart(lastDashboardStatus)) {
+    const com = (lastDashboardStatus.configured_com_port || lastDashboardStatus.com_port || "COM").trim();
+    const reason = (lastDashboardStatus.com_port_lock_reason || "").trim();
+    const msg = reason
+      ? `${com} is not ready: ${reason}`
+      : `${com} is in use or not ready. Use Unlock, close other apps, then Refresh.`;
+    showAlert("run-alert", msg, "warn");
+    return;
+  }
   setCommandFlight(true);
   hideAlert("run-alert");
   try {
@@ -2115,6 +2195,7 @@ async function startBridge() {
       showAlert("run-alert", extractApiError(body, "Start failed."), "error");
     }
     await loadConfig();
+    await pollStatus();
   } catch (e) {
     showAlert("run-alert", "Network error: " + e.message, "error");
   } finally {
@@ -2134,6 +2215,7 @@ async function stopBridge() {
     } else {
       showAlert("run-alert", extractApiError(body, "Stop failed."), "error");
     }
+    await pollStatus();
   } catch (e) {
     showAlert("run-alert", "Network error: " + e.message, "error");
   } finally {
@@ -2154,10 +2236,12 @@ async function unlockPorts() {
       const msg = body.message || "Port check finished.";
       showAlert("unlock-alert", msg, "ok");
       showComAlerts(msg, "ok");
+      await pollStatus();
     } else {
       const err = extractApiError(body, "Unlock failed.");
       showAlert("unlock-alert", err, "error");
       showComAlerts(err, "error");
+      await pollStatus();
     }
   } catch (e) {
     const err = "Network error: " + e.message;
@@ -2427,13 +2511,18 @@ function markActiveDevice(listId, deviceId) {
 function setCommandFlight(on) {
   commandInFlight = on;
   const ids = [
-    "btn-start", "btn-stop", "btn-unlock", "btn-refresh",
+    "btn-stop", "btn-unlock", "btn-refresh",
     "btn-refresh-quick", "btn-unlock-quick", "btn-com-apply",
   ];
   ids.forEach(id => {
     const el = document.getElementById(id);
     if (el) el.disabled = on;
   });
+  if (lastDashboardStatus) syncStartButtonForComLock(lastDashboardStatus);
+  else {
+    const btn = document.getElementById("btn-start");
+    if (btn) btn.disabled = on;
+  }
 }
 
 // ── Scan busy indicator ───────────────────────────────────────────────────────

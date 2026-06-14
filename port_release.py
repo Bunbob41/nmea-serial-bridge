@@ -82,6 +82,26 @@ def smart_release_com(
     return state
 
 
+def serial_port_discovery_status(
+    port: str,
+    baud: int,
+    *,
+    bridge_running: bool = False,
+    bridge_com: Optional[str] = None,
+    timeout_s: float = 2.0,
+) -> str:
+    """Discovery card / hub status for a serial endpoint."""
+    port = (port or "").strip()
+    if not port:
+        return "stale"
+    if bridge_running and bridge_com and port.upper() == bridge_com.strip().upper():
+        return "running"
+    state = probe_com_lock(port, baud, timeout_s=timeout_s)
+    if state.last_attempt_ok:
+        return "ready"
+    return "port_busy"
+
+
 def hint_udp_listen_busy(host: str, port: int) -> Optional[str]:
     if probe_udp_port_available(host, port):
         return None
