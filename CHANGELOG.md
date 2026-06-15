@@ -3,6 +3,174 @@
 High-level notes for **this fork / branch** (`2034-ui-journey-modernization` and descendants).  
  Version = `version.py` / Git tag when you run `.\release.ps1` or tag manually.
 
+---
+
+## v1.18.0 — UI & Workflow Journey Modernization
+
+> **Release summary for the `2034-ui-journey-modernization` branch.**  
+> This release replaces the legacy splitter-based layout with a fully redesigned high-density cockpit UI,
+> ships a mission-grade data-safeguard pipeline, and hardens the UI thread against bridge-core interference.
+
+---
+
+### [FEATURE] Modern UI 'Cockpit' Overhaul
+
+A complete ground-up rewrite of `BridgeWindowModern` (`ui/modern.py`, `ui/modern_styles.py`) centered on a tab-per-panel architecture with a persistent global status header.
+
+- **Persistent Global Header Strip** — `▶ Start`, `■ Stop`, live status banner, version chip, and COM lock chip are always visible above the tab bar regardless of which panel is active. Mission state is never hidden behind a tab switch.
+- **Command Tab Bar** — compact 32 px dark rail (`#05070a`) with five primary tabs: `Log | Control | Hub | Settings | Telemetry`. Active tab uses a bright `#60a5fa` bottom-border glow. Tabs are individually movable (`setMovable(True)`).
+- **Smart-Peek** — bridge start automatically navigates to the `Log` tab so the operator sees live data immediately without a manual click.
+- **Quick-View Popup** — hovering over the `Telemetry` or `Hub` tab header shows a non-modal, mouse-transparent 3-line status preview (`_QuickViewPopup`) without leaving the current view. Show/hide is debounced at 320 ms / 180 ms.
+- **Settings — VS Code-style sidebar navigation** — the Settings tab was restructured from a nested `QTabWidget` to a 152 px vertical sidebar (`QListWidget`-style `QPushButton` stack) controlling a `QStackedWidget`. All 7 sections (Presets, Phone, NMEA, Diagnostics, Inject, Terminal, Guide) receive a full Modern QSS cascade: dark surface `QGroupBox` cards, blue-accented inputs, custom checkbox/radio indicators, terminal-dark plain text areas, themed preset list, and iOS-style collapsible diagnostics cards.
+- **Hub tab** — `ConnectionHubWidget` fills the full tab height; internal scroll-area `maxHeight` cap released so the card grid expands to the window edge. One-shot auto-discovery scan fires on first Hub tab visit.
+- **Status Footer** — 24 px strip spanning the full window bottom carries backup status and version label; replaces the per-panel status bar.
+- **Fixed high-contrast palette** — `#0a0e14` root, `#111827` surface, `#1a2332` alt-surface, `#3b82f6` accent, `#60a5fa` accent-bright. Theme randomizer is suppressed in Modern mode.
+
+---
+
+### [IMPROVEMENT] Mission Review & Export
+
+Post-mission visual integrity auditing added as a hidden tab (`Mission Review`) that is revealed automatically after `Stop bridge` if a backup session was active.
+
+- **`ThroughputBarChart`** — custom `QWidget` painter renders backup bytes-per-5 s bucket as a high-contrast bar chart (`#38bdf8` bars, `#34d399` peak highlight) against a terminal-dark background. Peak throughput annotated at the bottom axis.
+- **`HealthTimeline`** — companion painter renders a colour-coded tick strip (green `ok` / amber `warn` / red `bad` / grey `idle`) derived from `MissionSessionRecord.health_ticks`, giving the operator an immediate read on data quality before leaving the field.
+- **Integrity Note** — plain-language annotation below the timeline promotes critical/caution window counts and disk-verification result to the operator without requiring log inspection.
+- **Quick Export** — one-click button zips the session `.raw` backup and an auto-generated `mission_summary.txt` (duration, avg Hz, total bytes, drop count) into a timestamped archive ready for survey office handoff.
+- **Back to Pipeline** — button navigates directly to the `Log` tab without closing the review.
+
+---
+
+### [IMPROVEMENT] 'Black-Box' Persistence
+
+Crash-safe raw data logging integrated at the bridge core level for zero-loss field capture.
+
+- **`core/local_logger.py`** — daemon-driven non-blocking queue feeding `os.open` / `os.write` / `os.fsync` writes to a rotating `.raw` file. Write latency is fully decoupled from the asyncio bridge loop; a bounded queue prevents runaway memory growth under sustained load.
+- **Backup status chip** (`lbl_backup_status`) — live health indicator in the status footer; transitions between `ok`, `warn`, and `error` states with colour-coded QSS.
+- **Post-stop integrity report** — `verify_backup_on_disk` checks file size and growth at session end. A zero-byte or stale file surfaces a `Warning: No data written` alert so the operator knows before hauling hardware out of the water.
+- **`MissionSessionRecord`** — lightweight dataclass accumulates throughput buckets and health ticks in memory during the session; no disk overhead beyond the `.raw` file itself.
+
+---
+
+### [REFACTOR] Container-Manager Pattern
+
+Full removal of legacy layout systems that accumulated across prior iterations.
+
+- **`QSplitter` eliminated** — no `QSplitter` references remain in `BridgeWindowModern`. Layout is driven entirely by `QVBoxLayout` / `QHBoxLayout` stretch factors and a `QStackedWidget` for the Settings pane.
+- **`QDockWidget` eliminated** — dock-based layout was trialled and fully reverted; no residual imports or state.
+- **Accordion / floating-card remnants removed** — `ModernModule`, `HUDOverlay`, and accordion toggle references purged. `ui/modern.py` now imports only what it uses.
+- **`create_diagnostics_controls`** import removed — was made redundant by the inline `build_diagnostics_tab(skip_hub=True)` call inside `_build_settings_tab`.
+- **Duplicate `ConnectionHubWidget` resolved** — `build_diagnostics_tab` accepts `skip_hub: bool = False`; Modern passes `skip_hub=True` so only the dedicated Hub tab owns the widget.
+
+---
+
+### [BUGFIX] Navigation, Theme Hooks & UI Thread Stability
+
+- **Chip truncation** (`...` mid-word) — `_modernize_survey_bar()` resets all `chip_weights` to natural text widths after `_finalize_ui()`, eliminating the `Rand…heme` / `Stan…heme` ellipsis caused by skewed proportional weights from prior sessions.
+- **Inter-chip spacing** — survey bar chip gap reduced from 8 px to 4 px for a denser, less sparse top bar.
+- **Randomize/Standardize theme chips** — suppressed in Modern mode via `bar._hidden`; Modern's fixed palette makes them irrelevant and they were appearing as stale menu noise.
+- **`QWIDGETSIZE_MAX` crash** — `QtWidgets.QWIDGETSIZE_MAX` is not exposed in PySide6; replaced with the Qt-spec literal `16777215` to prevent `AttributeError` on launch.
+- **Orphaned object names** — `modernZoneTitle` / `modernZoneSubtitle` in `ui/mission_review.py` were artefacts of the zone architecture with no matching QSS rules; corrected to `modernTabSectionTitle` / `modernIntentHint`.
+- **UI thread isolation** — `eventFilter`, `_on_qv_show`, `_on_qv_hide`, `_on_modern_tab_changed`, `_on_bridge_started` Smart-Peek, `_settings_nav_select`, `reveal_mission_review_tab`, and `hide_mission_review_tab` are all wrapped in `try/except`. A UI interaction exception can no longer propagate to the `bridge_core` asyncio serial loop.
+- **Telemetry chip padding** — inner horizontal padding corrected to 15 px (spec-aligned) from 14 px.
+
+---
+
+## v1.17.85
+
+- **System Audit — release hardening** — code hygiene, error boundaries, and asset alignment pass before GitHub release. (1) **Hygiene**: removed unused `create_diagnostics_controls` import from `ui/modern.py`; removed legacy `/* Settings (nested tool-drawer tabs) */` comment from `ui/modern_styles.py` (artefact from the old `QTabWidget` era); updated stylesheet docstring to remove stale v1.17.77 version reference; fixed orphaned `modernZoneTitle` / `modernZoneSubtitle` object names in `ui/mission_review.py` → now correctly `modernTabSectionTitle` / `modernIntentHint` so both headline and summary receive proper QSS styling. (2) **Error boundaries**: all tab-switching and visibility paths that could propagate to the bridge serial loop are now wrapped in `try/except`: `eventFilter` (highest-risk — `event.pos()` type guard), `_on_qv_show`, `_on_qv_hide`, `_on_modern_tab_changed`, `_on_bridge_started` Smart-Peek, `_settings_nav_select`, `reveal_mission_review_tab`, `hide_mission_review_tab`. A UI interaction error can no longer propagate to `bridge_core`. (3) **Asset alignment**: Telemetry chip horizontal padding corrected to 15 px (was 14 px); Hub and Telemetry tabs confirmed on `#0a0e14` / `MODERN_SURFACE` palette throughout.
+
+## v1.17.84
+
+- **Settings — full Modern UI makeover across all 7 sections** — comprehensive QSS cascade applied inside `#modernSettingsStack` context covering all sections without touching underlying widget trees or mixin attributes. Changes: (1) GroupBoxes → dark surface cards with rounded corners, blue accent titles. (2) All inputs (QLineEdit, QSpinBox, QComboBox) → dark `MODERN_SURFACE_ALT` with blue focus ring. (3) Checkboxes and radio buttons → custom dark square/circle indicators with blue checked state. (4) Buttons → uniform dark chip style with blue hover; Preset Load gets blue tint, Delete gets red tint. (5) Preset list → dark surface with blue selection highlight, hover row. (6) Phone dashboard cards (`#phoneDashboardCard`) → rounded dark cards, blue card titles, green status labels. (7) Guide text browsers → `MODERN_TERMINAL_BG` background, dark tab bar. (8) Diagnostics iOS-card toggles and splitter handle → dark surface styling. (9) Plain text areas (Inject/Diagnostics) → terminal dark mono. Scroll host backgrounds fixed to `MODERN_BG` throughout.
+
+## v1.17.83
+
+- **Settings tab redesigned — sidebar + stacked content** — replaced the nested `QTabWidget` (horizontal sub-tabs inside the main Settings tab) with a VS Code-style vertical sidebar nav + `QStackedWidget` content area. Left sidebar (152 px, `MODERN_SURFACE` bg) lists all 7 sections (Presets ⚙, Phone 📱, NMEA 📡, Diagnostics 🔍, Inject 💉, Terminal ⌨, Guide 📖) with a 1 px separator line. Active item has a blue left-border accent, blue text, and a subtle blue tint. Content fills the remaining width. All section content (Presets, Phone, NMEA, Diagnostics, Inject, Terminal, Guide) is unchanged.
+
+## v1.17.82
+
+- **Modern Hub: card scroll fills full tab height** — the root cause of the empty gap was `scroll.setMaximumHeight(cards_view_h)` inside `ConnectionHubWidget._build_cards_pane` capping the scroll area at 184 px. In `_build_hub_tab` the cap is now released (`setMaximumHeight(QWIDGETSIZE_MAX)`, policy `Expanding`) so the card grid stretches to fill the whole tab. Other layouts (Standard, Field) are unaffected. Floating QR overlay restored — user prefers the draggable chip.
+
+## v1.17.81
+
+- **Modern: Hub tab fills + floating QR removed** — (1) `ConnectionHubWidget.standalone` cards pane now uses stretch=1 so the card grid fills all available vertical space instead of leaving a dead void below the two fixed rows. Hub tab widget's size policy changed from `Minimum` to `Expanding` so the tab's height is fully used. (2) `refresh_connect_qr_overlay` now returns immediately when `_ui_mode == "modern"`, suppressing the draggable `ConnectQrFloat` that was overlaying tabs (phone QR is already available inline in Settings → Phone). (3) Hub tab margins trimmed to 0 so cards reach the edges cleanly.
+
+## v1.17.80
+
+- **Modern: duplicate ConnectionHub + theme chips fixed** — (1) `build_diagnostics_tab` now accepts a `skip_hub=False` keyword; Modern's `_build_settings_tab` passes `skip_hub=True` so the Diagnostics sub-tab no longer instantiates a second `ConnectionHubWidget`. Build order inside `__init__` was also flipped (settings → hub) so `self.connection_hub` is unambiguously the Hub tab's widget when `_finalize_ui` wires it up. (2) `_modernize_survey_bar` now adds `randomize_theme` and `standardize_theme` to the bar's hidden set before rebuilding, removing those two chips from Modern where the fixed dark stylesheet makes them irrelevant.
+
+## v1.17.79
+
+- **Survey bar chip fix + Hub auto-discovery** — (1) `_modernize_survey_bar()` runs after `_finalize_ui()` and does two things: reduces inter-chip spacing from 8 px to 4 px, and resets all `chip_weights` to values derived from each chip's natural text width — eliminating the "Rand…heme" / "Stan…heme" middle-ellipsis truncation without making short chips ("HUD") unnecessarily wide. Weights are persisted so the reset survives restarts. (2) `_on_modern_tab_changed` wires a one-shot `QTimer` that triggers `_on_hub_refresh_discovery` the first time the Hub tab is opened, so the device list populates automatically instead of showing a blank area waiting for a manual Refresh click. (3) Hub empty-state instructional text updated from "Connect → Serial & network" to "Control tab".
+
+## v1.17.78
+
+- **Hub tab + Guide refinement** — Two quality-of-life improvements. (1) **Hub tab**: removed the duplicate Refresh/Unlock action bar that was appended below `ConnectionHubWidget` (those buttons already exist inside the widget itself); the Hub now has zero wasted space. (2) **Guide aesthetic overhaul** (`ui/tool_tabs.py`): replaced the parchment `#f8f3e8` HTML background that clashed with the dark Modern palette with a fully dark theme matching `#0a0e14` (bg), `#c8d8f0` (body text), `#60a5fa`/`#93c5fd` headings, `#67e8f9` code chips, and a styled left-border `.note` callout block. (3) **Guide content rewrite**: all five tabs ("Start here", "UDP", "TCP Client", "TCP Server", "Checklist") now reference Modern UI navigation — **Control tab** (was "Connect tab"), **Settings → Presets/NMEA/Diagnostics/Phone** (was "Tools → …"), **▶ Start in the header** (was "Run bridge panel → Start bridge"), **Telemetry tab for Serial/Network chips** (was "bottom status bar"), **Hub tab for Unlock COM** (was "connection hub"). Removed references to "Standard layout", "Field/Minimal" layout variants, and "Tools drawer" terminology throughout.
+
+## v1.17.77
+
+- **Modern layout — persistent Global Header Strip + Smart-Peek + Quick-View** — Three interaction flow improvements to the tab-per-panel layout. (1) **Persistent Global Header Strip**: a dedicated 40 px row sits between the survey bar and the tab bar and contains ▶ Start, ■ Stop, the colour-coded status banner, version chip, and COM lock chip — always visible no matter which tab is active. (2) **Smart-Peek**: when the bridge starts `_on_bridge_started` automatically navigates to the Log tab so the operator immediately sees data without manually switching. (3) **_QuickViewPopup**: hovering over the "Telemetry" or "Hub" tab header for 320 ms shows a non-modal 3-row preview (Serial · Network · Session for Telemetry; COM · Port · Status for Hub) positioned just below the hovered chip — lets the operator monitor state without leaving Log. Popup is mouse-transparent and auto-hides on hover-out (180 ms debounce). Active tab indicator upgraded to a 3 px `#60a5fa` bottom border with a top-to-bottom blue-gradient glow background. Tab horizontal padding widened to 15 px for legibility.
+
+## v1.17.76
+
+- **Modern layout — unified compact header + command tab bar** — Navigation density pass. The separate 54 px Start/Stop chrome strip is gone; run controls (▶ Start, ■ Stop, inline status banner, version chip, COM lock chip) are now injected into the right side of the survey bar, collapsing two stacked rows into one 40 px unified header. Net vertical saving: ~66 px. Survey quick-action chips reduced 25 % in height (`padding: 4px 9px`, `font-size: 9pt`). Main tab bar receives a dedicated `#05070a` background rail (visually distinct from the `#0a0e14` content area), with tabs tightened to `padding: 7px 14px` / `9pt` weight — a dense command-bar feel rather than oversized buttons. Footer simplified to 24 px (backup status + version only; `lbl_stats` lives in the Telemetry tab). All tab content areas remain flush and aligned across tab switches.
+
+## v1.17.75
+
+- **Modern layout — tab-per-panel** — Complete rewrite based on user preference. Every panel is a first-class tab: **Log**, **Control**, **Hub**, **Settings**, **Telemetry**. No floating tiles, no forced splits, no locked background layer. A compact always-visible chrome strip (54 px) sits below the survey bar and holds Start/Stop buttons, an inline status banner with a colour-coded left border, and the COM lock chip + session stats. The main `QTabWidget` fills the rest of the window; tabs are reorderable by drag. The Settings tab contains the nested Presets / Phone / NMEA / Diagnostics / Inject / Terminal / Guide sub-tabs. Control tab shows serial + network config side-by-side. Last active tab is saved and restored. Mission Review tab appears after Stop (if backup was active).
+
+## v1.17.74
+
+- **Modern layout — HUD overlay architecture** — Complete rewrite. Log conduit now fills the entire canvas (full height × full width, no splitters, no columns). Control Panel, Settings, Connection Hub, and Telemetry are refactored into `HudModule` floating overlay cards that sit on top of the log. Each card is semi-transparent (`rgba(10, 18, 30, 215)` background + drop shadow) and pinned by default to a corner of the canvas (Control → top-left, Settings → bottom-left, Hub → top-right, Telemetry → bottom-right). **Interactions**: drag the header to free-float the card anywhere; single-click header to toggle Pin/Float; double-click header to expand/collapse; `⊞/⊟` button for explicit pin control. **HUD View Bar** — thin strip below the survey bar with four toggle buttons to show/hide individual modules plus a "Reset HUD" button. All visibility, pin, collapse, and float-position states persist to `hud_states` in `ui_prefs.json`. Removed all `QSplitter` references. Text is `#f8fafc` (off-white); headers use `#3b82f6` accent blue; borders removed in favour of drop shadows.
+
+## v1.17.73
+
+- **Modern layout — Module-Container architecture (floating cards)** — Complete architectural rewrite. Replaced all `QSplitter` logic with a `ModernModule(QWidget)` base class and a `QHBoxLayout`-of-`QVBoxLayout` column system. Each of the five panels (Control Panel, Settings, Core Conduit, Connection Hub, Telemetry) is now an independent floating card with: `#141a22` background, `8px` border-radius, `10px` outer margin, and a `15px` internal padding. Card header is a clean strip with a left-aligned title and a right-aligned `✕ / ▼` toggle button. Clicking `✕` collapses a card to its 40 px header strip; clicking `▼` or the title re-expands it. Remaining expanded cards in the same column automatically fill the freed space via `QSizePolicy.Expanding`. Window background is `#0a0e14`; card gaps reveal this background for the "floating" look. Collapse/expand state persists across restarts (`modern_module_states` key in `ui_prefs.json`). Footer has an **Expand all** button that expands all collapsed panels at once. Session telemetry (`lbl_stats`) promoted into the Telemetry card for tighter context.
+
+## v1.17.72
+
+- **Modern layout — swappable panel grid** — Replaced QDockWidget (snapping, immovable Pipeline) with nested QSplitters (smooth continuous drag in both X and Y). Every panel now has a header bar with a `⇄` swap button; clicking it shows a menu to swap that panel with any other slot. All 5 panels (Control, Settings, Core conduit, Connection Hub, Telemetry) are in 5 named slots (left_top, left_bottom, center, right_top, right_bottom) and can be placed in any order. Slot assignments and splitter sizes auto-save to `modern_layout` in `ui_prefs.json`. "Reset layout" in the footer restores defaults in-place instantly.
+
+## v1.17.71
+
+- **Modern dock UX fixes** — Control panel default height increased to 480px so the Serial link and Network path groups are both visible on launch without scrolling. Removed redundant subtitle from Control panel dock (dock title already names it). Removed "Core conduit" zone title from log panel (log fills to the top edge). Reset layout now works in-place — no relaunch required. Dock title bars now show a 3px accent left border as a visual drag hint; hover brightens it.
+
+## v1.17.70
+
+- **Modern layout — free-form QDockWidget grid** — All four panels (Control panel, Settings, Connection Hub, Telemetry) are now `QDockWidget`s inside an inner `QMainWindow`. Drag any panel's title bar to move it to the left, right, top, or bottom edge, stack panels as tabs, or float them as independent windows. Settings panel is fully uncapped — give it as much space as you want. Dock state auto-saves on every resize/move and restores on relaunch. A **Reset layout** button in the footer clears the saved state (relaunch to restore factory positions).
+
+## v1.17.69
+
+- **Modern layout — free-form 2×3 splitter grid** — Removed the fixed 2:6:2 constraint entirely. Left column splits vertically into **Control panel** (top) and **Settings** (bottom); right column splits into **Connection Hub** (top) and **Telemetry** (bottom). All three horizontal and both vertical splitter positions are independently draggable and auto-saved to `ui_prefs.json` (`modern_layout` key). Settings panel (`modernToolsDrawer`) has no height cap — drag the left vertical splitter to give Presets / Phone / NMEA / Diagnostics / Inject as much space as needed. Added `load_modern_layout_prefs` / `save_modern_layout_prefs` to `ui_prefs.py`.
+
+## v1.17.68
+
+- **Modern layout hierarchy** — Center conduit is now the unambiguous dominant anchor (log panel fills all vertical space). Right zone restructured with `QVBoxLayout`: **Connection Hub** sits at the top and expands to fill available height; five compact single-row **telemetry chips** (Serial / Network / NMEA / GNSS) are pinned below. Removed per-zone subtitle clutter from the conduit. Old multi-line telemetry cards replaced by slim horizontal chips. **Status Footer** — a new full-width 30 px strip at the bottom of the window replaces the `QStatusBar` chrome; carries the backup status chip, session stats, and version label. `QStatusBar` is retained as a zero-height invisible widget for mixin compatibility.
+
+## v1.17.67
+
+- **Mission Review (Modern UI)** — After **Stop bridge** with active backup, a **Mission Review** tab appears with backup throughput bar chart, data-health timeline (green/amber/red ticks), and **Quick Export** (timestamped zip: `.raw` + `mission_summary.txt` with duration, avg Hz, bytes). Standard/Field layouts keep the post-stop dialog.
+
+## v1.17.66
+
+- **Mission Summary** — After **Stop bridge**, if local black-box backup was active, a non-modal dialog reports bytes written, chunks dropped, and backup path. Zero-byte or missing/empty files raise **Warning: No data written**. Backup now flushes on `abort_now()` (normal Stop path).
+
+## v1.17.65
+
+- **Black-box backup audit** — Queue headroom raised to 8192 chunks (~32 MiB at 4 KiB reads); queue depth/max in stats; thread-safe immediate **Backup:** status refresh on disk/queue errors; compact elided status bar (`Backup: 1.2 MB`) with full path/bytes in tooltip (Modern layout safe on tactical displays).
+
+## v1.17.64
+
+- **Local black-box backup** — Optional raw COM safeguard (`core/local_logger.py`): every physical serial read is copied to `logs/backup_YYYYMMDD_HHMM.raw` on a dedicated writer thread with per-chunk `fsync`. Survives network/Tailscale outages; disk errors disable backup without stopping the bridge. Toggle in **Diagnostics → Local black-box backup**; status chip **Backup:** on the status bar.
+
+## v1.17.63
+
+- **Modern layout redesign** — Ground-up **Streamlined Pipeline** UX: left control panel (serial + network), center **Core Conduit** live log (~56% width), right **Insight** rail (telemetry cards + Connection Hub). Fixed high-contrast palette; random theme is disabled so the survey top bar never clips or disappears. 14px scrollbars throughout.
+
+## v1.17.62
+
+- **Modern layout** — Third workspace (`ui/modern.py`): discovery-forward dashboard with high-contrast COM/LAN cards, wide scrollbars, centered live log, and connect/run modules. Layout chip cycles Standard → Field → Modern (via `ui/layout_switch_hook.py`).
+
 ## v1.17.61
 
 - **Web network mode save** — Saving TCP client/server or UDP remote no longer snaps back to UDP listen. The web API was forcing UDP listen whenever listen host/port were in the patch; remote host/port now map to the correct desktop fields for each mode.

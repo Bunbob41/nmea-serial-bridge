@@ -121,11 +121,13 @@ from ui.ui_prefs import (
     set_recent_session_pinned,
     load_diag_card_order,
     load_file_log_prefs,
+    load_local_backup_prefs,
     load_ntrip_prefs,
     load_tab_order,
     load_top_bar_prefs,
     load_hidden_tabs,
     save_file_log_prefs,
+    save_local_backup_prefs,
     save_ntrip_prefs,
     save_diag_card_states,
     save_field_prefs,
@@ -198,6 +200,10 @@ class BridgeLogicMixin:
         self._starting = False
         self._bridge_stop_mono = 0.0
         self._start_defer_pending = False
+        self._session_backup_was_active = False
+        self._mission_recorder = None
+        self._mission_session_record = None
+        self._mission_session_summary: Optional[dict[str, object]] = None
         self._stop_guard_timer = QtCore.QTimer(self)
         self._stop_guard_timer.setSingleShot(True)
         self._stop_guard_timer.timeout.connect(self._stop_timeout_guard)
@@ -349,6 +355,7 @@ class BridgeLogicMixin:
 
         self._tray_icon = install_tray_icon(self)
         self._restore_file_log_prefs_ui()
+        self._restore_local_backup_prefs_ui()
         self._restore_auto_discover_pref()
         self._log_startup_self_check()
         self._on_ui_ready()
@@ -4001,6 +4008,72 @@ class BridgeLogicMixin:
         lbl.setText(file_log_retention_hint(max_mb, backups))
         save_file_log_prefs(max_mb, backups)
 
+    def _restore_local_backup_prefs_ui(self) -> None:
+        chk = getattr(self, "chk_local_backup", None)
+        if chk is None:
+            return
+        prefs = load_local_backup_prefs()
+        chk.blockSignals(True)
+        try:
+            chk.setChecked(bool(prefs.get("enabled", True)))
+        finally:
+            chk.blockSignals(False)
+        self._refresh_backup_status_label()
+
+    def _save_local_backup_pref(self, *_args: object) -> None:
+        chk = getattr(self, "chk_local_backup", None)
+        if chk is None:
+            return
+        save_local_backup_prefs(enabled=chk.isChecked())
+        self._refresh_backup_status_label()
+
+    def _session_enable_local_backup(self) -> bool:
+        chk = getattr(self, "chk_local_backup", None)
+        if chk is None:
+            return bool(load_local_backup_prefs().get("enabled", True))
+        return chk.isChecked()
+
+    def _refresh_backup_status_label(self, stats: Optional[dict] = None) -> None:
+        from ui.backup_status import format_backup_status
+        from ui.controls import elide_status_label
+
+        lbl = getattr(self, "lbl_backup_status", None)
+        if lbl is None:
+            return
+        enabled = self._session_enable_local_backup()
+        merged = stats if stats is not None else getattr(self, "_bridge_stats_cache", {})
+        running = self._is_bridge_running()
+        active = bool(merged.get("local_backup_active"))
+        backup_open = (
+            self.bridge is not None
+            and getattr(self.bridge, "_local_backup", None) is not None
+        )
+        bar, tip = format_backup_status(
+            enabled=enabled,
+            running=running and enabled and not active and not backup_open,
+            active=active,
+            error=str(merged.get("local_backup_error") or ""),
+            path=str(merged.get("local_backup_path") or ""),
+            nbytes=int(merged.get("local_backup_bytes") or 0),
+            dropped=int(merged.get("local_backup_dropped") or 0),
+            queue_depth=int(merged.get("local_backup_queue_depth") or 0),
+            queue_max=int(merged.get("local_backup_queue_max") or 0),
+        )
+        elide_status_label(lbl, bar)
+        lbl.setToolTip(tip)
+        dropped = int(merged.get("local_backup_dropped") or 0)
+        err = str(merged.get("local_backup_error") or "").strip()
+        if err:
+            lbl.setProperty("backupState", "error")
+        elif dropped > 0:
+            lbl.setProperty("backupState", "warn")
+        else:
+            lbl.setProperty("backupState", "ok")
+        style = lbl.style()
+        if style is not None:
+            style.unpolish(lbl)
+            style.polish(lbl)
+
     def _apply_com_preset(self, com: str, baud: int, udp_host: str, udp_port: int) -> None:
         idx = self.com_cb.findText(com)
         if idx >= 0:
@@ -4971,6 +5044,7 @@ class BridgeLogicMixin:
             "udp_peers": b.udp_peer_count,
             **b.navigation_quality_stats(),
             **b.navigation_position_stats(),
+            **b._local_backup_stats(),
         }
 
     def _sync_transport_alert_chrome(self, merged: dict) -> None:
@@ -4992,6 +5066,11 @@ class BridgeLogicMixin:
         self._sync_com_cb_from_bridge()
         merged = self._merge_bridge_stats(_d)
         self._bridge_stats_cache = dict(merged)
+        rec = getattr(self, "_mission_recorder", None)
+        if rec is not None and rec.active:
+            import time as _time
+
+            rec.sample(merged, mono=_time.monotonic())
         import time as _time
 
         hub = getattr(self, "connection_hub", None)
@@ -5007,6 +5086,7 @@ class BridgeLogicMixin:
         elide_status_label(self.lbl_stats, format_live_stats_line(merged))
         self._sync_transport_alert_chrome(merged)
         self.lbl_stats.setToolTip(self._stats_tooltip())
+        self._refresh_backup_status_label(merged)
         self._refresh_gnss_status_chip()
         self._refresh_stats_popout()
         self._refresh_dashboard()
@@ -5026,6 +5106,7 @@ class BridgeLogicMixin:
             )
             self._sync_transport_alert_chrome({})
             self.lbl_stats.setToolTip(self._stats_tooltip())
+            self._refresh_backup_status_label()
             self._refresh_gnss_status_chip()
             self._refresh_stats_popout()
             self._refresh_dashboard()
@@ -5794,6 +5875,7 @@ class BridgeLogicMixin:
                 )
                 is None
                 or self.chk_serial_auto_reconnect.isChecked(),
+                enable_local_backup=self._session_enable_local_backup(),
             )
             if mode == NetMode.TCP_SERVER:
                 return SerialNetBridge(
@@ -5901,6 +5983,20 @@ class BridgeLogicMixin:
         self._refresh_nmea_status_chip()
         self._sync_preset_action_buttons()
         self._set_status_banner("running", "Running", self._running_banner_detail(b))
+        self._session_backup_was_active = getattr(b, "_local_backup", None) is not None
+        if self._session_backup_was_active:
+            from ui.mission_session import MissionSessionRecorder
+
+            self._mission_recorder = MissionSessionRecorder()
+            self._mission_recorder.start(
+                com=b.com,
+                baud=b.baud,
+            )
+        else:
+            self._mission_recorder = None
+        if getattr(self, "_ui_mode", "") == "modern" and hasattr(self, "_hide_mission_review_tab"):
+            self._hide_mission_review_tab()
+        self._refresh_backup_status_label()
         self.start_btn.setText("Running…")
         if b.mode == NetMode.UDP_LISTEN and b.udp_listen:
             host, port = b.udp_listen
@@ -5941,7 +6037,63 @@ class BridgeLogicMixin:
         self._log_ui("Stopping bridge…")
         worker.request_stop()
         worker.wait(4000)
+        summary = None
+        record = None
+        if getattr(self, "_session_backup_was_active", False):
+            bridge_obj = worker.bridge
+            if bridge_obj is not None:
+                summary = getattr(bridge_obj, "_last_backup_session_summary", None)
+            rec = getattr(self, "_mission_recorder", None)
+            if rec is not None and summary:
+                import time as _time
+
+                record = rec.finalize(summary, mono=_time.monotonic())
+            self._mission_recorder = None
+        self._session_backup_was_active = False
         self._finish_stop_ui()
+        if summary and not getattr(self, "_layout_switch_in_progress", False):
+            payload = (record, dict(summary))
+            QtCore.QTimer.singleShot(0, lambda p=payload: self._present_mission_summary(*p))
+
+    def _present_mission_summary(
+        self,
+        record: object | None,
+        summary: dict[str, object],
+    ) -> None:
+        if getattr(self, "_ui_mode", "") == "modern" and record is not None:
+            if hasattr(self, "_reveal_mission_review_tab"):
+                self._reveal_mission_review_tab(record, summary)
+            return
+        from ui.mission_summary import present_mission_summary
+
+        present_mission_summary(self, summary)
+
+    def _on_mission_quick_export(self) -> None:
+        record = getattr(self, "_mission_session_record", None)
+        if record is None:
+            QtWidgets.QMessageBox.warning(
+                self,
+                "Quick Export",
+                "No mission session to export. Stop the bridge after a backup-enabled run first.",
+            )
+            return
+        from ui.mission_export import quick_export_mission
+
+        try:
+            zip_path = quick_export_mission(record)
+        except OSError as exc:
+            QtWidgets.QMessageBox.critical(
+                self,
+                "Quick Export failed",
+                str(exc),
+            )
+            return
+        self._log_ui(f"Mission Quick Export: {zip_path}")
+        QtWidgets.QMessageBox.information(
+            self,
+            "Quick Export complete",
+            f"Survey package ready:\n{zip_path}",
+        )
 
     def _stop_bridge(self) -> None:
         """Legacy name used by older tray/quit paths; prefer stop_bridge()."""
@@ -5972,6 +6124,7 @@ class BridgeLogicMixin:
         self.start_btn.setText("Start bridge")
         self._set_status_banner("stopped", "Stopped", "Choose a path and Start when ready.")
         self._update_status_bar("Serial: stopped", "Network: stopped")
+        self._refresh_backup_status_label()
         self._refresh_nmea_status_chip()
         self._sync_preset_action_buttons()
         self._apply_hub_quality()

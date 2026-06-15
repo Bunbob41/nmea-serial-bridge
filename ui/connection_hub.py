@@ -148,7 +148,7 @@ class ConnectionHubWidget(QtWidgets.QWidget):
             hint_text = (
                 "Pick a detected GNSS serial port or UDP listen context. "
                 "Two rows shown — scroll inside for more. "
-                "Manual COM/UDP fields live on Connect → Serial & network."
+                "Manual COM/UDP fields live on the Control tab."
             )
         else:
             hint_text = (
@@ -162,7 +162,9 @@ class ConnectionHubWidget(QtWidgets.QWidget):
 
         cards_wrap = self._build_cards_pane(cards_view_h)
         if self._standalone:
-            root.addWidget(cards_wrap, 0)
+            # Stretch=1 lets the cards area fill all remaining tab space instead
+            # of leaving an empty void below the fixed-height scroll region.
+            root.addWidget(cards_wrap, 1)
         else:
             self._splitter = QtWidgets.QSplitter(QtCore.Qt.Orientation.Vertical)
             self._splitter.setObjectName("connectionHubSplitter")

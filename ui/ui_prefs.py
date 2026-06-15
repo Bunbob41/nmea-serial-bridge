@@ -600,6 +600,95 @@ def save_file_log_prefs(max_mb: int, backups: int) -> None:
     _write_json(data)
 
 
+_MODERN_SLOT_DEFAULTS: dict[str, str] = {
+    "left_top": "control",
+    "left_bottom": "settings",
+    "center": "log",
+    "right_top": "hub",
+    "right_bottom": "telem",
+}
+_MODERN_SPLIT_DEFAULTS: dict[str, list[int]] = {
+    "hsplit": [300, 720, 300],
+    "left_vsplit": [480, 260],
+    "right_vsplit": [490, 250],
+}
+_MODERN_ALL_PANELS = frozenset(_MODERN_SLOT_DEFAULTS.values())
+_MODERN_ALL_SLOTS = frozenset(_MODERN_SLOT_DEFAULTS.keys())
+
+
+def load_modern_layout_prefs() -> dict[str, Any]:
+    """Return splitter sizes and panel slot assignments for the Modern layout."""
+    data = _read_json()
+    raw = data.get("modern_layout")
+    out: dict[str, Any] = {
+        "slot_assignments": dict(_MODERN_SLOT_DEFAULTS),
+        **{k: list(v) for k, v in _MODERN_SPLIT_DEFAULTS.items()},
+    }
+    if not isinstance(raw, dict):
+        return out
+    for key, default in _MODERN_SPLIT_DEFAULTS.items():
+        val = raw.get(key)
+        if isinstance(val, list) and len(val) >= len(default):
+            try:
+                out[key] = [max(80, int(x)) for x in val[: len(default)]]
+            except (TypeError, ValueError):
+                pass
+    raw_slots = raw.get("slot_assignments")
+    if isinstance(raw_slots, dict):
+        used: set[str] = set()
+        clean: dict[str, str] = {}
+        for slot in _MODERN_ALL_SLOTS:
+            panel = str(raw_slots.get(slot, "")).strip()
+            if panel in _MODERN_ALL_PANELS and panel not in used:
+                clean[slot] = panel
+                used.add(panel)
+        for slot in _MODERN_ALL_SLOTS:
+            if slot not in clean:
+                remaining = [p for p in _MODERN_ALL_PANELS if p not in used]
+                if remaining:
+                    clean[slot] = remaining[0]
+                    used.add(remaining[0])
+        out["slot_assignments"] = clean
+    return out
+
+
+def save_modern_layout_prefs(
+    *,
+    hsplit: list[int] | None = None,
+    left_vsplit: list[int] | None = None,
+    right_vsplit: list[int] | None = None,
+    slot_assignments: dict[str, str] | None = None,
+) -> None:
+    data = _read_json()
+    prev = data.get("modern_layout")
+    payload: dict[str, Any] = dict(prev) if isinstance(prev, dict) else {}
+    if hsplit is not None:
+        payload["hsplit"] = [max(80, int(x)) for x in hsplit[:3]]
+    if left_vsplit is not None:
+        payload["left_vsplit"] = [max(80, int(x)) for x in left_vsplit[:2]]
+    if right_vsplit is not None:
+        payload["right_vsplit"] = [max(80, int(x)) for x in right_vsplit[:2]]
+    if slot_assignments is not None:
+        payload["slot_assignments"] = {str(k): str(v) for k, v in slot_assignments.items()}
+    data["modern_layout"] = payload
+    _write_json(data)
+
+
+def load_local_backup_prefs() -> dict[str, bool]:
+    """Black-box raw COM backup (independent of rotating NMEA file log)."""
+    data = _read_json()
+    raw = data.get("local_backup")
+    if not isinstance(raw, dict):
+        return {"enabled": True}
+    return {"enabled": bool(raw.get("enabled", True))}
+
+
+def save_local_backup_prefs(*, enabled: bool) -> None:
+    data = _read_json()
+    data["local_backup"] = {"enabled": bool(enabled)}
+    _write_json(data)
+
+
 def load_ntrip_prefs() -> dict[str, str | bool]:
     """NTRIP UI removed — always disabled (Applanix/INS workflows use internal RTK)."""
     data = _read_json()

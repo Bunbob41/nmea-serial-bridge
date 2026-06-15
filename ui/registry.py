@@ -9,6 +9,7 @@ from version import __version__
 
 UI_STANDARD = "standard"
 UI_FIELD = "field"
+UI_MODERN = "modern"
 UI_MINIMAL = "minimal"
 UI_LOGFIRST = "logfirst"
 UI_DEFAULT = UI_FIELD
@@ -17,6 +18,7 @@ UI_DEFAULT = UI_FIELD
 UI_LABELS: Dict[str, str] = {
     UI_STANDARD: f"Standard — full Connect tab (v{__version__})",
     UI_FIELD: f"Field — survey log + quick bar (v{__version__})",
+    UI_MODERN: f"Modern — discovery dashboard (v{__version__})",
 }
 
 UI_DESCRIPTIONS: Dict[str, str] = {
@@ -29,9 +31,13 @@ UI_DESCRIPTIONS: Dict[str, str] = {
         "(Presets / NMEA / Send / Diagnostics), and survey bar (Presets, Recent, Checklists, HUD). "
         "Replaces the old Minimal and Log-first layouts."
     ),
+    UI_MODERN: (
+        "Ultra-readable dashboard: Discovery hub, centered live log, connect/run module, "
+        "wide scrollbars, and high-contrast COM/LAN cards."
+    ),
 }
 
-UI_ORDER = [UI_STANDARD, UI_FIELD]
+UI_ORDER = [UI_STANDARD, UI_FIELD, UI_MODERN]
 
 # Legacy ids still launch for saved configs / CLI; map to field on next save
 UI_LEGACY_ALIASES: Dict[str, str] = {
@@ -39,7 +45,7 @@ UI_LEGACY_ALIASES: Dict[str, str] = {
     UI_LOGFIRST: UI_FIELD,
 }
 
-UI_ALL_IDS = frozenset({UI_STANDARD, UI_FIELD, UI_MINIMAL, UI_LOGFIRST})
+UI_ALL_IDS = frozenset({UI_STANDARD, UI_FIELD, UI_MODERN, UI_MINIMAL, UI_LOGFIRST})
 
 
 def normalize_ui_id(ui_id: str) -> str:
@@ -48,6 +54,10 @@ def normalize_ui_id(ui_id: str) -> str:
 
 def get_window_class(ui_id: str) -> Type[QtWidgets.QWidget]:
     ui_id = normalize_ui_id(ui_id)
+    if ui_id == UI_MODERN:
+        from ui.modern import BridgeWindowModern
+
+        return BridgeWindowModern
     if ui_id == UI_FIELD:
         from ui.field import BridgeWindowField
 

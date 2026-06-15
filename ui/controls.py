@@ -127,7 +127,7 @@ def wire_status_bar(win: QtWidgets.QWidget) -> None:
     if bar is not None:
         bar.setSizeGripEnabled(False)
         bar.setFixedHeight(_STATUS_BAR_H)
-    for name in ("status_serial", "status_network", "status_nmea", "status_gnss", "lbl_stats"):
+    for name in ("status_serial", "status_network", "status_nmea", "status_gnss", "lbl_stats", "lbl_backup_status"):
         lbl = getattr(win, name, None)
         if lbl is None:
             continue
@@ -142,11 +142,23 @@ def wire_status_bar(win: QtWidgets.QWidget) -> None:
     if stats is not None:
         stats.setObjectName("lblStats")
         stats.setMinimumWidth(200)
+    backup = getattr(win, "lbl_backup_status", None)
+    if backup is not None:
+        backup.setObjectName("backupStatus")
+        backup.setMinimumWidth(108)
+        backup.setMaximumHeight(_STATUS_CHIP_MAX_H)
+        backup.setSizePolicy(
+            QtWidgets.QSizePolicy.Policy.Minimum,
+            QtWidgets.QSizePolicy.Policy.Fixed,
+        )
+    bar = getattr(win, "statusBar", None)
+    if bar is not None and backup is not None and backup.parent() is None:
+        bar.insertPermanentWidget(0, backup)
 
 
 def refresh_status_bar_labels(win: QtWidgets.QWidget) -> None:
     """Re-apply elision after resize (stats line uses remaining bar width)."""
-    for name in ("status_serial", "status_network", "status_nmea", "status_gnss", "lbl_stats"):
+    for name in ("status_serial", "status_network", "status_nmea", "status_gnss", "lbl_stats", "lbl_backup_status"):
         lbl = getattr(win, name, None)
         if lbl is None:
             continue
@@ -407,6 +419,12 @@ def create_connection_controls(parent: QtWidgets.QWidget) -> None:
     p.stop_btn = QtWidgets.QPushButton("Stop")
     p.stop_btn.setObjectName("btnStop")
     p.stop_btn.setEnabled(False)
+
+    p.lbl_backup_status = QtWidgets.QLabel("Backup: off")
+    p.lbl_backup_status.setObjectName("backupStatus")
+    p.lbl_backup_status.setToolTip(
+        "Local black-box raw backup — preserves COM ingress when the network path fails."
+    )
 
     p._connection_widgets = [
         p.com_cb,
