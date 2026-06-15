@@ -178,6 +178,14 @@ class TestUiPrefs(unittest.TestCase):
                 loaded = ui_prefs.load_file_log_prefs()
                 self.assertEqual(loaded, {"max_mb": 25, "backups": 10})
 
+    def test_local_backup_prefs_roundtrip(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "ui_prefs.json"
+            with patch.object(ui_prefs, "CONFIG_PATH", path):
+                ui_prefs.save_local_backup_prefs(enabled=False)
+                loaded = ui_prefs.load_local_backup_prefs()
+                self.assertEqual(loaded, {"enabled": False})
+
     def test_web_ui_defaults_enabled(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "ui_prefs.json"

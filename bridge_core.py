@@ -32,6 +32,7 @@ from nmea_codec import (
     parse_nmea_utc,
 )
 from nmea_position import feed_nmea_position
+from core.local_logger import LocalSerialBackup, default_local_backup_dir
 from survey_quality import (
     feed_nmea_navigation_quality,
     nav_metrics_should_reset,
@@ -385,6 +386,8 @@ class SerialNetBridge:
         status_cb: Optional[Callable[[str, str], None]] = None,
         stats_cb: Optional[Callable[[dict], None]] = None,
         file_log: Optional[_FileSurveyLog] = None,
+        enable_local_backup: bool = False,
+        local_backup_dir: Optional[Path] = None,
     ):
         self.com = com
         self.baud = baud
@@ -412,6 +415,10 @@ class SerialNetBridge:
             stats_cb or (lambda *_a, **_k: None), "stats"
         )
         self._file_log = file_log
+        self._enable_local_backup = bool(enable_local_backup)
+        self._local_backup_dir = local_backup_dir
+        self._local_backup: Optional[LocalSerialBackup] = None
+        self._last_backup_session_summary: Optional[dict[str, object]] = None
 
         self.serial_reader: Optional[asyncio.StreamReader] = None
         self.serial_writer: Optional[asyncio.StreamWriter] = None
@@ -669,8 +676,85 @@ class SerialNetBridge:
                 "tcp_sink_enabled": bool(self._tcp_sink),
                 **self.navigation_quality_stats(),
                 **self.navigation_position_stats(),
+                **self._local_backup_stats(),
             }
         )
+
+    def _local_backup_stats(self) -> dict[str, object]:
+        backup = self._local_backup
+        if backup is None:
+            return {
+                "local_backup_active": False,
+                "local_backup_path": "",
+                "local_backup_bytes": 0,
+                "local_backup_dropped": 0,
+                "local_backup_error": "",
+                "local_backup_queue_depth": 0,
+                "local_backup_queue_max": 0,
+            }
+        snap = backup.snapshot()
+        return {
+            "local_backup_active": bool(snap.get("active")),
+            "local_backup_path": str(snap.get("path") or ""),
+            "local_backup_bytes": int(snap.get("bytes") or 0),
+            "local_backup_dropped": int(snap.get("dropped") or 0),
+            "local_backup_error": str(snap.get("error") or ""),
+            "local_backup_queue_depth": int(snap.get("queue_depth") or 0),
+            "local_backup_queue_max": int(snap.get("queue_max") or 0),
+        }
+
+    def _notify_backup_health_change(self) -> None:
+        """Thread-safe stats refresh when the backup writer errors or saturates."""
+        loop = self.loop
+        if loop.is_running():
+            loop.call_soon_threadsafe(self._schedule_stats_emit)
+
+    def _tap_local_backup(self, data: bytes) -> None:
+        """Record physical COM ingress before decode/queue (non-blocking)."""
+        backup = self._local_backup
+        if backup is None or not data:
+            return
+        try:
+            backup.append(data)
+        except Exception:
+            pass
+
+    def _start_local_backup(self) -> None:
+        if not self._enable_local_backup:
+            return
+        base = self._local_backup_dir or default_local_backup_dir()
+        backup = LocalSerialBackup(
+            base,
+            on_error=lambda msg: (
+                self._ui_log_event_limited("local_backup", msg),
+                self._notify_backup_health_change(),
+            ),
+        )
+        path = backup.start_session()
+        if path is None:
+            self._local_backup = None
+            self._ui_log("Local black-box backup disabled — could not open backup file.")
+            self._notify_backup_health_change()
+            return
+        self._local_backup = backup
+        self._ui_log(f"Local black-box backup: {path}")
+
+    def _stop_local_backup(self) -> None:
+        backup = self._local_backup
+        if backup is None:
+            return
+        try:
+            snap = backup.close()
+            self._last_backup_session_summary = dict(snap)
+            path = snap.get("path") or ""
+            nbytes = int(snap.get("bytes") or 0)
+            dropped = int(snap.get("dropped") or 0)
+            if path:
+                extra = f" ({dropped} chunks dropped)" if dropped else ""
+                self._ui_log(f"Local backup closed — {nbytes} bytes → {path}{extra}")
+        except Exception:
+            self._last_backup_session_summary = None
+        self._local_backup = None
 
     def _schedule_stats_emit(self) -> None:
         """Coalesce hot-path stats updates to avoid flooding Qt queued signals."""
@@ -902,6 +986,7 @@ class SerialNetBridge:
         self._serial_open = True
         self._serial_hwid = _lookup_serial_hwid(self.com)
         self.running = True
+        self._start_local_backup()
         self._set_status(f"Serial: {self.com} @ {self.baud} — open", "Network: opening…")
 
         self._tasks.append(asyncio.create_task(self._pump_net_to_serial(), name="pump_n2s"))
@@ -1201,6 +1286,7 @@ class SerialNetBridge:
                 if self.running and not self._teardown:
                     disconnected = True
                 break
+            self._tap_local_backup(data)
             self._ingest_serial(data, "SER→NET")
         return disconnected
 
@@ -1405,6 +1491,7 @@ class SerialNetBridge:
         self._serial_open = False
         self._network_ready = False
         self._reset_serial_decode_state()
+        self._stop_local_backup()
 
     async def _await_closed(self, writer: Optional[asyncio.StreamWriter], label: str) -> None:
         if not writer:
@@ -1473,6 +1560,7 @@ class SerialNetBridge:
         self._nav_quality_state[0] = None
         self._position_state[0] = None
 
+        self._stop_local_backup()
         self._set_status("Serial: closed", "Network: stopped")
         self._ui_log("Bridge stopped")
 

@@ -6,6 +6,8 @@ __pycache__/
 venv/
 .env
 *.log
+logs/
+exports/
 build/
 dist/
 bench_defaults.local.json

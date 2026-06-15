@@ -31,7 +31,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="NMEA UDP/TCP ↔ serial bridge")
     parser.add_argument(
         "--ui",
-        choices=["standard", "field", "minimal", "logfirst"],
+        choices=["standard", "field", "modern", "minimal", "logfirst"],
         default=None,
         help="UI layout (default: saved choice, picker on first .exe run, else standard)",
     )
@@ -74,7 +74,10 @@ def main() -> None:
             return
     app._instance_lock = instance_lock  # type: ignore[attr-defined]
 
+    from ui.layout_switch_hook import install_three_way_layout_cycle
     from ui.picker import load_saved_ui, resolve_ui_id
+
+    install_three_way_layout_cycle()
 
     # Only show the picker when explicitly requested via --pick-ui.
     # Field is the default layout; users swap to Standard via the Layout chip.
