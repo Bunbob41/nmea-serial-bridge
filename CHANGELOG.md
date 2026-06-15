@@ -5,6 +5,21 @@ High-level notes for **this fork / branch** (`2034-ui-journey-modernization` and
 
 ---
 
+## v1.19.0 — Bridge Terminal (Wire-Tap Panel)
+
+- **[FEATURE] Wire tab — live bridge traffic viewer** — new `Wire` tab in the Modern UI cockpit (between `Control` and `Hub`) showing every assembled NMEA sentence or raw binary block flowing through the bridge in real time. Direction-labelled entries (`NET→COM` in blue, `COM→NET` in green, `REJECT` in amber) with `HH:MM:SS.mmm` wall-clock timestamps.
+- **NMEA syntax highlighting** — `_NmeaHighlighter` (`QSyntaxHighlighter`) colours the talker prefix, sentence type, and checksum separately for fast visual scanning. Hex-dump rows use a distinct blue for byte values.
+- **Direction filter chips** — `All / NET→COM / COM→NET / Reject` toggle chips in the toolbar; selecting one hides all other directions without pausing the bridge.
+- **Sentence type filter** — `QComboBox` auto-populates with every NMEA sentence type seen since last clear (`GGA`, `RMC`, `VTG`, …); selecting one shows only that type across all directions.
+- **Hex toggle** — visible only when the bridge is in RAW/binary mode; renders each block as a 16-byte-wide hex dump with printable ASCII side-car. Automatically hidden in NMEA modes.
+- **Pause / Resume** — freezes the display without dropping data from the bridge; amber button state makes the paused condition obvious.
+- **Clear** — wipes the view and resets the sentence-type combo; the bridge keeps running.
+- **Save** — saves the current visible traffic to a timestamped `.txt` file via a file dialog.
+- **Thread safety** — `BridgeTerminalPanel.feed()` uses `QMetaObject.invokeMethod` with `QueuedConnection` so the bridge asyncio thread never touches Qt directly. A 40 ms batch-flush timer coalesces rapid bursts (e.g. 10 Hz NMEA) into a single `insertText` call to keep the UI responsive.
+- **`bridge_core.py`** — added `wire_tap_cb` parameter to `SurveyBridge.__init__`; called with `(direction, data_bytes)` at every forward and reject point in `_ingest_net` and `_ingest_serial` (after NMEA assembly so each call always carries a complete sentence, never a partial UDP fragment). RAW mode taps the raw bytes directly. Callback wrapped with `_wrap_bridge_callback` so a UI exception can never abort the bridge loop.
+- **`ui/mixin.py`** — `_on_bridge_wire_tap` method routes tap events to `self.bridge_terminal`; `_on_bridge_started` notifies the panel of the current NMEA mode so the hex toggle shows/hides correctly.
+- **`version_info.txt`** synced to 1.19.0 via `tools/sync_version_info.py`.
+
 ## v1.18.0 — UI & Workflow Journey Modernization
 
 > **Release summary for the `2034-ui-journey-modernization` branch.**  

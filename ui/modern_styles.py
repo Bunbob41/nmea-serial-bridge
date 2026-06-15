@@ -786,6 +786,111 @@ QLabel#lblStats[bridgeRunning="true"] {{
     font-weight: 700;
 }}
 
+/* ═══ Wire terminal tab ══════════════════════════════════════════════════ */
+QWidget#bridgeTerminalPanel {{
+    background-color: {MODERN_BG};
+}}
+QFrame#wireTerminalToolbar {{
+    background-color: {MODERN_SURFACE};
+    border-bottom: 1px solid {MODERN_BORDER};
+    min-height: 38px;
+    max-height: 42px;
+}}
+QLabel#wireToolbarLabel {{
+    color: {MODERN_TEXT_MUTED};
+    font-size: 8.5pt;
+}}
+/* Direction filter chips */
+QPushButton#wireDirChip {{
+    background-color: transparent;
+    color: {MODERN_TEXT_MUTED};
+    border: 1px solid {MODERN_BORDER};
+    border-radius: 5px;
+    padding: 3px 10px;
+    font-size: 8.5pt;
+    font-weight: 600;
+    min-width: 62px;
+}}
+QPushButton#wireDirChip:hover {{
+    background-color: {MODERN_SURFACE_ALT};
+    color: {MODERN_TEXT};
+    border-color: {MODERN_ACCENT};
+}}
+QPushButton#wireDirChip:checked {{
+    background-color: rgba(59, 130, 246, 0.18);
+    color: {MODERN_ACCENT_BRIGHT};
+    border-color: {MODERN_ACCENT};
+}}
+/* Type combo */
+QComboBox#wireTypeCombo {{
+    background-color: {MODERN_SURFACE_ALT};
+    color: {MODERN_TEXT};
+    border: 1px solid {MODERN_BORDER};
+    border-radius: 5px;
+    padding: 3px 7px;
+    font-size: 8.5pt;
+}}
+QComboBox#wireTypeCombo QAbstractItemView {{
+    background-color: {MODERN_SURFACE_ALT};
+    color: {MODERN_TEXT};
+    border: 1px solid {MODERN_BORDER};
+    selection-background-color: {MODERN_ACCENT};
+}}
+/* Hex checkbox */
+QCheckBox#wireHexCheck {{
+    color: {MODERN_TEXT_MUTED};
+    font-size: 8.5pt;
+    spacing: 6px;
+}}
+QCheckBox#wireHexCheck::indicator {{
+    width: 14px;
+    height: 14px;
+    border: 1px solid {MODERN_BORDER};
+    border-radius: 3px;
+    background-color: {MODERN_SURFACE_ALT};
+}}
+QCheckBox#wireHexCheck::indicator:checked {{
+    background-color: {MODERN_ACCENT};
+    border-color: {MODERN_ACCENT};
+}}
+/* Action buttons */
+QPushButton#wireActionBtn {{
+    background-color: {MODERN_SURFACE_ALT};
+    color: {MODERN_TEXT};
+    border: 1px solid {MODERN_BORDER};
+    border-radius: 5px;
+    padding: 3px 12px;
+    font-size: 8.5pt;
+    font-weight: 600;
+}}
+QPushButton#wireActionBtn:hover {{
+    background-color: #1e3a5f;
+    border-color: {MODERN_ACCENT};
+    color: #ffffff;
+}}
+QPushButton#wireActionBtn:checked {{
+    background-color: rgba(251,191,36,0.15);
+    border-color: {MODERN_ACCENT_AMBER};
+    color: {MODERN_ACCENT_AMBER};
+}}
+/* Toolbar separator */
+QFrame#wireToolbarSep {{
+    background-color: {MODERN_BORDER};
+    max-width: 1px;
+    min-width: 1px;
+    margin: 5px 2px;
+}}
+/* Wire view */
+QPlainTextEdit#wireTerminalView {{
+    background-color: {MODERN_TERMINAL_BG};
+    color: {MODERN_TERMINAL_TEXT};
+    border: none;
+    font-family: "Cascadia Mono", Consolas, "Courier New", monospace;
+    font-size: 9.5pt;
+    padding: 8px;
+    selection-background-color: #1d4ed8;
+}}
+
 /* ═══ Mission Review ══════════════════════════════════════════════════════ */
 QWidget#modernMissionReview {{ background-color: {MODERN_BG}; }}
 QWidget#missionThroughputChart,

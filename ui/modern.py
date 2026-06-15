@@ -31,6 +31,7 @@ from ui.controls import (
     create_system_terminal_tab,
     refresh_status_bar_labels,
 )
+from ui.bridge_terminal import create_bridge_terminal_tab
 from ui.mixin import BridgeLogicMixin
 from ui.mission_review import create_mission_review_tab, hide_mission_review_tab
 from ui.modern_styles import modern_stylesheet
@@ -208,6 +209,7 @@ class BridgeWindowModern(BridgeLogicMixin, QtWidgets.QWidget):
         # ── Tab contents ──────────────────────────────────────────────────
         log_tab      = create_log_panel(self, show_header=True)
         control_tab  = self._build_control_tab()
+        wire_tab     = create_bridge_terminal_tab(self)
         # Settings (Diagnostics) must be built BEFORE hub_tab so that when
         # _build_hub_tab assigns self.connection_hub, it wins over the one
         # that mount_connection_hub_on_diagnostics would otherwise create.
@@ -223,6 +225,7 @@ class BridgeWindowModern(BridgeLogicMixin, QtWidgets.QWidget):
 
         self._modern_main_tabs.addTab(log_tab,      "Log")
         self._modern_main_tabs.addTab(control_tab,  "Control")
+        self._modern_main_tabs.addTab(wire_tab,     "Wire")
         self._modern_main_tabs.addTab(hub_tab,      "Hub")
         self._modern_main_tabs.addTab(settings_tab, "Settings")
         self._modern_main_tabs.addTab(telem_tab,    "Telemetry")

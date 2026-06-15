@@ -197,15 +197,15 @@ def _run_live(
         peer_b.register(dest_host, udp_port)
         print(
             f"[bench_fanout] live: registered peers "
-            f"A={peer_a.addr[1]} B={peer_b.addr[1]} → {dest_host}:{udp_port}"
+            f"A={peer_a.addr[1]} B={peer_b.addr[1]} -> {dest_host}:{udp_port}"
         )
         if min_recv <= 0:
-            print("[bench_fanout] OK (live — peers registered; COM→net not required)")
+            print("[bench_fanout] OK (live - peers registered; COM->net not required)")
             return 0
 
         print(
-            f"[bench_fanout] listening {listen_seconds:.0f}s — "
-            "generate COM→net (paired com0com echo or serial into bridge COM)…"
+            f"[bench_fanout] listening {listen_seconds:.0f}s - "
+            "generate COM->net (paired com0com echo or serial into bridge COM)..."
         )
         recv_a = peer_a.drain(listen_seconds)
         recv_b = peer_b.drain(listen_seconds)
@@ -214,11 +214,11 @@ def _run_live(
         peer_b.close()
 
     if recv_a >= min_recv and recv_b >= min_recv:
-        print(f"[bench_fanout] OK (live — A={recv_a} B={recv_b} datagrams)")
+        print(f"[bench_fanout] OK (live - A={recv_a} B={recv_b} datagrams)")
         return 0
 
     print(
-        f"[bench_fanout] FAIL (live) — A={recv_a} B={recv_b} "
+        f"[bench_fanout] FAIL (live) - A={recv_a} B={recv_b} "
         f"(need >={min_recv} each). Enable Fan-out and pulse COM->net.",
         file=sys.stderr,
     )

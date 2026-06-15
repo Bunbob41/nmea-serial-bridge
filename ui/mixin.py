@@ -5876,6 +5876,7 @@ class BridgeLogicMixin:
                 is None
                 or self.chk_serial_auto_reconnect.isChecked(),
                 enable_local_backup=self._session_enable_local_backup(),
+                wire_tap_cb=self._on_bridge_wire_tap,
             )
             if mode == NetMode.TCP_SERVER:
                 return SerialNetBridge(
@@ -5972,8 +5973,26 @@ class BridgeLogicMixin:
             "Close any app using the COM port, run python com_free.py, then try again."
         )
 
+    def _on_bridge_wire_tap(self, direction: str, data: bytes) -> None:
+        """Route wire-tap events to the bridge terminal panel (if present)."""
+        panel = getattr(self, "bridge_terminal", None)
+        if panel is None:
+            return
+        try:
+            panel.feed(direction, data)
+        except Exception:
+            pass
+
     def _on_bridge_started(self, b: SerialNetBridge) -> None:
         self._starting = False
+        # Notify the bridge terminal panel of the current NMEA mode for hex toggle.
+        panel = getattr(self, "bridge_terminal", None)
+        if panel is not None:
+            try:
+                from bridge_core import NmeaMode
+                panel.set_raw_mode(b.nmea_mode == NmeaMode.RAW)
+            except Exception:
+                pass
         QtCore.QTimer.singleShot(0, self._ensure_web_server_running)
         self._save_hub_last_known_good()
         self._log_tab_auto_timer.start(20_000)

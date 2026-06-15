@@ -388,6 +388,7 @@ class SerialNetBridge:
         file_log: Optional[_FileSurveyLog] = None,
         enable_local_backup: bool = False,
         local_backup_dir: Optional[Path] = None,
+        wire_tap_cb: Optional[Callable[[str, bytes], None]] = None,
     ):
         self.com = com
         self.baud = baud
@@ -419,6 +420,11 @@ class SerialNetBridge:
         self._local_backup_dir = local_backup_dir
         self._local_backup: Optional[LocalSerialBackup] = None
         self._last_backup_session_summary: Optional[dict[str, object]] = None
+        self._wire_tap_cb = (
+            self._wrap_bridge_callback(wire_tap_cb, "wire_tap")
+            if wire_tap_cb is not None
+            else None
+        )
 
         self.serial_reader: Optional[asyncio.StreamReader] = None
         self.serial_writer: Optional[asyncio.StreamWriter] = None
@@ -846,6 +852,8 @@ class SerialNetBridge:
             elif direction.startswith(("GUI", "INJECT")):
                 self.lines_gui_to_serial += 1
             self._enqueue_net_to_serial(data, direction)
+            if self._wire_tap_cb is not None:
+                self._wire_tap_cb("net→com", data)
             return
         filt = self.nmea_filter if self.nmea_mode == NmeaMode.STRICT else None
         result = self._asm_n2s.feed(data, self.nmea_mode, filt)
@@ -861,12 +869,17 @@ class SerialNetBridge:
                 "reject_n2s",
                 f"{direction} [REJECT] {reason}",
             )
+            if self._wire_tap_cb is not None:
+                self._wire_tap_cb("reject", reason.encode("utf-8", errors="replace"))
         for line in result.forward:
             if direction.startswith(("UDP", "TCP")):
                 self.lines_remote_to_serial += 1
             elif direction.startswith(("GUI", "INJECT")):
                 self.lines_gui_to_serial += 1
             self._enqueue_net_to_serial(line, direction)
+            if self._wire_tap_cb is not None:
+                raw = line if isinstance(line, bytes) else line.encode("utf-8", errors="replace")
+                self._wire_tap_cb("net→com", raw)
 
     def _ingest_serial(self, data: bytes, direction: str) -> None:
         if not self.running:
@@ -877,6 +890,8 @@ class SerialNetBridge:
             if direction.startswith("SER"):
                 self.lines_serial_to_net += 1
             self._enqueue_serial_to_net(data, direction)
+            if self._wire_tap_cb is not None:
+                self._wire_tap_cb("com→net", data)
             return
         filt = self.nmea_filter if self.nmea_mode == NmeaMode.STRICT else None
         result = self._asm_s2n.feed(data, self.nmea_mode, filt)
@@ -892,10 +907,15 @@ class SerialNetBridge:
                 "reject_s2n",
                 f"{direction} [REJECT] {reason}",
             )
+            if self._wire_tap_cb is not None:
+                self._wire_tap_cb("reject", reason.encode("utf-8", errors="replace"))
         for line in result.forward:
             if direction.startswith("SER"):
                 self.lines_serial_to_net += 1
             self._enqueue_serial_to_net(line, direction)
+            if self._wire_tap_cb is not None:
+                raw = line if isinstance(line, bytes) else line.encode("utf-8", errors="replace")
+                self._wire_tap_cb("com→net", raw)
 
     def _log_text(self, msg: str) -> None:
         gps = self._gps_utc()
