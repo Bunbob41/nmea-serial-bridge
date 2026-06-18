@@ -5,6 +5,12 @@ High-level notes for **this fork / branch** (`2034-ui-journey-modernization` and
 
 ---
 
+## v1.35.13
+
+- **Modern header (frozen / Fusion)** — View/HUD/Layout chips now set explicit light text color in QSS and Qt palette so Windows builds no longer show black labels on dark buttons.
+- **Hub cards** — Scroll viewport and endpoint tiles use styled dark backgrounds (`NoFrame` + `WA_StyledBackground`) instead of native white `StyledPanel` panels on some PCs.
+- **Status banner** — Elision uses the full header status container width, middle-elides long lines, and a shorter default stopped message so **Stopped** stays readable on Mission Review and narrow layouts.
+
 ## v1.35.12
 
 - **View menu (shipped Modern)** — Frozen builds hide dev-only **Save UI as product default** and Standard top-bar items that do not apply to Modern (reset/show chips, move bar, shortcuts legend). Operators keep full screen, HUD, UI editor, reset layout, layout switches, and Tools navigation.

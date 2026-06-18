@@ -212,14 +212,23 @@ QWidget#modernHeaderNav QFrame#topBarChip {{
 QWidget#modernHeaderNav QFrame#topBarChip:hover {{
     border-color: {MODERN_ACCENT};
 }}
+QWidget#modernHeaderNav QToolButton {{
+    color: {MODERN_TEXT};
+    background-color: transparent;
+    border: none;
+}}
 QWidget#modernHeaderNav QToolButton#surveyQuickBtn {{
     background-color: transparent;
+    color: {MODERN_TEXT};
     border: none;
     padding: 2px 6px;
     font-size: 9pt;
     font-weight: 600;
 }}
 QWidget#modernHeaderNav QToolButton#surveyQuickBtn:hover {{
+    color: {MODERN_ACCENT_BRIGHT};
+}}
+QWidget#modernHeaderNav QToolButton#surveyQuickBtn:checked {{
     color: {MODERN_ACCENT_BRIGHT};
 }}
 
@@ -655,6 +664,18 @@ QWidget#modernHubTab QPushButton:hover {{
     border-color: {MODERN_ACCENT};
     background-color: #1e3a5f;
     color: #ffffff;
+}}
+QWidget#modernHubTab QScrollArea#connectionHubCardScroll,
+QWidget#modernHubTab QScrollArea#connectionHubCardScroll > QWidget > QWidget#connectionHubCardScrollViewport,
+QWidget#modernHubTab QWidget#connectionHubCardsPane,
+QWidget#modernHubTab QWidget#connectionHubCards {{
+    background-color: {MODERN_BG};
+    border: none;
+}}
+QWidget#modernHubTab QFrame#endpointCard {{
+    background-color: {MODERN_SURFACE};
+    border: 1px solid {MODERN_BORDER};
+    border-radius: 8px;
 }}
 QFrame#endpointCard {{
     background-color: {MODERN_SURFACE};

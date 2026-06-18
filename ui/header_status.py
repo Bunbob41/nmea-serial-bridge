@@ -29,22 +29,32 @@ class ElidedStatusLabel(QtWidgets.QLabel):
         super().resizeEvent(event)
         self.refresh_elide()
 
+    def _elide_width(self) -> int:
+        width = max(24, self.width())
+        node: QtWidgets.QWidget | None = self.parentWidget()
+        while node is not None:
+            name = node.objectName() or ""
+            if name == "modernHeaderStatusContainer":
+                return max(width, node.width() - 8)
+            if name == "modernStatusBanner":
+                width = max(width, node.width() - 12)
+            if name == "modernGlobalHeader":
+                width = max(width, int(node.width() * 0.28))
+            node = node.parentWidget()
+        return width
+
     def refresh_elide(self) -> None:
         if not self._full_text:
             self.setText("")
             return
-        width = max(24, self.width())
-        parent = self.parentWidget()
-        if parent is not None:
-            width = max(width, parent.width() - 12)
+        width = self._elide_width()
         fm = self.fontMetrics()
         if fm.horizontalAdvance(self._full_text) <= width:
             self.setText(self._full_text)
             return
-        self.setText(
-            fm.elidedText(
-                self._full_text,
-                QtCore.Qt.TextElideMode.ElideRight,
-                width,
-            )
+        mode = (
+            QtCore.Qt.TextElideMode.ElideMiddle
+            if " · " in self._full_text
+            else QtCore.Qt.TextElideMode.ElideRight
         )
+        self.setText(fm.elidedText(self._full_text, mode, width))

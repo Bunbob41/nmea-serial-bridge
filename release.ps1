@@ -185,6 +185,11 @@ if (-not $existing) {
 $notes = @"
 Windows x64 one-folder build (PyInstaller) — **v$Version**.
 
+**Hotfix (Modern / frozen builds)**
+- Header View/HUD/Layout chips: light text on dark buttons (fixes black labels on work PCs)
+- Hub: dark card grid and scroll area (fixes white tile backgrounds on Windows Fusion)
+- Status banner: keeps **Stopped** readable on Mission Review and narrow windows
+
 **Modern layout (default)**
 - Chip navigation: Control · Presets · Hub · NMEA · Logging ▾ · Bench Tools ▾
 - Control tab: serial/network forms + position track map (45/55 split)

@@ -21,11 +21,22 @@ class TestElidedStatusLabel(unittest.TestCase):
     def test_elides_long_status_line(self) -> None:
         lbl = ElidedStatusLabel()
         lbl.resize(220, 24)
-        msg = "Stopped - Pick a COM port and UDP settings, then Start."
+        msg = "Stopped · Pick a COM port and UDP settings, then Start."
         lbl.set_full_text(msg)
         self.assertEqual(lbl.full_text(), msg)
         self.assertLess(len(lbl.text()), len(msg))
         self.assertIn("Stopped", lbl.text())
+
+    def test_uses_container_width_when_parent_is_wider(self) -> None:
+        container = QtWidgets.QWidget()
+        container.setObjectName("modernHeaderStatusContainer")
+        container.resize(480, 32)
+        lbl = ElidedStatusLabel(container)
+        lbl.resize(120, 24)
+        msg = "Stopped · Set COM & UDP, then Start."
+        lbl.set_full_text(msg)
+        lbl.refresh_elide()
+        self.assertEqual(lbl.text(), msg)
 
     def test_shows_full_text_when_width_fits(self) -> None:
         lbl = ElidedStatusLabel()

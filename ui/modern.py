@@ -20,7 +20,7 @@ from ui.controls import (
 from ui.bridge_terminal import create_modern_activity_tab
 from ui.mixin import BridgeLogicMixin
 from ui.mission_review import create_mission_review_tab, hide_mission_review_tab
-from ui.modern_styles import modern_stylesheet
+from ui.modern_styles import MODERN_TEXT, modern_stylesheet
 from ui.network_help import create_network_help_button
 from ui.theme_choice import THEME_SLATE
 from ui.view_menu import add_view_menu_section_header
@@ -431,6 +431,20 @@ class BridgeWindowModern(BridgeLogicMixin, QtWidgets.QWidget):
                 nav_lay.addWidget(track, 0)
         bar.set_host_window(self)
         bar.rebuild()
+        self._apply_modern_header_nav_button_palettes(bar)
+
+    def _apply_modern_header_nav_button_palettes(self, bar=None) -> None:
+        """Fusion on some Windows builds ignores QSS text color — set palette too."""
+        bar = bar or getattr(self, "_survey_top_bar", None)
+        track = getattr(bar, "_track", None) if bar is not None else None
+        if track is None:
+            return
+        color = QtGui.QColor(MODERN_TEXT)
+        for btn in track.findChildren(QtWidgets.QToolButton):
+            pal = btn.palette()
+            pal.setColor(QtGui.QPalette.ColorRole.ButtonText, color)
+            pal.setColor(QtGui.QPalette.ColorRole.WindowText, color)
+            btn.setPalette(pal)
 
     def _ensure_modern_nav_visible(self) -> None:
         """After layout edits, keep chip rail or sidebar navigation on screen."""
@@ -1197,6 +1211,7 @@ class BridgeWindowModern(BridgeLogicMixin, QtWidgets.QWidget):
         sid = getattr(self, "_modern_sid_by_stack_index", {}).get(index, "")
         if sid == "hub":
             self._maybe_hub_auto_refresh()
+        QtCore.QTimer.singleShot(0, self._sync_modern_status_banner_width)
 
     # ── Sub-builders ──────────────────────────────────────────────────────
 
@@ -1836,7 +1851,7 @@ class BridgeWindowModern(BridgeLogicMixin, QtWidgets.QWidget):
 
     def _on_ui_ready(self) -> None:
         self._set_status_banner(
-            "stopped", "Stopped", "Pick a COM port and UDP settings, then Start."
+            "stopped", "Stopped", "Set COM & UDP, then Start."
         )
         self._refresh_intent_hint()
         self._apply_modern_stylesheet()

@@ -15,11 +15,11 @@ VSVersionInfo(
       StringTable("040904B0", [
         StringStruct("CompanyName", "Bunbob41"),
         StringStruct("FileDescription", "Serial Link — Ethernet ↔ serial"),
-        StringStruct("FileVersion", "1.35.12"),
+        StringStruct("FileVersion", "1.35.13"),
         StringStruct("InternalName", "serial-link"),
         StringStruct("OriginalFilename", "serial-link.exe"),
         StringStruct("ProductName", "Serial Link"),
-        StringStruct("ProductVersion", "1.35.12"),
+        StringStruct("ProductVersion", "1.35.13"),
       ]),
     ]),
     VarFileInfo([VarStruct("Translation", [1033, 1200])]),
