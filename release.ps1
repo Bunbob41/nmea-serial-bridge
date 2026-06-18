@@ -185,16 +185,21 @@ if (-not $existing) {
 $notes = @"
 Windows x64 one-folder build (PyInstaller) — **v$Version**.
 
-- Unzip and run ``serial-link.exe`` (keep the whole folder).
-- First launch: pick Standard or Field UI; choice persists under ``%USERPROFILE%\.cursor-udp-com-bridge\``.
-- **Survey HUD + Dashboard** (View / top bar **HUD**): metrics pop-out plus bridge-trust checklist.
-- **Presets tab**: click to edit survey fields; **Load** or double-click applies COM/UDP/NMEA.
-- **Terminal** (Tools): embedded shell + ping presets (Save / Delete / Quick chips).
-- **Web dashboard** (optional): Tools → Phone → Enable Web API → **Open dashboard** (`http://127.0.0.1:8765/`).
-- **Grid layout (beta)**: ``/static/layouts/gridstack/``.
-- Layout switch + single-instance lock reduce duplicate ``python.exe`` after UI changes.
-- Bench preset uses ``bench_defaults.json`` beside the exe.
+**Modern layout (default)**
+- Chip navigation: Control · Presets · Hub · NMEA · Logging ▾ · Bench Tools ▾
+- Control tab: serial/network forms + position track map (45/55 split)
+- View → Tools navigation: **Top chips** or **Sidebar**
+- UI editor: **Header** (View/HUD/Layout) + **Navigation** (page order/visibility)
+
+**All layouts**
+- Survey HUD, presets, bridge terminal, Web dashboard, Connection Hub
+- Layout switch: View → Standard / Field / Modern
 - **Unsigned** — SmartScreen may warn. See ``docs/OPERATOR_GUIDE.md``.
+
+**Install**
+- Unzip and run ``serial-link\serial-link.exe`` (keep the whole folder).
+- Settings persist under ``%USERPROFILE%\.cursor-udp-com-bridge\``.
+- Web dashboard: enable Web API in Dashboard, open ``http://127.0.0.1:10110/`` (port may vary).
 "@
 
 $ErrorActionPreference = "SilentlyContinue"
