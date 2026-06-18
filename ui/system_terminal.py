@@ -482,36 +482,37 @@ class SystemTerminalWidget(QtWidgets.QWidget):
         ping_row.addWidget(self._btn_ping_save)
         ping_row.addWidget(self._btn_ping_delete)
         ping_row.addWidget(self._ping_preset_combo)
-        ping_row.addStretch(1)
-        root.addLayout(ping_row)
-
-        self._ping_bubble_row = QtWidgets.QHBoxLayout()
-        self._ping_bubble_row.setSpacing(6)
         self._ping_bubble_label = QtWidgets.QLabel("Quick:")
-        self._ping_bubble_row.addWidget(self._ping_bubble_label)
+        ping_row.addWidget(self._ping_bubble_label)
         self._ping_bubble_host = QtWidgets.QWidget()
         self._ping_bubble_inner = QtWidgets.QHBoxLayout(self._ping_bubble_host)
         self._ping_bubble_inner.setContentsMargins(0, 0, 0, 0)
         self._ping_bubble_inner.setSpacing(6)
-        self._ping_bubble_row.addWidget(self._ping_bubble_host, 1)
-        root.addLayout(self._ping_bubble_row)
+        ping_row.addWidget(self._ping_bubble_host, 1)
+        ping_row.addStretch(0)
+        root.addLayout(ping_row)
 
         self._status = QtWidgets.QLabel()
         self._status.setObjectName("tabNote")
         self._status.setWordWrap(True)
         root.addWidget(self._status)
 
-        self._screen = _TerminalScreen(self._submit_pty_write)
-        self._screen.setMinimumHeight(200)
-        root.addWidget(self._screen, 1)
-
-        note = QtWidgets.QLabel(
+        console_wrap = QtWidgets.QFrame()
+        console_wrap.setObjectName("terminalConsoleWrap")
+        console_lay = QtWidgets.QVBoxLayout(console_wrap)
+        console_lay.setContentsMargins(0, 0, 0, 0)
+        console_lay.setSpacing(0)
+        self._console_hint = QtWidgets.QLabel(
             "Bridge NMEA inject: Tools → Inject. "
             "Ctrl+C interrupt · Ctrl+L clear view · scroll up to pause auto-scroll."
         )
-        note.setWordWrap(True)
-        note.setObjectName("tabNote")
-        root.addWidget(note)
+        self._console_hint.setWordWrap(True)
+        self._console_hint.setObjectName("terminalConsoleHint")
+        console_lay.addWidget(self._console_hint)
+        self._screen = _TerminalScreen(self._submit_pty_write)
+        self._screen.setMinimumHeight(200)
+        console_lay.addWidget(self._screen, 1)
+        root.addWidget(console_wrap, 1)
 
         self._fallback = QtWidgets.QWidget()
         fl = QtWidgets.QVBoxLayout(self._fallback)

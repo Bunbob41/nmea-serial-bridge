@@ -22,7 +22,7 @@ from ui.mission_review import create_mission_review_tab, hide_mission_review_tab
 from ui.modern_styles import modern_stylesheet
 from ui.network_help import create_network_help_button
 from ui.theme_choice import THEME_SLATE
-from ui.tool_tabs import build_modern_tools_nav, build_modern_tools_nav_groups
+from ui.tool_tabs import build_modern_tools_nav, build_modern_tools_nav_groups, build_modern_tools_nav_tiers, build_modern_tools_all_pages
 from ui.ui_prefs import (
     CONFIG_PATH,
     load_hidden_tabs,
@@ -41,13 +41,15 @@ MODERN_SIDEBAR_COLLAPSED_W = 52
 CONTROL_FORMS_STACK_BELOW_W = 520
 MODERN_CHIP_RAIL_H = 48
 MODERN_CHIP_BTN_H = 32
+# Open from global header only — omitted from the top chip rail to save space.
+MODERN_HEADER_NAV_SIDS = frozenset({"guide"})
 
 MODERN_TOOLS_TAB_HINTS: dict[str, str] = {
     "Control": "COM, baud, UDP/TCP listen, and connection presets",
     "Presets": "Named COM/UDP path presets",
     "Hub": "Connection hub — scan, fan-out, and quick picks",
     "NMEA": "Passthrough, strict, or raw binary",
-    "Phone": "Web API, token, and QR dashboard",
+    "Dashboard": "Web API, token, and QR dashboard",
     "Black box": "Raw session capture (.raw)",
     "File log": "Rotating bridge text log",
     "Activity": "Live wire-tap traffic, filters, pause, and save",
@@ -133,14 +135,14 @@ class BridgeWindowModern(BridgeLogicMixin, QtWidgets.QWidget):
         self.status_banner_text.setWordWrap(False)
         # Elide text instead of stretching beyond available width
         self.status_banner_text.setSizePolicy(
-            QtWidgets.QSizePolicy.Policy.Ignored,
+            QtWidgets.QSizePolicy.Policy.Preferred,
             QtWidgets.QSizePolicy.Policy.Fixed,
         )
         bl.addWidget(self.status_banner_text)
         configure_connect_status_banner(self.status_banner, self.status_banner_text)
         self.status_banner.setMaximumHeight(30)
         self.status_banner.setSizePolicy(
-            QtWidgets.QSizePolicy.Policy.Expanding,
+            QtWidgets.QSizePolicy.Policy.Maximum,
             QtWidgets.QSizePolicy.Policy.Fixed,
         )
         self._wire_modern_status_banner_nav()
@@ -237,12 +239,25 @@ class BridgeWindowModern(BridgeLogicMixin, QtWidgets.QWidget):
         row.addWidget(self.stop_btn)
         row.addWidget(_vsep())
 
-        # Status banner — Expanding so it fills all available centre space
+        # Status banner — width follows message text (not full header span)
         self.status_banner.setSizePolicy(
-            QtWidgets.QSizePolicy.Policy.Expanding,
+            QtWidgets.QSizePolicy.Policy.Maximum,
             QtWidgets.QSizePolicy.Policy.Fixed,
         )
-        row.addWidget(self.status_banner, 1)
+        row.addWidget(self.status_banner, 0)
+
+        self._btn_header_guide = QtWidgets.QToolButton()
+        self._btn_header_guide.setObjectName("modernHeaderChipBtn")
+        self._btn_header_guide.setText("📖  Guide")
+        self._btn_header_guide.setToolTip(
+            "Open the operator guide — connect steps, UDP/TCP modes, and bench checklists."
+        )
+        self._btn_header_guide.clicked.connect(
+            lambda: self._open_modern_section_by_sid("guide")
+        )
+        row.addWidget(self._btn_header_guide, 0)
+
+        row.addStretch(1)
 
         # Backpressure chip — only visible when packets are being dropped (critical)
         row.addWidget(self.lbl_backpressure_chip, 0)
@@ -272,7 +287,6 @@ class BridgeWindowModern(BridgeLogicMixin, QtWidgets.QWidget):
         nav_lay = QtWidgets.QHBoxLayout(self._modern_header_nav)
         nav_lay.setContentsMargins(0, 0, 0, 0)
         nav_lay.setSpacing(4)
-        nav_lay.addStretch(1)
         row.addWidget(self._modern_header_nav, 0)
 
         hdr.setSizePolicy(
@@ -395,6 +409,8 @@ class BridgeWindowModern(BridgeLogicMixin, QtWidgets.QWidget):
             hdr.setMinimumHeight(row_h)
             hdr.updateGeometry()
 
+        self._sync_modern_status_banner_width()
+
         nav = getattr(self, "_modern_header_nav", None)
         if nav is not None:
             nav.setMinimumHeight(28)
@@ -482,17 +498,39 @@ class BridgeWindowModern(BridgeLogicMixin, QtWidgets.QWidget):
         preset_lay.addWidget(preset_icon, 0, QtCore.Qt.AlignmentFlag.AlignTop)
         preset_lay.addWidget(self.intent_hint, 1)
         self._control_preset_bar = preset_bar
-        content_lay.addWidget(preset_bar, 0)
 
         map_card, self.control_position_map = build_control_map_panel(
             self,
             on_layout_change=self._sync_control_tab_map_layout,
         )
-        content_lay.addWidget(map_card, 0, QtCore.Qt.AlignmentFlag.AlignTop)
-        content_lay.addStretch(1)
+        self._control_map_card = map_card
+
+        self._control_split_host = QtWidgets.QWidget()
+        self._control_split_host.setObjectName("modernControlSplitHost")
+        split_lay = QtWidgets.QHBoxLayout(self._control_split_host)
+        split_lay.setContentsMargins(0, 0, 0, 0)
+        split_lay.setSpacing(14)
+
+        self._control_left_col = QtWidgets.QWidget()
+        left_lay = QtWidgets.QVBoxLayout(self._control_left_col)
+        left_lay.setContentsMargins(0, 0, 0, 0)
+        left_lay.setSpacing(14)
+        left_lay.addWidget(self._control_forms_host, 0)
+        left_lay.addWidget(preset_bar, 0)
+        left_lay.addStretch(1)
+
+        self._control_right_col = QtWidgets.QWidget()
+        right_lay = QtWidgets.QVBoxLayout(self._control_right_col)
+        right_lay.setContentsMargins(0, 0, 0, 0)
+        right_lay.setSpacing(0)
+        right_lay.addWidget(map_card, 1)
+
+        split_lay.addWidget(self._control_left_col, 45)
+        split_lay.addWidget(self._control_right_col, 55)
+        content_lay.addWidget(self._control_split_host, 1)
 
         self._control_tab_lay = content_lay
-        self._control_map_card = map_card
+        self._control_split_horizontal = True
         collapsed = bool(load_modern_layout_prefs().get("control_map_collapsed", True))
         self._sync_control_tab_map_layout(collapsed)
 
@@ -519,14 +557,47 @@ class BridgeWindowModern(BridgeLogicMixin, QtWidgets.QWidget):
             bar.setVisible(visible)
 
     def _apply_control_forms_responsive(self, width: int | None = None) -> None:
-        """Stack Serial/Network vertically only when the window is narrower than min-size layout."""
+        """Stack Serial/Network vertically on narrow windows; collapse split below min width."""
         grid = getattr(self, "_control_forms_grid", None)
         serial = getattr(self, "_control_serial_group", None)
         network = getattr(self, "_control_network_group", None)
+        split_host = getattr(self, "_control_split_host", None)
+        left_col = getattr(self, "_control_left_col", None)
+        right_col = getattr(self, "_control_right_col", None)
+        map_card = getattr(self, "_control_map_card", None)
+        tab_lay = getattr(self, "_control_tab_lay", None)
         if grid is None or serial is None or network is None:
             return
         win_w = width if width is not None else self.width()
         stack_vertical = win_w < CONTROL_FORMS_STACK_BELOW_W
+        use_split = win_w >= 720
+
+        if split_host is not None and left_col is not None and right_col is not None and map_card is not None and tab_lay is not None:
+            if use_split != getattr(self, "_control_split_horizontal", True):
+                tab_lay.removeWidget(split_host)
+                if use_split:
+                    split_lay = split_host.layout()
+                    if split_lay is not None:
+                        split_lay.removeWidget(left_col)
+                        split_lay.removeWidget(right_col)
+                        left_lay = left_col.layout()
+                        if left_lay is not None:
+                            left_lay.removeWidget(self._control_forms_host)
+                            left_lay.removeWidget(self._control_preset_bar)
+                        left_lay.addWidget(self._control_forms_host, 0)
+                        left_lay.addWidget(self._control_preset_bar, 0)
+                        right_lay = right_col.layout()
+                        if right_lay is not None:
+                            right_lay.addWidget(map_card, 1)
+                        split_lay.addWidget(left_col, 45)
+                        split_lay.addWidget(right_col, 55)
+                    tab_lay.addWidget(split_host, 1)
+                else:
+                    tab_lay.addWidget(self._control_forms_host, 0)
+                    tab_lay.addWidget(self._control_preset_bar, 0)
+                    tab_lay.addWidget(map_card, 1)
+                self._control_split_horizontal = use_split
+
         if stack_vertical == getattr(self, "_control_forms_vertical", False):
             return
 
@@ -549,24 +620,13 @@ class BridgeWindowModern(BridgeLogicMixin, QtWidgets.QWidget):
         self._control_forms_vertical = stack_vertical
 
     def _sync_control_tab_map_layout(self, collapsed: bool) -> None:
-        """Keep Control tab top-aligned; only the expanded map absorbs height."""
-        lay = getattr(self, "_control_tab_lay", None)
-        card = getattr(self, "_control_map_card", None)
-        if lay is None or card is None:
-            return
-        card_idx = lay.indexOf(card)
-        tail_idx = lay.count() - 1
-        if card_idx < 0 or tail_idx <= card_idx:
-            return
-        tail_item = lay.itemAt(tail_idx)
-        if tail_item is None or tail_item.spacerItem() is None:
+        """Expanded map fills the right split column (or full width when stacked)."""
+        map_card = getattr(self, "_control_map_card", None)
+        if map_card is None:
             return
         if collapsed:
-            lay.setStretch(card_idx, 0)
-            lay.setStretch(tail_idx, 1)
-        else:
-            lay.setStretch(card_idx, 1)
-            lay.setStretch(tail_idx, 0)
+            map_card.setMaximumHeight(16777215)
+        map_card.updateGeometry()
 
     def _wrap_live_activity_page(self, panel: QtWidgets.QWidget) -> QtWidgets.QWidget:
         host = QtWidgets.QWidget()
@@ -684,6 +744,12 @@ class BridgeWindowModern(BridgeLogicMixin, QtWidgets.QWidget):
                 sb_lay.addWidget(btn)
                 nav_idx += 1
 
+        if "guide" not in self._tools_section_index:
+            stack.addWidget(page_builders["guide"]())
+            self._tools_section_index["guide"] = nav_idx
+            self._modern_sid_by_stack_index[nav_idx] = "guide"
+            nav_idx += 1
+
         stack.addWidget(mission_panel)
         self._mission_review_stack_index = nav_idx
         self._modern_sid_by_stack_index[nav_idx] = "mission_review"
@@ -756,22 +822,76 @@ class BridgeWindowModern(BridgeLogicMixin, QtWidgets.QWidget):
         self._modern_tools_chip_scroll = scroll
         self._modern_tools_chip_inner = inner
         self._tools_chip_buttons: list[QtWidgets.QPushButton] = []
+        self._tools_chip_dropdowns: list[QtWidgets.QToolButton] = []
         frame.hide()
 
     def _sync_modern_nav_highlight(self, index: int) -> None:
         """Keep sidebar + chip nav visually in sync with the content stack."""
-        for attr in ("_tools_nav_buttons", "_tools_chip_buttons"):
-            for btn in getattr(self, attr, []):
-                try:
-                    nav_idx = int(btn.property("navIndex"))
-                except (TypeError, ValueError):
-                    continue
-                active = nav_idx == index
-                btn.setProperty("navActive", active)
-                if btn.objectName() == "modernSettingsNavBtn":
-                    btn.setChecked(active)
-                btn.style().unpolish(btn)
-                btn.style().polish(btn)
+        sid_by_index = getattr(self, "_modern_sid_by_stack_index", {})
+        active_sid = sid_by_index.get(index, "")
+
+        for btn in getattr(self, "_tools_nav_buttons", []):
+            try:
+                nav_idx = int(btn.property("navIndex"))
+            except (TypeError, ValueError):
+                continue
+            active = nav_idx == index
+            btn.setProperty("navActive", active)
+            if btn.objectName() == "modernSettingsNavBtn":
+                btn.setChecked(active)
+            btn.style().unpolish(btn)
+            btn.style().polish(btn)
+
+        for btn in getattr(self, "_tools_chip_buttons", []):
+            try:
+                nav_idx = int(btn.property("navIndex"))
+            except (TypeError, ValueError):
+                continue
+            active = nav_idx == index
+            btn.setProperty("navActive", active)
+            btn.style().unpolish(btn)
+            btn.style().polish(btn)
+
+        for btn in getattr(self, "_tools_chip_dropdowns", []):
+            child_sids = btn.property("navChildSids")
+            if not isinstance(child_sids, list):
+                child_sids = []
+            active = active_sid in child_sids
+            btn.setProperty("navActive", active)
+            btn.setProperty("navActiveChildSid", active_sid if active else "")
+            default_text = btn.property("navDefaultText")
+            if active and active_sid:
+                icon_by_label = getattr(self, "_modern_tools_icon_by_label", {})
+                for lbl, sid in getattr(self, "_modern_tools_sid_by_label", {}).items():
+                    if sid == active_sid:
+                        icon = icon_by_label.get(lbl, "")
+                        btn.setText(f"{icon}  {lbl}" if icon else lbl)
+                        break
+            elif default_text:
+                btn.setText(str(default_text))
+            btn.style().unpolish(btn)
+            btn.style().polish(btn)
+
+    def _cycle_modern_tools_dropdown(self, tier_key: str, child_sids: list[str]) -> None:
+        """Main chip click: advance to the next visible child in this tier."""
+        if not child_sids:
+            return
+        section_index = getattr(self, "_tools_section_index", {})
+        stack = getattr(self, "_tools_stack", None)
+        if stack is None:
+            return
+        cur_idx = stack.currentIndex()
+        current_sid = ""
+        for sid in child_sids:
+            if section_index.get(sid, -1) == cur_idx:
+                current_sid = sid
+                break
+        if current_sid and current_sid in child_sids:
+            next_i = (child_sids.index(current_sid) + 1) % len(child_sids)
+            next_sid = child_sids[next_i]
+        else:
+            next_sid = child_sids[0]
+        self._open_modern_section_by_sid(next_sid)
 
     def _tools_nav_select(
         self,
@@ -1128,7 +1248,8 @@ class BridgeWindowModern(BridgeLogicMixin, QtWidgets.QWidget):
         icon_by_label: dict[str, str],
         stack: QtWidgets.QStackedWidget,
     ) -> None:
-        from ui.modern_tools_chips import make_chip_group_separator
+        from ui.modern_tools_chips import make_chip_dropdown_button
+        from ui.tool_tabs import build_modern_tools_nav_tiers
 
         inner = getattr(self, "_modern_tools_chip_inner", None)
         if inner is None:
@@ -1142,25 +1263,53 @@ class BridgeWindowModern(BridgeLogicMixin, QtWidgets.QWidget):
             if widget is not None:
                 widget.deleteLater()
 
-        sid_to_group: dict[str, str] = {}
-        for group_label, items in build_modern_tools_nav_groups():
-            for sid, _lbl, _icon in items:
-                sid_to_group[sid] = group_label
-
+        visible_set = set(visible_names)
+        section_index = getattr(self, "_tools_section_index", {})
         chip_buttons: list[QtWidgets.QPushButton] = []
-        current_group: str | None = None
-        for idx, name in enumerate(visible_names):
-            sid = sid_by_label.get(name, "")
-            icon = icon_by_label.get(name, "")
-            grp = sid_to_group.get(sid, "")
-            if grp and grp != current_group:
-                if current_group is not None:
-                    lay.addWidget(make_chip_group_separator())
-                current_group = grp
-            btn = self._modern_tools_chip_button(name, icon, idx, stack)
+        chip_dropdowns: list[QtWidgets.QToolButton] = []
+
+        def _visible_child_items(
+            children: list[tuple[str, str, str]],
+        ) -> list[tuple[str, str, str, int]]:
+            out: list[tuple[str, str, str, int]] = []
+            for sid, lbl, icon in children:
+                if sid in MODERN_HEADER_NAV_SIDS:
+                    continue
+                if lbl not in visible_set:
+                    continue
+                idx = section_index.get(sid, -1)
+                if idx < 0:
+                    continue
+                out.append((sid, lbl, icon, idx))
+            return out
+
+        nav_leaves, nav_dropdowns = build_modern_tools_nav_tiers()
+
+        for sid, lbl, icon in nav_leaves:
+            if sid in MODERN_HEADER_NAV_SIDS or lbl not in visible_set:
+                continue
+            idx = section_index.get(sid, 0)
+            btn = self._modern_tools_chip_button(lbl, icon, idx, stack)
             chip_buttons.append(btn)
             lay.addWidget(btn)
+
+        for _tier_key, tier_label, tier_icon, children in nav_dropdowns:
+            child_items = _visible_child_items(children)
+            if not child_items:
+                continue
+            dropdown = make_chip_dropdown_button(
+                tier_key=_tier_key,
+                label=tier_label,
+                icon=tier_icon,
+                children=child_items,
+                on_pick=self._open_modern_section_by_sid,
+                on_cycle=self._cycle_modern_tools_dropdown,
+            )
+            chip_dropdowns.append(dropdown)
+            lay.addWidget(dropdown)
+
         self._tools_chip_buttons = chip_buttons
+        self._tools_chip_dropdowns = chip_dropdowns
         inner.setFixedHeight(MODERN_CHIP_BTN_H)
         inner.adjustSize()
         scroll = getattr(self, "_modern_tools_chip_scroll", None)
@@ -1174,7 +1323,7 @@ class BridgeWindowModern(BridgeLogicMixin, QtWidgets.QWidget):
         self._tab_catalog.pop("main_tabs", None)
         self._tab_hidden.pop("main_tabs", None)
 
-        nav_flat = build_modern_tools_nav()
+        nav_flat = build_modern_tools_all_pages()
         self._modern_tools_nav_flat = nav_flat
         self._modern_tools_sid_by_label = {lbl: sid for sid, lbl, _icon in nav_flat}
         self._modern_tools_icon_by_label = {lbl: icon for _sid, lbl, icon in nav_flat}
@@ -1184,6 +1333,8 @@ class BridgeWindowModern(BridgeLogicMixin, QtWidgets.QWidget):
         for sid, lbl, _icon in nav_flat:
             idx = self._tools_section_index.get(sid, -1)
             if idx < 0:
+                continue
+            if sid in MODERN_HEADER_NAV_SIDS:
                 continue
             tools_catalog[lbl] = (
                 stack.widget(idx),
@@ -1209,6 +1360,10 @@ class BridgeWindowModern(BridgeLogicMixin, QtWidgets.QWidget):
             if widget is cur_w:
                 prev_sid = sid_by_label.get(lbl, "")
                 break
+        if not prev_sid and cur_w is not None:
+            guide_idx = getattr(self, "_tools_section_index", {}).get("guide", -1)
+            if 0 <= guide_idx < stack.count() and stack.widget(guide_idx) is cur_w:
+                prev_sid = "guide"
 
         mr_widget: QtWidgets.QWidget | None = None
         mr_idx = getattr(self, "_mission_review_stack_index", -1)
@@ -1216,12 +1371,20 @@ class BridgeWindowModern(BridgeLogicMixin, QtWidgets.QWidget):
             mr_widget = stack.widget(mr_idx)
             stack.removeWidget(mr_widget)
 
+        guide_widget: QtWidgets.QWidget | None = None
+        guide_idx = getattr(self, "_tools_section_index", {}).get("guide", -1)
+        if 0 <= guide_idx < stack.count():
+            guide_widget = stack.widget(guide_idx)
+            stack.removeWidget(guide_widget)
+
         widgets = [catalog[name][0] for name in visible_names if name in catalog]
         while stack.count():
             w = stack.widget(0)
             stack.removeWidget(w)
         for widget in widgets:
             stack.addWidget(widget)
+        if guide_widget is not None:
+            stack.addWidget(guide_widget)
         if mr_widget is not None:
             stack.addWidget(mr_widget)
             self._mission_review_stack_index = stack.count() - 1
@@ -1264,8 +1427,11 @@ class BridgeWindowModern(BridgeLogicMixin, QtWidgets.QWidget):
         self._tools_section_index = {}
         self._modern_sid_by_stack_index = {}
         current_group: str | None = None
-        for idx, name in enumerate(visible_names):
+        stack_idx = 0
+        for name in visible_names:
             sid = sid_by_label.get(name, "")
+            if sid in MODERN_HEADER_NAV_SIDS:
+                continue
             icon = icon_by_label.get(name, "")
             grp = sid_to_group.get(sid, "")
             if grp and grp != current_group:
@@ -1277,11 +1443,18 @@ class BridgeWindowModern(BridgeLogicMixin, QtWidgets.QWidget):
                 sb_lay.addWidget(grp_hdr)
                 current_group = grp
             if sid:
-                self._tools_section_index[sid] = idx
-                self._modern_sid_by_stack_index[idx] = sid
-            btn = self._modern_tools_nav_button(name, icon, idx, nav_buttons, stack)
+                self._tools_section_index[sid] = stack_idx
+                self._modern_sid_by_stack_index[stack_idx] = sid
+            btn = self._modern_tools_nav_button(name, icon, stack_idx, nav_buttons, stack)
             nav_buttons.append(btn)
             sb_lay.addWidget(btn)
+            stack_idx += 1
+
+        if guide_widget is not None:
+            g_idx = stack.indexOf(guide_widget)
+            if g_idx >= 0:
+                self._tools_section_index["guide"] = g_idx
+                self._modern_sid_by_stack_index[g_idx] = "guide"
 
         sb_lay.addStretch(1)
         self._tools_nav_buttons = nav_buttons
@@ -1407,8 +1580,34 @@ class BridgeWindowModern(BridgeLogicMixin, QtWidgets.QWidget):
         if detail.strip():
             compact_title = f"{compact_title}  ·  {detail.strip()}"
         super()._set_status_banner(state, compact_title, "")
+        self._sync_modern_status_banner_width()
         self._sync_modern_session_chrome()
         self._sync_modern_start_stop_labels()
+
+    def _sync_modern_status_banner_width(self) -> None:
+        """Keep the clickable status strip only as wide as its message."""
+        banner = self.status_banner
+        label = self.status_banner_text
+        if banner is None or label is None:
+            return
+        label.setWordWrap(False)
+        lay = banner.layout()
+        margins = lay.contentsMargins() if lay is not None else QtCore.QMargins(8, 0, 8, 0)
+        spacing = lay.spacing() if lay is not None else 0
+        fm = QtGui.QFontMetrics(label.font())
+        text = label.text() or ""
+        if "<" in text and ">" in text:
+            doc = QtGui.QTextDocument()
+            doc.setDefaultFont(label.font())
+            doc.setHtml(text)
+            doc.setTextWidth(10000)
+            text_w = int(doc.idealWidth())
+        else:
+            text_w = fm.horizontalAdvance(text)
+        pad = 6
+        width = text_w + margins.left() + margins.right() + spacing + pad
+        banner.setMinimumWidth(max(60, width))
+        banner.setMaximumWidth(max(60, width))
 
     def _sync_modern_start_stop_labels(self) -> None:
         if self._is_bridge_running():

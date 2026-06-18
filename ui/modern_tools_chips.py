@@ -1,6 +1,8 @@
 """Horizontal tools chip rail for Modern UI (top navigation mode)."""
 from __future__ import annotations
 
+from collections.abc import Callable
+
 from PySide6 import QtCore, QtGui, QtWidgets
 
 
@@ -38,3 +40,46 @@ def make_chip_group_separator() -> QtWidgets.QFrame:
     sep.setFixedWidth(1)
     sep.setFixedHeight(22)
     return sep
+
+
+def make_chip_dropdown_button(
+    *,
+    tier_key: str,
+    label: str,
+    icon: str,
+    children: list[tuple[str, str, str, int]],
+    on_pick: Callable[[str], None],
+    on_cycle: Callable[[str, list[str]], None],
+) -> QtWidgets.QToolButton:
+    """Dropdown chip for grouped nav tiers (Logging, Bench Tools)."""
+    btn = QtWidgets.QToolButton()
+    btn.setObjectName("modernToolsNavChipMenu")
+    text = f"{icon}  {label}".strip() if icon else label
+    btn.setText(text)
+    btn.setToolButtonStyle(QtCore.Qt.ToolButtonStyle.ToolButtonTextOnly)
+    btn.setPopupMode(QtWidgets.QToolButton.ToolButtonPopupMode.MenuButtonPopup)
+    btn.setAutoRaise(False)
+    btn.setFocusPolicy(QtCore.Qt.FocusPolicy.NoFocus)
+    btn.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
+    btn.setFixedHeight(32)
+    btn.setProperty("navTierKey", tier_key)
+    btn.setProperty("navActive", False)
+    btn.setProperty("navDefaultText", text)
+    child_sids = [sid for sid, _lbl, _icon, _idx in children]
+    btn.setProperty("navChildSids", child_sids)
+    btn.setProperty("navActiveChildSid", "")
+
+    menu = QtWidgets.QMenu(btn)
+    menu.setObjectName("modernToolsNavChipMenuPopup")
+    for sid, child_label, child_icon, _idx in children:
+        action = menu.addAction(f"{child_icon}  {child_label}".strip())
+        action.triggered.connect(lambda _checked=False, s=sid: on_pick(s))
+    btn.setMenu(menu)
+    btn.clicked.connect(
+        lambda _checked=False, sids=list(child_sids): on_cycle(tier_key, sids)
+    )
+    tip_lines = [f"{child_icon}  {child_label}" for _sid, child_label, child_icon, _idx in children]
+    btn.setToolTip(
+        f"{label} — click to cycle, arrow for menu — " + " · ".join(tip_lines)
+    )
+    return btn

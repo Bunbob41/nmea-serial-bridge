@@ -24,12 +24,17 @@ MODERN_TERMINAL_TEXT = "#e2f0ff"
 MODERN_TABBAR_BG     = "#05070a"     # distinctly darker rail under tabs
 
 
+from ui.fonts import FONT_FAMILY_QSS
+
+
 def modern_stylesheet() -> str:
+    _ff = FONT_FAMILY_QSS
     return f"""
 /* ═══ Root ════════════════════════════════════════════════════════════════ */
 QWidget#BridgeRoot[uiMode="modern"] {{
     background-color: {MODERN_BG};
     color: {MODERN_TEXT};
+    font-family: {_ff};
     font-size: 10pt;
 }}
 
@@ -354,7 +359,7 @@ QPlainTextEdit#logView {{
     background-color: {MODERN_TERMINAL_BG};
     color: {MODERN_TERMINAL_TEXT};
     border: none;
-    font-family: "Cascadia Mono", Consolas, "Courier New", monospace;
+    font-family: {_ff};
     font-size: 10.5pt;
     padding: 10px;
     selection-background-color: #1d4ed8;
@@ -761,6 +766,110 @@ QPushButton#modernToolsNavChip:checked {{
     background-color: {MODERN_SURFACE_ALT};
     color: {MODERN_TEXT_MUTED};
     border: 1px solid {MODERN_BORDER};
+}}
+QToolButton#modernToolsNavChipMenu {{
+    background-color: {MODERN_SURFACE_ALT};
+    color: {MODERN_TEXT_MUTED};
+    border: 1px solid {MODERN_BORDER};
+    border-radius: 16px;
+    padding: 2px 20px 2px 12px;
+    font-size: 8.5pt;
+    font-weight: 600;
+    min-height: 0;
+    max-height: 32px;
+}}
+QToolButton#modernToolsNavChipMenu::menu-indicator {{
+    subcontrol-origin: padding;
+    subcontrol-position: center right;
+    right: 8px;
+    width: 10px;
+}}
+QToolButton#modernToolsNavChipMenu:hover {{
+    background-color: {MODERN_BG};
+    color: {MODERN_TEXT};
+    border-color: {MODERN_ACCENT};
+}}
+QToolButton#modernToolsNavChipMenu[navActive="true"] {{
+    background-color: rgba(59, 130, 246, 0.22);
+    color: {MODERN_ACCENT_BRIGHT};
+    border: 1px solid {MODERN_ACCENT};
+    font-weight: 700;
+}}
+QMenu#modernToolsNavChipMenuPopup {{
+    background-color: {MODERN_SURFACE};
+    color: {MODERN_TEXT};
+    border: 1px solid {MODERN_BORDER};
+    padding: 4px;
+}}
+QMenu#modernToolsNavChipMenuPopup::item {{
+    padding: 6px 14px;
+    border-radius: 4px;
+}}
+QMenu#modernToolsNavChipMenuPopup::item:selected {{
+    background-color: rgba(59, 130, 246, 0.22);
+    color: {MODERN_ACCENT_BRIGHT};
+}}
+QPushButton#connectionHubFilterBtn {{
+    background-color: {MODERN_SURFACE_ALT};
+    color: {MODERN_TEXT_MUTED};
+    border: 1px solid {MODERN_BORDER};
+    border-radius: 14px;
+    padding: 2px 10px;
+    font-size: 8pt;
+    font-weight: 600;
+}}
+QPushButton#connectionHubFilterBtn:checked {{
+    background-color: rgba(59, 130, 246, 0.22);
+    color: {MODERN_ACCENT_BRIGHT};
+    border-color: {MODERN_ACCENT};
+}}
+QPushButton#modernNmeaPresetBtn[nmeaPresetActive="true"] {{
+    background-color: rgba(59, 130, 246, 0.22);
+    color: {MODERN_ACCENT_BRIGHT};
+    border: 1px solid {MODERN_ACCENT};
+}}
+QFrame#modernChecksGroup {{
+    background-color: {MODERN_SURFACE};
+    border: 1px solid {MODERN_BORDER};
+    border-radius: 8px;
+}}
+QLabel#modernChecksGroupTitle {{
+    color: {MODERN_TEXT_MUTED};
+    font-size: 8pt;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}}
+QPushButton#modernChecksStopBtn:enabled {{
+    background-color: rgba(248, 113, 113, 0.18);
+    color: #fca5a5;
+    border: 1px solid #f87171;
+}}
+QFrame#modernToolsPageHeader[headerTone="bench"] QLabel#modernToolsPageIcon,
+QFrame#modernToolsPageHeader[headerTone="bench"] QLabel#modernToolsPageSubtitle {{
+    color: #ffb000;
+}}
+QLabel#phonePairingSteps {{
+    color: {MODERN_TEXT_MUTED};
+    font-size: 8.5pt;
+    font-style: normal;
+    padding: 2px 0 6px 0;
+}}
+QFrame#terminalConsoleWrap {{
+    border: 1px solid {MODERN_BORDER};
+    border-radius: 8px;
+    background-color: {MODERN_SURFACE};
+}}
+QLabel#terminalConsoleHint {{
+    color: {MODERN_TEXT_MUTED};
+    font-size: 8pt;
+    font-style: normal;
+    padding: 6px 10px;
+    border-bottom: 1px solid {MODERN_BORDER};
+    background-color: {MODERN_SURFACE_ALT};
+}}
+QWidget#modernControlSplitHost {{
+    background: transparent;
 }}
 
 QStackedWidget#modernSettingsStack {{
@@ -1349,7 +1458,7 @@ QPlainTextEdit#diagOutput {{
     color: {MODERN_TERMINAL_TEXT};
     border: 1px solid {MODERN_BORDER};
     border-radius: 6px;
-    font-family: Consolas, "Cascadia Mono", monospace;
+    font-family: {_ff};
     font-size: 9pt;
     padding: 4px;
     selection-background-color: {MODERN_ACCENT};
@@ -1726,7 +1835,7 @@ QPlainTextEdit#wireTerminalView {{
     background-color: {MODERN_TERMINAL_BG};
     color: {MODERN_TERMINAL_TEXT};
     border: none;
-    font-family: "Cascadia Mono", Consolas, "Courier New", monospace;
+    font-family: {_ff};
     font-size: 9.5pt;
     padding: 8px;
     selection-background-color: #1d4ed8;

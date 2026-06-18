@@ -36,12 +36,12 @@ _DIAG_CARD_EXPANDED_CAP: dict[str, int] = {
 
 # Tools → Phone — in-tab help (also referenced by tests).
 PHONE_API_TOKEN_HELP = (
-    "API token — shared secret so only you can start/stop the bridge, change COM, "
-    "or refresh discovery from a phone or another PC over Tailscale/LAN. "
-    "Required when Allow LAN / Tailscale is on and this field is not empty; "
-    "with remote access off, the dashboard on this PC alone does not check the token. "
-    "Generate creates a new random secret. You may paste your own long private string instead, "
-    "or use Copy link / Paste link / QR to hand the same token to your phone."
+    "<ol>"
+    "<li>Generate or paste a long random API token below.</li>"
+    "<li>Required when <b>Allow LAN / Tailscale</b> is on and the token field is not empty.</li>"
+    "<li>With remote access off, the dashboard on this PC alone does not check the token.</li>"
+    "<li>Use <b>Copy link</b>, <b>Paste link</b>, or the QR code to hand the same token to your phone.</li>"
+    "</ol>"
 )
 
 # Stack Server & Network | Phone Pairing cards vertically below this content width (px).
@@ -365,9 +365,11 @@ def wrap_main_tab_scroll(inner: QtWidgets.QWidget) -> QtWidgets.QScrollArea:
     return _scrollable(inner)
 
 
+from ui.fonts import FONT_FAMILY_QSS
+
 _GUIDE_CSS = """
 body  {
-    font-family: -apple-system, "Segoe UI", sans-serif;
+    font-family: __UI_FONT__;
     font-size: 13px;
     margin: 0;
     padding: 16px 18px;
@@ -401,7 +403,7 @@ code  {
     padding: 1px 5px;
     border-radius: 3px;
     font-size: 11.5px;
-    font-family: "Cascadia Mono", Consolas, monospace;
+    font-family: __UI_FONT__;
 }
 b     { color: #f0f7ff; }
 em    { color: #94a3b8; font-style: normal; }
@@ -414,7 +416,7 @@ em    { color: #94a3b8; font-style: normal; }
     background: #0d1a2a;
     border-radius: 0 4px 4px 0;
 }
-"""
+""".replace("__UI_FONT__", FONT_FAMILY_QSS)
 
 _GUIDE_START = """
 <h2>Start here — stuck on connect?</h2>
@@ -935,7 +937,8 @@ def build_phone_dashboard_tab(parent: QtWidgets.QWidget) -> QtWidgets.QWidget:
     phone_card, phone_lay = _phone_dashboard_card("Phone Pairing")
     token_help = QtWidgets.QLabel(PHONE_API_TOKEN_HELP)
     token_help.setWordWrap(True)
-    token_help.setObjectName("tabNote")
+    token_help.setTextFormat(QtCore.Qt.TextFormat.RichText)
+    token_help.setObjectName("phonePairingSteps")
     phone_lay.addWidget(token_help)
     phone_form_host = QtWidgets.QWidget()
     phone_form = QtWidgets.QFormLayout(phone_form_host)
@@ -1188,6 +1191,35 @@ def build_send_tab(parent: QtWidgets.QWidget, *, embedded: bool = False) -> QtWi
     parent.send_edit.setMinimumHeight(120)
     sample = build_gga(datetime.now(timezone.utc), SAMPLE_LAT_DEG, SAMPLE_LON_DEG, SAMPLE_ALT_M)
     parent.send_edit.setPlainText(sample)
+
+    if embedded:
+        edit_host = QtWidgets.QWidget()
+        edit_host.setObjectName("sendEditHost")
+        edit_lay = QtWidgets.QVBoxLayout(edit_host)
+        edit_lay.setContentsMargins(0, 0, 0, 0)
+        edit_lay.setSpacing(8)
+        edit_lay.addWidget(parent.send_edit, 1)
+        action_row = QtWidgets.QHBoxLayout()
+        action_row.setSpacing(8)
+        parent.btn_insert_sample = QtWidgets.QPushButton("Insert sample GGA")
+        parent.btn_send_ser = QtWidgets.QPushButton("Send → serial")
+        parent.btn_send_net = QtWidgets.QPushButton("Send → network")
+        parent.btn_send_both = QtWidgets.QPushButton("Send → both")
+        for btn in (
+            parent.btn_send_ser,
+            parent.btn_send_net,
+            parent.btn_send_both,
+        ):
+            btn.setMinimumWidth(110)
+        action_row.addStretch(1)
+        action_row.addWidget(parent.btn_insert_sample, 0)
+        action_row.addWidget(parent.btn_send_ser, 0)
+        action_row.addWidget(parent.btn_send_net, 0)
+        action_row.addWidget(parent.btn_send_both, 0)
+        edit_lay.addLayout(action_row)
+        lay.addWidget(edit_host, 1)
+        return host
+
     lay.addWidget(parent.send_edit, 1)
 
     parent.btn_insert_sample = QtWidgets.QPushButton("Insert sample GGA")
@@ -1240,7 +1272,23 @@ def _mount_automated_checks_ui(
         intro.setObjectName("tabNote")
         lay.addWidget(intro)
 
-    btn_row1 = QtWidgets.QHBoxLayout()
+    def _add_group(title: str, buttons: list[QtWidgets.QPushButton]) -> None:
+        frame = QtWidgets.QFrame()
+        frame.setObjectName("modernChecksGroup")
+        gl = QtWidgets.QVBoxLayout(frame)
+        gl.setContentsMargins(12, 10, 12, 10)
+        gl.setSpacing(8)
+        hdr = QtWidgets.QLabel(title)
+        hdr.setObjectName("modernChecksGroupTitle")
+        gl.addWidget(hdr)
+        row = QtWidgets.QHBoxLayout()
+        row.setSpacing(8)
+        for btn in buttons:
+            row.addWidget(btn)
+        row.addStretch(1)
+        gl.addLayout(row)
+        lay.addWidget(frame)
+
     parent.btn_bench_pair_setup = QtWidgets.QPushButton("Bench pair setup…")
     parent.btn_bench_pair_setup.setObjectName("btnBenchPairSetupDiag")
     parent.btn_bench_pair_setup.setToolTip(
@@ -1248,7 +1296,6 @@ def _mount_automated_checks_ui(
         "same checks as preflight_bench.bat. Install com0com from the guide first."
     )
     parent.btn_bench_pair_setup.clicked.connect(parent._open_bench_pair_setup)
-    btn_row1.addWidget(parent.btn_bench_pair_setup)
     parent.btn_diag_verify = QtWidgets.QPushButton("Full verify")
     parent.btn_diag_verify.setObjectName("btnDiagVerify")
     parent.btn_diag_verify.setToolTip(
@@ -1264,16 +1311,7 @@ def _mount_automated_checks_ui(
     parent.btn_diag_setup_prod.setToolTip(
         "Runs check_setup.py --production using the first boat-style named preset."
     )
-    for b in (
-        parent.btn_diag_verify,
-        parent.btn_diag_setup,
-        parent.btn_diag_setup_prod,
-    ):
-        btn_row1.addWidget(b)
-    btn_row1.addStretch(1)
-    lay.addLayout(btn_row1)
 
-    btn_row2 = QtWidgets.QHBoxLayout()
     parent.btn_diag_network_bench = QtWidgets.QPushButton("Network bench (auto)")
     parent.btn_diag_network_bench.setObjectName("btnDiagNetworkBench")
     parent.btn_diag_network_bench.setToolTip(
@@ -1305,18 +1343,58 @@ def _mount_automated_checks_ui(
         "Drains TCP replies so COM->net queues do not fill (avoids Transport Warn). Use Stop to end."
     )
     parent.btn_diag_stop = QtWidgets.QPushButton("Stop")
+    parent.btn_diag_stop.setObjectName("modernChecksStopBtn")
     parent.btn_diag_stop.setEnabled(False)
     parent.btn_diag_stop.setToolTip("Kill the running helper process.")
     parent.btn_diag_clear = QtWidgets.QPushButton("Clear output")
-    btn_row2.addWidget(parent.btn_diag_network_bench)
-    btn_row2.addWidget(parent.btn_diag_fanout_bench)
-    btn_row2.addWidget(parent.btn_diag_udp)
-    btn_row2.addWidget(parent.btn_diag_tcp_stress)
-    btn_row2.addWidget(parent.btn_diag_tcp_demo)
-    btn_row2.addWidget(parent.btn_diag_stop)
-    btn_row2.addWidget(parent.btn_diag_clear)
-    btn_row2.addStretch(1)
-    lay.addLayout(btn_row2)
+
+    if embedded:
+        _add_group(
+            "Checklists",
+            [
+                parent.btn_bench_pair_setup,
+                parent.btn_diag_verify,
+                parent.btn_diag_setup,
+                parent.btn_diag_setup_prod,
+            ],
+        )
+        _add_group(
+            "Automation & stress",
+            [
+                parent.btn_diag_network_bench,
+                parent.btn_diag_fanout_bench,
+                parent.btn_diag_udp,
+                parent.btn_diag_tcp_stress,
+                parent.btn_diag_tcp_demo,
+                parent.btn_diag_stop,
+                parent.btn_diag_clear,
+            ],
+        )
+    else:
+        btn_row1 = QtWidgets.QHBoxLayout()
+        for b in (
+            parent.btn_bench_pair_setup,
+            parent.btn_diag_verify,
+            parent.btn_diag_setup,
+            parent.btn_diag_setup_prod,
+        ):
+            btn_row1.addWidget(b)
+        btn_row1.addStretch(1)
+        lay.addLayout(btn_row1)
+
+        btn_row2 = QtWidgets.QHBoxLayout()
+        for b in (
+            parent.btn_diag_network_bench,
+            parent.btn_diag_fanout_bench,
+            parent.btn_diag_udp,
+            parent.btn_diag_tcp_stress,
+            parent.btn_diag_tcp_demo,
+            parent.btn_diag_stop,
+            parent.btn_diag_clear,
+        ):
+            btn_row2.addWidget(b)
+        btn_row2.addStretch(1)
+        lay.addLayout(btn_row2)
 
     cap_row = QtWidgets.QHBoxLayout()
     cap_row.addWidget(QtWidgets.QLabel("Capacity probe"))
@@ -1420,6 +1498,7 @@ def _modern_flat_page(
     *,
     subtitle: str = "",
     icon: str = "",
+    header_tone: str = "",
 ) -> tuple[QtWidgets.QWidget, QtWidgets.QVBoxLayout]:
     host = QtWidgets.QWidget()
     host.setObjectName(object_name)
@@ -1429,6 +1508,8 @@ def _modern_flat_page(
 
     header = QtWidgets.QFrame()
     header.setObjectName("modernToolsPageHeader")
+    if header_tone:
+        header.setProperty("headerTone", header_tone)
     h_lay = QtWidgets.QVBoxLayout(header)
     h_lay.setContentsMargins(20, 18, 20, 14)
     h_lay.setSpacing(6)
@@ -1664,7 +1745,7 @@ def build_modern_hub_page(parent: QtWidgets.QWidget) -> QtWidgets.QWidget:
 def build_modern_phone_page(parent: QtWidgets.QWidget) -> QtWidgets.QWidget:
     host, lay = _modern_flat_page(
         "modernPhonePage",
-        "Phone",
+        "Dashboard",
         subtitle="Web dashboard, token, and QR for remote Start/Stop from a phone.",
         icon="📱",
     )
@@ -1680,21 +1761,51 @@ def build_modern_automated_checks_page(parent: QtWidgets.QWidget) -> QtWidgets.Q
         "Checks",
         subtitle="Bench and developer scripts — not required for normal survey work.",
         icon="🧪",
+        header_tone="bench",
     )
-    banner = QtWidgets.QFrame()
-    banner.setObjectName("modernToolsBenchBanner")
-    bl = QtWidgets.QHBoxLayout(banner)
-    bl.setContentsMargins(12, 10, 12, 10)
-    bl.addWidget(
-        QtWidgets.QLabel("Bench & developer tools only — skip for normal survey runs.")
-    )
-    lay.addWidget(banner)
     _mount_automated_checks_ui(parent, lay, expand_output=True, embedded=True)
     return host
 
 
+def build_modern_tools_nav_tiers() -> tuple[
+    list[tuple[str, str, str]],
+    list[tuple[str, str, str, list[tuple[str, str, str]]]],
+]:
+    """Top chip rail tiers: 4 primary leaves + 2 dropdown groups."""
+    leaves = [
+        ("control", "Control", "🎛"),
+        ("presets", "Presets", "⚙"),
+        ("hub", "Hub", "🛰"),
+        ("nmea", "NMEA", "📡"),
+    ]
+    dropdowns = [
+        (
+            "logging",
+            "Logging",
+            "📋",
+            [
+                ("activity", "Activity", "📋"),
+                ("black_box", "Black box", "💾"),
+                ("file_log", "File log", "📄"),
+            ],
+        ),
+        (
+            "bench_tools",
+            "Bench Tools",
+            "🧪",
+            [
+                ("phone", "Dashboard", "📱"),
+                ("inject", "Inject", "💉"),
+                ("terminal", "Terminal", "⌨"),
+                ("checks", "Checks", "🧪"),
+            ],
+        ),
+    ]
+    return leaves, dropdowns
+
+
 def build_modern_tools_nav_groups() -> list[tuple[str, list[tuple[str, str, str]]]]:
-    """Modern sidebar groups: Control | Setup | Logging | Bench."""
+    """Modern sidebar groups: Control | Setup | Logging | Bench Tools."""
     return [
         (
             "Control",
@@ -1708,7 +1819,6 @@ def build_modern_tools_nav_groups() -> list[tuple[str, list[tuple[str, str, str]
                 ("presets", "Presets", "⚙"),
                 ("hub", "Hub", "🛰"),
                 ("nmea", "NMEA", "📡"),
-                ("phone", "Phone", "📱"),
             ],
         ),
         (
@@ -1720,9 +1830,9 @@ def build_modern_tools_nav_groups() -> list[tuple[str, list[tuple[str, str, str]
             ],
         ),
         (
-            "Bench",
+            "Bench Tools",
             [
-                ("guide", "Guide", "📖"),
+                ("phone", "Dashboard", "📱"),
                 ("inject", "Inject", "💉"),
                 ("terminal", "Terminal", "⌨"),
                 ("checks", "Checks", "🧪"),
@@ -1732,11 +1842,16 @@ def build_modern_tools_nav_groups() -> list[tuple[str, list[tuple[str, str, str]
 
 
 def build_modern_tools_nav() -> list[tuple[str, str, str]]:
-    """Modern Tools sidebar: flat (section_id, label, icon) in display order."""
+    """Modern Tools sidebar/chip leaves: flat (section_id, label, icon) in display order."""
     out: list[tuple[str, str, str]] = []
     for _group, items in build_modern_tools_nav_groups():
         out.extend(items)
     return out
+
+
+def build_modern_tools_all_pages() -> list[tuple[str, str, str]]:
+    """All stack pages including header-only Guide."""
+    return [*build_modern_tools_nav(), ("guide", "Guide", "📖")]
 
 
 def build_modern_inject_page(parent: QtWidgets.QWidget) -> QtWidgets.QWidget:

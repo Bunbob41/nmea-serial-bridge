@@ -12,4 +12,4 @@ Regenerate after changing source art:
 python tools/make_app_icon.py
 ```
 
-The script removes the outer white box, keeps interior white DB-9 pins, and places the glyph on `#1a1d27` to match the dashboard theme. ICO sizes **48px and below** use a **high-contrast shell** variant (lighter glyph) so the logo reads on the Windows taskbar and title bar.
+The script removes the outer white box, keeps interior white DB-9 pins, and places the glyph on `#1a1d27` to match the dashboard theme (`app-icon.png` / `.ico`). Edit **`app-icon-source.png`** (white matte) only — it is not shown in the title bar. Qt and the embedded `.exe` icon use the dark squircle so the logo blends with the grey chrome.

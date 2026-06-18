@@ -8,7 +8,7 @@ from unittest import mock
 from PySide6 import QtWidgets
 
 from ui.connect_qr_overlay import _phone_tools_tab_active, refresh_connect_qr_overlay
-from ui.tool_tabs import PHONE_API_TOKEN_HELP, build_phone_dashboard_tab
+from ui.tool_tabs import build_phone_dashboard_tab
 
 
 class TestWebHandoff(unittest.TestCase):
@@ -19,11 +19,11 @@ class TestWebHandoff(unittest.TestCase):
     def test_phone_tab_includes_api_token_help(self) -> None:
         win = QtWidgets.QWidget()
         scroll = build_phone_dashboard_tab(win)
-        labels = scroll.findChildren(QtWidgets.QLabel)
-        texts = [lb.text() for lb in labels]
-        self.assertIn(PHONE_API_TOKEN_HELP, texts)
-        self.assertTrue(any("Allow LAN / Tailscale" in t for t in texts))
-        self.assertTrue(any("Generate" in t for t in texts))
+        help_lbl = scroll.findChild(QtWidgets.QLabel, "phonePairingSteps")
+        self.assertIsNotNone(help_lbl)
+        text = help_lbl.text()
+        self.assertIn("Allow LAN / Tailscale", text)
+        self.assertIn("Generate", text)
 
     def test_restore_web_ui_prefs_refreshes_phone_qr(self) -> None:
         from ui.mixin import BridgeLogicMixin

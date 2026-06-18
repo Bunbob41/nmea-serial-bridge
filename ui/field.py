@@ -423,9 +423,11 @@ class BridgeWindowField(BridgeLogicMixin, QtWidgets.QWidget):
         )
 
     def _apply_log_density(self, _idx: int) -> None:
+        from ui.fonts import FONT_FAMILY_QSS
+
         pt = int(self.cmb_log_density.currentData() or 8)
         self.log_view.setStyleSheet(
-            f'QPlainTextEdit#logView {{ font-family: Consolas, "Cascadia Mono", monospace; '
+            f"QPlainTextEdit#logView {{ font-family: {FONT_FAMILY_QSS}; "
             f"font-size: {pt}pt; }}"
         )
         self._save_field_ui_prefs()

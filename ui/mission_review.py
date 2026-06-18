@@ -47,7 +47,11 @@ class ThroughputBarChart(QtWidgets.QWidget):
         p.fillRect(self.rect(), QtGui.QColor(_CHART_BG))
 
         p.setPen(QtGui.QColor(_CHART_TEXT))
-        p.setFont(QtGui.QFont("Segoe UI", 9, QtGui.QFont.Weight.DemiBold))
+        from ui.fonts import app_ui_font
+
+        title_font = app_ui_font(point_size=9)
+        title_font.setWeight(QtGui.QFont.Weight.DemiBold)
+        p.setFont(title_font)
         p.drawText(8, 16, "Backup throughput (5 s buckets)")
 
         if not self._values or rect.width() <= 4 or rect.height() <= 4:
@@ -98,7 +102,11 @@ class HealthTimeline(QtWidgets.QWidget):
         p.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
         p.fillRect(self.rect(), QtGui.QColor(_CHART_BG))
         p.setPen(QtGui.QColor(_CHART_TEXT))
-        p.setFont(QtGui.QFont("Segoe UI", 9, QtGui.QFont.Weight.DemiBold))
+        from ui.fonts import app_ui_font
+
+        title_font = app_ui_font(point_size=9)
+        title_font.setWeight(QtGui.QFont.Weight.DemiBold)
+        p.setFont(title_font)
         p.drawText(8, 16, "Data health timeline")
 
         rect = self.rect().adjusted(8, 22, -8, -8)

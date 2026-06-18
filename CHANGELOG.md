@@ -5,6 +5,51 @@ High-level notes for **this fork / branch** (`2034-ui-journey-modernization` and
 
 ---
 
+## v1.35.1
+
+- **Nav dropdown chips** — Extra right padding and menu-arrow inset so the caret is not flush to the border; main-button click cycles Logging/Bench Tools children (Activity → Black box → …) instead of resetting to the first item; active child name stays on the chip with blue highlight.
+
+## v1.35.0
+
+- **Modern nav density** — Top chip rail consolidated to 6 items: Control, Presets, Hub, NMEA, **Logging ▾**, **Bench Tools ▾** (Activity/Black box/File log and Dashboard/Inject/Terminal/Checks). Guide stays in the header; sidebar groups updated to match.
+- **Control split layout** — Serial + network stack in a 45% left column; position track map fills the 55% right column (stacks vertically below 720px).
+- **Hub filters** — All / Hardware COM / Network Adapters / Presets toggle row above the card grid.
+- **NMEA quick picks** — Active preset button highlights while checkboxes update in real time.
+- **Dashboard pairing copy** — Phone Pairing help is a plain ordered list (not italic paragraph).
+- **Inject / Checks / Terminal polish** — Send buttons anchored bottom-right of the inject editor; Checks grouped with amber header + red Stop; Terminal Quick presets inline with Ping and console hint on the output frame.
+
+## v1.34.10
+
+- **Revert chip drag-reorder** — Removed drag-to-reorder on the top tools chip rail (could corrupt tab order and header layout). Reorder via **View → UI editor → Tools tabs** instead. **Dashboard** rename kept.
+
+## v1.34.9
+
+- **Dashboard tab label** — Modern Tools **Phone** chip/sidebar/page renamed **Dashboard** (📱 icon unchanged); saved order/hidden prefs migrate from Phone automatically.
+
+## v1.34.8
+
+- **Header layout** — Status banner shrinks to its message instead of stretching across the top bar; **Guide** moves to the header beside it and is removed from the top chip rail to reduce tab clutter.
+
+## v1.34.7
+
+- **Icon chrome** — Title bar, tray, and embedded ICO use the dark squircle (`app-icon.png`) again so the logo blends with the grey top bar; `app-icon-source.png` remains edit-only source art (white matte).
+
+## v1.34.6
+
+- **Typography — Maple Mono** — Bundled Maple Mono (OFL) under `assets/fonts/`; app-wide Qt font + stylesheets use it with Cascadia/Consolas fallbacks.
+
+## v1.34.5
+
+- **EXE icon — taskbar fix** — Windows ICO now uses BMP frames (PNG-compressed ICO broke taskbar → white placeholder). Embedded ICO uses your white-matte IMG_1118 art; title bar / tray load `app-icon-source.png` directly.
+
+## v1.34.4
+
+- **EXE icon — stop mangling small sizes** — Removed the separate “shell” ICO tier that turned the DE-9 into an abstract white blob / Windows placeholder. All ICO sizes now downscale the same detail master as `app-icon.png`; Qt prefers PNG for the title bar; ICO save uses Pillow’s native multi-size writer for taskbar embedding.
+
+## v1.34.3
+
+- **EXE icon — shell tier fix** — Small Windows icon layers (16–32px) no longer flatten the DE-9 into a solid white “toolbox” blob; shell tier keeps colored pins and connector outline on the dark tile. Re-copied IMG_1118 source and regenerated ICO.
+
 ## v1.34.2
 
 - **EXE icon — original IMG_1118 source** — Installed your provided DE-9 art as `assets/app-icon-source.png` and regenerated PNG/ICO.

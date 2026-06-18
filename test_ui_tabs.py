@@ -368,9 +368,11 @@ class TestUiTabs(unittest.TestCase):
         self.assertNotIn("More", joined)
         self.assertNotIn("Remote", joined)
         self.assertNotIn("Clear view", joined)
-        self.assertEqual(len(labels), 12)
+        self.assertEqual(len(labels), 11)
+        self.assertNotIn("📖  Guide", joined)
         self.assertIn("🎛  Control", labels)
         self.assertIn("🛰  Hub", labels)
+        self.assertIn("📱  Dashboard", joined)
         checks_idx = win._tools_section_index["checks"]
         checks_page = win._tools_stack.widget(checks_idx)
         self.assertEqual(checks_page.objectName(), "modernChecksPage")
@@ -378,11 +380,7 @@ class TestUiTabs(unittest.TestCase):
         self.assertIsNotNone(output)
         self.assertGreaterEqual(output.maximumHeight(), 1000)
         self.assertEqual(win._tools_section_index["inject"], labels.index("💉  Inject"))
-        self.assertEqual(win._tools_section_index["guide"], labels.index("📖  Guide"))
-        self.assertLess(
-            win._tools_section_index["guide"],
-            win._tools_section_index["inject"],
-        )
+        self.assertIn("guide", win._tools_section_index)
         self.assertEqual(win._tools_section_index["activity"], labels.index("📋  Activity"))
         self.assertLess(
             win._tools_section_index["activity"],
@@ -407,9 +405,20 @@ class TestUiTabs(unittest.TestCase):
         self.assertFalse(win._modern_tools_chip_rail.isHidden())
         self.assertTrue(win._modern_sidebar_scroll.isHidden())
         chip_labels = [btn.text().strip() for btn in win._tools_chip_buttons]
-        self.assertEqual(len(chip_labels), len(nav_spec))
+        dropdowns = getattr(win, "_tools_chip_dropdowns", [])
+        self.assertEqual(len(chip_labels), 4)
+        self.assertEqual(len(dropdowns), 2)
+        tier_keys = {str(b.property("navTierKey")) for b in dropdowns}
+        self.assertEqual(tier_keys, {"logging", "bench_tools"})
         for _sid, label, icon in nav_spec:
+            if _sid == "guide":
+                continue
+            if _sid in {"activity", "black_box", "file_log", "phone", "inject", "terminal", "checks"}:
+                continue
             self.assertIn(f"{icon}  {label}", chip_labels)
+        guide_btn = getattr(win, "_btn_header_guide", None)
+        self.assertIsNotNone(guide_btn)
+        self.assertEqual(guide_btn.text().strip(), "📖  Guide")
 
         win._tools_nav_select(win._tools_section_index["presets"])
         preset_idx = win._tools_section_index["presets"]
@@ -423,6 +432,34 @@ class TestUiTabs(unittest.TestCase):
         win._apply_modern_tools_nav_mode("sidebar", persist=False)
         self.assertTrue(win._modern_tools_chip_rail.isHidden())
         self.assertFalse(win._modern_sidebar_scroll.isHidden())
+
+    def test_modern_dropdown_chip_cycles_children(self) -> None:
+        from ui.modern import BridgeWindowModern
+
+        win = BridgeWindowModern()
+        win._apply_modern_tools_nav_mode("top_chips", persist=False)
+        logging_dd = next(
+            b for b in win._tools_chip_dropdowns if str(b.property("navTierKey")) == "logging"
+        )
+        child_sids = list(logging_dd.property("navChildSids"))
+        self.assertGreaterEqual(len(child_sids), 2)
+        win._open_modern_section_by_sid(child_sids[0])
+        self._app.processEvents()
+        self.assertEqual(logging_dd.text().strip(), "📋  Activity")
+        win._cycle_modern_tools_dropdown("logging", child_sids)
+        self._app.processEvents()
+        self.assertEqual(
+            win._tools_stack.currentIndex(),
+            win._tools_section_index[child_sids[1]],
+        )
+        self.assertIn("Black box", logging_dd.text())
+
+    def test_modern_dashboard_nav_label(self) -> None:
+        from ui.tool_tabs import build_modern_tools_nav
+
+        nav = build_modern_tools_nav()
+        phone = next((lbl, icon) for sid, lbl, icon in nav if sid == "phone")
+        self.assertEqual(phone, ("Dashboard", "📱"))
 
     def test_modern_control_forms_stack_narrow(self) -> None:
         from ui.modern import BridgeWindowModern, CONTROL_FORMS_STACK_BELOW_W
@@ -551,6 +588,43 @@ class TestUiTabs(unittest.TestCase):
         filt.eventFilter(win.status_banner, release)
         self._app.processEvents()
         self.assertEqual(win._tools_stack.currentIndex(), win._tools_section_index["control"])
+
+    def test_modern_header_guide_opens_guide(self) -> None:
+        from ui.modern import BridgeWindowModern
+
+        win = BridgeWindowModern()
+        guide_btn = getattr(win, "_btn_header_guide", None)
+        self.assertIsNotNone(guide_btn)
+        win._open_modern_section_by_sid("control")
+        guide_btn.click()
+        self._app.processEvents()
+        self.assertEqual(win._tools_stack.currentIndex(), win._tools_section_index["guide"])
+
+    def test_modern_header_status_banner_content_width(self) -> None:
+        from PySide6.QtWidgets import QSizePolicy
+
+        from ui.modern import BridgeWindowModern
+
+        win = BridgeWindowModern()
+        self.assertEqual(
+            win.status_banner.sizePolicy().horizontalPolicy(),
+            QSizePolicy.Policy.Maximum,
+        )
+        win._set_status_banner("stopped", "Short", "")
+        self._app.processEvents()
+        short_w = win.status_banner.width()
+        win._set_status_banner(
+            "stopped",
+            "Stopped · Pick a COM port and UDP settings, then Start.",
+            "",
+        )
+        self._app.processEvents()
+        long_w = win.status_banner.width()
+        self.assertGreater(long_w, short_w)
+        self.assertLessEqual(
+            long_w,
+            win.status_banner.maximumWidth() + 2,
+        )
 
     def test_modern_header_phone_opens_dashboard(self) -> None:
         from unittest.mock import patch

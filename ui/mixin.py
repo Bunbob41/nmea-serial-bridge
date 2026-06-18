@@ -976,14 +976,14 @@ class BridgeLogicMixin:
         visible_names = dedupe_preserve_order(visible_names)
         if (
             key == "tools_tabs"
-            and "Phone" in catalog
-            and "Phone" not in hidden
-            and "Phone" not in visible_names
+            and "Dashboard" in catalog
+            and "Dashboard" not in hidden
+            and "Dashboard" not in visible_names
         ):
             if "Presets" in visible_names:
-                visible_names.insert(visible_names.index("Presets") + 1, "Phone")
+                visible_names.insert(visible_names.index("Presets") + 1, "Dashboard")
             else:
-                visible_names.insert(0, "Phone")
+                visible_names.insert(0, "Dashboard")
         return visible_names
 
     def _rebuild_tools_nav_from_state(self, key: str) -> None:
@@ -2000,6 +2000,8 @@ class BridgeLogicMixin:
                 continue
             color = self._theme_zone_colors.get(zone, DEFAULT_ZONE_COLORS.get(zone, "#333333"))
             txt_color = self._contrast_text_color(color)
+            from ui.fonts import FONT_FAMILY_QSS
+
             btn.setText(color.upper())
             btn.setStyleSheet(
                 "QPushButton#themeStudioZoneSwatch {"
@@ -2007,7 +2009,7 @@ class BridgeLogicMixin:
                 f"color: {txt_color};"
                 "border: 1px solid #202020;"
                 "font-weight: 700;"
-                "font-family: Consolas, 'Cascadia Mono', monospace;"
+                f"font-family: {FONT_FAMILY_QSS};"
                 "font-size: 9pt;"
                 "padding: 2px 6px;"
                 "border-radius: 4px;"

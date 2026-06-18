@@ -1,5 +1,13 @@
 """Qt stylesheets per UI variant — readability-first surfaces and contrast."""
 
+from ui.fonts import FONT_FAMILY_QSS
+
+_UI_FONT = "__UI_FONT__"
+
+
+def _inject_ui_font(css: str) -> str:
+    return css.replace(_UI_FONT, FONT_FAMILY_QSS)
+
 # Callout bars: readable body text on muted surface (accent = left border only).
 _CALLOUT_DARK = """
 QLabel#intentHint, QLabel#appSubtitle {
@@ -1298,12 +1306,12 @@ QComboBox QAbstractItemView {
 }
 """
 
-BRIDGE_STYLESHEET_STANDARD = (
+BRIDGE_STYLESHEET_STANDARD = _inject_ui_font(
     """
 QWidget#BridgeRoot {
     background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #2f2329, stop:1 #241a1f);
     color: #f4f0ea;
-    font-family: "Segoe UI", sans-serif;
+    font-family: __UI_FONT;
     font-size: 10.5pt;
 }
 QLabel { color: #f4f0ea; }
@@ -1430,11 +1438,11 @@ QPushButton#btnStart:pressed { background-color: #bf9928; }
 QPushButton#btnStop:hover { background-color: #7b4150; border-color: #c78f9b; }
 QPlainTextEdit {
     background-color: #1e181c; color: #ece6dc; border: 1px solid #7a5a2d;
-    font-family: Consolas, monospace; font-size: 9.5pt;
+    font-family: __UI_FONT; font-size: 9.5pt;
 }
 QPlainTextEdit#sendEdit {
     background-color: #1e181c; color: #ece6dc; border: 1px solid #8d6a34;
-    border-radius: 4px; font-family: Consolas, monospace; font-size: 9.5pt;
+    border-radius: 4px; font-family: __UI_FONT; font-size: 9.5pt;
 }
 QStatusBar { background: #2a1d22; color: #e0d6c8; border-top: 1px solid #7a5a2d; font-weight: 500; }
 QStatusBar QLabel { color: #f4f0ea; }
@@ -1473,12 +1481,12 @@ QComboBox:focus, QLineEdit:focus, QSpinBox:focus { border: 1px solid #c9a227; }
     + _READABILITY_SCROLL_DARK
 )
 
-BRIDGE_STYLESHEET_MINIMAL = (
+BRIDGE_STYLESHEET_MINIMAL = _inject_ui_font(
     """
 QWidget#BridgeRoot {
     background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #f7f1e6, stop:1 #e8e4de);
     color: #1a1a1a;
-    font-family: "Segoe UI", sans-serif;
+    font-family: __UI_FONT;
     font-size: 10pt;
 }
 QLabel { color: #1a1a1a; }
@@ -1551,11 +1559,11 @@ QLabel#statusLine[state="failed"] { color: #a02020; }
 QLabel#statusLine[state="stopped"] { color: #5a2a33; }
 QPlainTextEdit {
     background-color: #f5f2ec; color: #1a1a1a; border: 1px solid #a09888;
-    font-family: Consolas, monospace; font-size: 9.5pt;
+    font-family: __UI_FONT; font-size: 9.5pt;
 }
 QPlainTextEdit#sendEdit {
     background-color: #f5f2ec; color: #1a1a1a; border: 1px solid #a09888;
-    font-family: Consolas, monospace; font-size: 9.5pt;
+    font-family: __UI_FONT; font-size: 9.5pt;
 }
 QPushButton#btnStart { background-color: #d4af37; border: 1px solid #b28a42; min-height: 32px; font-weight: 700; color: #3a1f13; }
 QPushButton#btnStop { background-color: #cfa0ab; border: 1px solid #9b6a73; min-height: 32px; color: #4a202a; }
@@ -1589,12 +1597,12 @@ QComboBox:focus, QLineEdit:focus, QSpinBox:focus { border: 1px solid #6a5a40; }
     + _READABILITY_SCROLL_LIGHT
 )
 
-BRIDGE_STYLESHEET_LOGFIRST = (
+BRIDGE_STYLESHEET_LOGFIRST = _inject_ui_font(
     """
 QWidget#BridgeRoot {
     background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #2f2329, stop:1 #241a1f);
     color: #ece6dc;
-    font-family: "Segoe UI", sans-serif;
+    font-family: __UI_FONT;
     font-size: 10pt;
 }
 QLabel { color: #f4f0ea; }
@@ -1690,7 +1698,7 @@ QMenu { background-color: #3a2a31; color: #f6eee0; border: 1px solid #7a5a2d; }
 QMenu::item:selected { background-color: #5f3643; color: #ffe2a1; }
 QPlainTextEdit#logView {
     background-color: #161214; color: #ece6dc; border: none;
-    font-family: Consolas, "Cascadia Mono", monospace; font-size: 9.5pt;
+    font-family: __UI_FONT; font-size: 9.5pt;
 }
 QFrame#controlStrip { background-color: #2f2329; border-top: 1px solid #7a5a2d; }
 QLabel#intentHint[intentCompact="true"] {
@@ -1717,7 +1725,7 @@ QStatusBar QLabel {
 }
 QPlainTextEdit#sendEdit {
     background-color: #1b1418; color: #f2e7d2; border: 1px solid #7a5a2d;
-    font-family: Consolas, monospace; font-size: 9pt;
+    font-family: __UI_FONT; font-size: 9pt;
 }
 QGroupBox { border: 1px solid #7a5a2d; color: #f4f0ea; }
 QGroupBox::title { color: #e8dcc8; font-weight: 600; }
@@ -1840,7 +1848,7 @@ SURVEY_STATS_POPOUT_STYLESHEET = """
 QWidget#SurveyStatsPopout {
     background-color: #241a1f;
     color: #f6eee0;
-    font-family: "Segoe UI", sans-serif;
+    font-family: __UI_FONT;
 }
 QWidget#surveyHudChromeBar {
     background-color: #241a1f;
@@ -1850,7 +1858,7 @@ QToolButton#surveyHudCapBtn {
     color: #e1cfac;
     background: transparent;
     border: none;
-    font-family: "Segoe UI", sans-serif;
+    font-family: __UI_FONT;
     font-size: 11pt;
     padding: 0px;
 }
@@ -1944,13 +1952,13 @@ QLabel#surveyHudMetricValueHero {
     color: #faf6f0;
     font-size: 22pt;
     font-weight: bold;
-    font-family: Consolas, "Cascadia Mono", monospace;
+    font-family: __UI_FONT;
 }
 QLabel#surveyHudMetricValue {
     color: #f4f0ea;
     font-size: 14pt;
     font-weight: bold;
-    font-family: Consolas, "Cascadia Mono", monospace;
+    font-family: __UI_FONT;
 }
 QFrame#surveyHudFootPanel,
 QFrame#surveyHudNmeaPanel {
@@ -1963,7 +1971,7 @@ QPlainTextEdit#surveyHudNmeaLog {
     color: #ece6dc;
     border: 1px solid rgba(141, 106, 52, 0.75);
     border-radius: 2px;
-    font-family: Consolas, "Cascadia Mono", monospace;
+    font-family: __UI_FONT;
     font-size: 8pt;
 }
 QLabel#surveyHudFootLine {

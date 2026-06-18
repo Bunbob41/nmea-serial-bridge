@@ -180,6 +180,9 @@ class ConnectionHubWidget(QtWidgets.QWidget):
             hint.setObjectName("tabHint")
             root.addWidget(hint)
 
+        if self._standalone:
+            root.addLayout(self._build_filter_row())
+
         cards_wrap = self._build_cards_pane(cards_view_h)
         if self._standalone:
             # Stretch=1 lets the cards area fill all remaining tab space instead
@@ -214,6 +217,7 @@ class ConnectionHubWidget(QtWidgets.QWidget):
         self._pending_serial_port: str = ""
         self._cards: dict[str, EndpointCardWidget] = {}
         self._snapshot: Optional[DiscoverySnapshot] = None
+        self._card_filter: str = "all"
         self._max_cols = 2
         self._quality_state: Optional[str] = None
         self._split_save_timer = QtCore.QTimer(self)
@@ -251,6 +255,49 @@ class ConnectionHubWidget(QtWidgets.QWidget):
         self._empty_hint.hide()
         cards_lay.addWidget(self._empty_hint)
         return cards_wrap
+
+    @staticmethod
+    def _card_kind(device_id: str) -> str:
+        did = (device_id or "").strip()
+        if did.startswith("serial:"):
+            return "serial"
+        if did.startswith("net:preset:"):
+            return "preset"
+        return "network"
+
+    def _card_matches_filter(self, device_id: str) -> bool:
+        if self._card_filter == "all":
+            return True
+        return self._card_kind(device_id) == self._card_filter
+
+    def _build_filter_row(self) -> QtWidgets.QHBoxLayout:
+        row = QtWidgets.QHBoxLayout()
+        row.setSpacing(6)
+        self._filter_group = QtWidgets.QButtonGroup(self)
+        self._filter_group.setExclusive(True)
+        for key, label in (
+            ("all", "All"),
+            ("serial", "Hardware COM"),
+            ("network", "Network Adapters"),
+            ("preset", "Presets"),
+        ):
+            btn = QtWidgets.QPushButton(label)
+            btn.setObjectName("connectionHubFilterBtn")
+            btn.setCheckable(True)
+            btn.setProperty("filterKey", key)
+            btn.setToolTip(f"Show {label.lower()} tiles only")
+            if key == "all":
+                btn.setChecked(True)
+            self._filter_group.addButton(btn)
+            row.addWidget(btn)
+            btn.clicked.connect(lambda _checked=False, k=key: self._set_card_filter(k))
+        row.addStretch(1)
+        return row
+
+    def _set_card_filter(self, key: str) -> None:
+        self._card_filter = key
+        if self._snapshot is not None:
+            self.set_snapshot(self._snapshot)
 
     def _on_manual_box_toggled(self, checked: bool) -> None:
         self.manual_override_toggled.emit(checked)
@@ -412,11 +459,23 @@ class ConnectionHubWidget(QtWidgets.QWidget):
                 row += 1
 
         for dev in snapshot.serial_devices:
+            if not self._card_matches_filter(dev.device_id):
+                card = self._cards.get(dev.device_id)
+                if card is not None:
+                    card.hide()
+                continue
             card = self._ensure_card(dev)
+            card.show()
             _place(card)
 
         for net in snapshot.network_cards:
+            if not self._card_matches_filter(net.device_id):
+                card = self._cards.get(net.device_id)
+                if card is not None:
+                    card.hide()
+                continue
             card = self._ensure_card(net)
+            card.show()
             _place(card)
 
         if self._selected_id and self._selected_id not in self._cards:
@@ -426,15 +485,20 @@ class ConnectionHubWidget(QtWidgets.QWidget):
         elif self._pending_serial_port:
             self.select_serial_port(self._pending_serial_port, clear_if_missing=False)
 
-        n = len(snapshot.serial_devices) + len(snapshot.network_cards)
+        visible_count = sum(1 for card in self._cards.values() if card.isVisible())
         note = getattr(snapshot, "scan_note", "") or ""
         self._refresh_lbl.setText(
-            f"{n} card{'s' if n != 1 else ''}" + (f" · {note}" if note else "")
+            f"{visible_count} card{'s' if visible_count != 1 else ''}"
+            + (f" · filter: {self._card_filter}" if self._card_filter != "all" else "")
+            + (f" · {note}" if note else "")
         )
-        if n == 0:
-            self._empty_hint.setText(
-                "No endpoints detected — plug in GNSS USB or Refresh discovery for LAN hosts."
-            )
+        if visible_count == 0:
+            empty_msg = "No endpoints match this filter — try All or Refresh discovery."
+            if self._card_filter == "all":
+                empty_msg = (
+                    "No endpoints detected — plug in GNSS USB or Refresh discovery for LAN hosts."
+                )
+            self._empty_hint.setText(empty_msg)
             self._empty_hint.show()
         else:
             self._empty_hint.hide()

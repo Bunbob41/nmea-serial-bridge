@@ -11,7 +11,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 
 _DOC_VIEWER_CSS = """
 body {
-  font-family: "Segoe UI", sans-serif;
+  font-family: Maple Mono, Cascadia Mono, Consolas, sans-serif;
   font-size: 13px;
   line-height: 1.45;
   margin: 0;

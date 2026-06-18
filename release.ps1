@@ -104,7 +104,10 @@ if (Test-Path $exePath) {
 $requirementsHash = (Get-FileHash (Join-Path $PSScriptRoot "requirements.txt") -Algorithm SHA256).Hash
 $pythonVersion = ((python --version) 2>&1 | Out-String).Trim()
 $pipVersion = ((python -m pip --version) 2>&1 | Out-String).Trim()
+$prevEapVer = $ErrorActionPreference
+$ErrorActionPreference = "SilentlyContinue"
 $pyinstallerVersion = ((python -m PyInstaller --version) 2>&1 | Out-String).Trim()
+$ErrorActionPreference = $prevEapVer
 
 @(
     "version=$Version",

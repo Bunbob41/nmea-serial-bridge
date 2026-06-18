@@ -12,6 +12,13 @@ class TestUiFonts(unittest.TestCase):
     def setUpClass(cls) -> None:
         ensure_qt_app()
 
+    def test_monospace_uses_maple_mono_when_bundled(self) -> None:
+        from ui.fonts import PRIMARY_FONT_FAMILY, ensure_bundled_fonts
+
+        ensure_bundled_fonts()
+        font = monospace_ui_font()
+        self.assertEqual(font.family(), PRIMARY_FONT_FAMILY)
+
     def test_monospace_avoids_legacy_oem_family(self) -> None:
         font = monospace_ui_font()
         self.assertNotIn(font.family().lower(), {"8514oem", "terminal", "fixedsys"})

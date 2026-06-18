@@ -119,6 +119,18 @@ class TestUiPrefs(unittest.TestCase):
                 loaded = ui_prefs.load_tab_order("standard", "tools_tabs")
                 self.assertEqual(loaded, ["Presets", "Inject", "Theme"])
 
+    def test_tab_order_modern_phone_maps_to_dashboard(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "ui_prefs.json"
+            with patch.object(ui_prefs, "CONFIG_PATH", path):
+                ui_prefs.save_tab_order(
+                    "modern",
+                    "tools_tabs",
+                    ["Control", "Phone", "NMEA"],
+                )
+                loaded = ui_prefs.load_tab_order("modern", "tools_tabs")
+                self.assertEqual(loaded, ["Control", "Dashboard", "NMEA"])
+
     def test_save_tab_order_dedupes(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "ui_prefs.json"

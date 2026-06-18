@@ -21,6 +21,7 @@ from bridge_core import (  # noqa: F401 — re-export for older scripts
     configure_windows_event_loop_policy,
 )
 from ui.app_icon import apply_app_icon
+from ui.fonts import app_ui_font, ensure_bundled_fonts
 from ui.registry import create_window
 from ui.standard import BridgeWindowStandard
 
@@ -48,6 +49,8 @@ def main() -> None:
 
     app = QtWidgets.QApplication(sys.argv)
     app.setQuitOnLastWindowClosed(True)
+    ensure_bundled_fonts()
+    app.setFont(app_ui_font())
     apply_app_icon(app)
 
     from PySide6.QtCore import QLockFile, QStandardPaths

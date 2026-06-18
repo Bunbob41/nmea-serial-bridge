@@ -395,6 +395,8 @@ def load_tab_order(ui_mode: str, key: str) -> list[str]:
             text = "Inject"
         elif text == "Terminal" and legacy_terminal_is_inject:
             text = "Inject"
+        elif text == "Phone" and ui_mode == "modern" and key == "tools_tabs":
+            text = "Dashboard"
         out.append(text)
     return dedupe_preserve_order(out)
 
@@ -435,6 +437,8 @@ def load_hidden_tabs(ui_mode: str, key: str) -> list[str]:
         elif text == "Terminal":
             # Hidden old inject tab → hide new Inject name.
             text = "Inject"
+        elif text == "Phone" and ui_mode == "modern" and key == "tools_tabs":
+            text = "Dashboard"
         out.append(text)
     return out
 

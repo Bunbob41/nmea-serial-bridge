@@ -13,6 +13,8 @@ _ALL_TYPES = frozenset(NMEA_SENTENCE_TYPES)
 def _apply_strict_types(
     parent: QtWidgets.QWidget,
     types: frozenset[str],
+    *,
+    preset_label: str = "",
 ) -> None:
     rb = getattr(parent, "rb_nmea_strict", None)
     if rb is not None:
@@ -24,6 +26,12 @@ def _apply_strict_types(
         cb.blockSignals(True)
         cb.setChecked(st in types)
         cb.blockSignals(False)
+    preset_buttons = getattr(parent, "_nmea_preset_buttons", {})
+    for label, btn in preset_buttons.items():
+        active = label == preset_label
+        btn.setProperty("nmeaPresetActive", active)
+        btn.style().unpolish(btn)
+        btn.style().polish(btn)
     sync = getattr(parent, "_sync_nmea_mode_ui", None)
     if callable(sync):
         sync()
@@ -36,6 +44,11 @@ def _on_type_check_toggled(parent: QtWidgets.QWidget) -> None:
     if checks and rb_pass is not None and rb_strict is not None:
         if rb_pass.isChecked() and any(cb.isChecked() for cb in checks.values()):
             rb_strict.setChecked(True)
+    preset_buttons = getattr(parent, "_nmea_preset_buttons", {})
+    for btn in preset_buttons.values():
+        btn.setProperty("nmeaPresetActive", False)
+        btn.style().unpolish(btn)
+        btn.style().polish(btn)
     sync = getattr(parent, "_sync_nmea_mode_ui", None)
     if callable(sync):
         sync()
@@ -109,6 +122,7 @@ def build_modern_nmea_settings(parent: QtWidgets.QWidget) -> QtWidgets.QWidget:
 
     preset_row = QtWidgets.QHBoxLayout()
     preset_row.setSpacing(8)
+    parent._nmea_preset_buttons = {}
     for label, types in (
         ("Survey GPS", _SURVEY_TYPES),
         ("Position only", _POSITION_TYPES),
@@ -117,6 +131,7 @@ def build_modern_nmea_settings(parent: QtWidgets.QWidget) -> QtWidgets.QWidget:
     ):
         btn = QtWidgets.QPushButton(label)
         btn.setObjectName("modernNmeaPresetBtn")
+        btn.setProperty("nmeaPresetActive", label == "Survey GPS")
         tip = {
             "Survey GPS": "Strict + GGA, RMC, ZDA — typical GNSS survey feed.",
             "Position only": "Strict + GGA only.",
@@ -124,7 +139,10 @@ def build_modern_nmea_settings(parent: QtWidgets.QWidget) -> QtWidgets.QWidget:
             "Checksum only": "Strict + no type filter — valid checksum required for all types.",
         }[label]
         btn.setToolTip(tip)
-        btn.clicked.connect(lambda _checked=False, t=types: _apply_strict_types(parent, t))
+        btn.clicked.connect(
+            lambda _checked=False, t=types, lbl=label: _apply_strict_types(parent, t, preset_label=lbl)
+        )
+        parent._nmea_preset_buttons[label] = btn
         preset_row.addWidget(btn)
     preset_row.addStretch(1)
     sp.addLayout(preset_row)
