@@ -227,7 +227,8 @@ def wire_connection_controls(win: QtWidgets.QWidget) -> None:
     win.btn_send_net.clicked.connect(lambda: win._send_manual("net"))
     win.btn_send_both.clicked.connect(lambda: win._send_manual("both"))
     win.btn_browse.clicked.connect(win._browse_log)
-    win.btn_clear_ui.clicked.connect(win.log_view.clear)
+    if hasattr(win, "btn_clear_ui"):
+        win.btn_clear_ui.clicked.connect(win._clear_live_log)
     if hasattr(win, "btn_save_live_log"):
         win.btn_save_live_log.clicked.connect(win._save_live_log)
     if hasattr(win, "chk_log_hex"):
@@ -247,6 +248,13 @@ def wire_connection_controls(win: QtWidgets.QWidget) -> None:
     ):
         if rb is not None:
             rb.toggled.connect(win._sync_nmea_mode_ui)
+    if hasattr(win, "_refresh_tools_page_status"):
+        com_cb = getattr(win, "com_cb", None)
+        if com_cb is not None:
+            com_cb.currentIndexChanged.connect(lambda *_: win._refresh_tools_page_status())
+        baud_edit = getattr(win, "baud_edit", None)
+        if baud_edit is not None:
+            baud_edit.currentIndexChanged.connect(lambda *_: win._refresh_tools_page_status())
     wire_status_bar(win)
 
 
@@ -453,10 +461,11 @@ def create_presets_tab(
     parent: QtWidgets.QWidget,
     *,
     include_advanced_net: bool = True,
+    embedded: bool = False,
 ) -> QtWidgets.QWidget:
     from ui.presets_panel import create_presets_tab as _build
 
-    return _build(parent, include_advanced_net=include_advanced_net)
+    return _build(parent, include_advanced_net=include_advanced_net, embedded=embedded)
 
 
 def create_net_tab_scroll(parent: QtWidgets.QWidget) -> QtWidgets.QScrollArea:
@@ -478,20 +487,22 @@ def create_net_tab_scroll(parent: QtWidgets.QWidget) -> QtWidgets.QScrollArea:
     return scroll
 
 
-def create_nmea_controls(parent: QtWidgets.QWidget) -> QtWidgets.QWidget:
+def create_nmea_controls(parent: QtWidgets.QWidget, *, embedded: bool = False) -> QtWidgets.QWidget:
     from ui.tool_tabs import _scrollable
 
     w = QtWidgets.QWidget()
     w.setObjectName("toolTabScrollHost")
     v = QtWidgets.QVBoxLayout(w)
-    v.setContentsMargins(14, 14, 14, 14)
-    hint = QtWidgets.QLabel(
-        "Mode is stored in Tools → Presets when you Save or Save as…. "
-        "Loading a preset restores these radios (and strict sentence types)."
-    )
-    hint.setWordWrap(True)
-    hint.setObjectName("tabHint")
-    v.addWidget(hint)
+    margins = 0 if embedded else 14
+    v.setContentsMargins(margins, margins, margins, margins)
+    if not embedded:
+        hint = QtWidgets.QLabel(
+            "Mode is stored in Tools → Presets when you Save or Save as…. "
+            "Loading a preset restores these radios (and strict sentence types)."
+        )
+        hint.setWordWrap(True)
+        hint.setObjectName("tabHint")
+        v.addWidget(hint)
     parent.nmea_mode_group = QtWidgets.QButtonGroup(parent)
     parent.rb_nmea_passthrough = QtWidgets.QRadioButton("Passthrough (recommended)")
     parent.rb_nmea_strict = QtWidgets.QRadioButton("Strict + sentence filter")
@@ -530,6 +541,8 @@ def create_nmea_controls(parent: QtWidgets.QWidget) -> QtWidgets.QWidget:
         parent.rb_nmea_raw,
         *parent._nmea_type_checks.values(),
     ]
+    if embedded:
+        return w
     return _scrollable(w)
 
 
@@ -708,16 +721,16 @@ def create_theme_controls(parent: QtWidgets.QWidget) -> QtWidgets.QWidget:
     return _scrollable(host)
 
 
-def create_send_controls(parent: QtWidgets.QWidget) -> QtWidgets.QWidget:
+def create_send_controls(parent: QtWidgets.QWidget, *, embedded: bool = False) -> QtWidgets.QWidget:
     from ui.tool_tabs import build_send_tab
 
-    return build_send_tab(parent)
+    return build_send_tab(parent, embedded=embedded)
 
 
-def create_system_terminal_tab(parent: QtWidgets.QWidget) -> QtWidgets.QWidget:
+def create_system_terminal_tab(parent: QtWidgets.QWidget, *, embedded: bool = False) -> QtWidgets.QWidget:
     from ui.system_terminal import build_system_terminal_tab
 
-    return build_system_terminal_tab(parent)
+    return build_system_terminal_tab(parent, embedded=embedded)
 
 
 def create_diagnostics_controls(parent: QtWidgets.QWidget) -> QtWidgets.QWidget:

@@ -37,6 +37,8 @@ class TestBridgeNavIdle(unittest.TestCase):
         bridge._hz_remote_times.clear()
         bridge._hz_gui_times.clear()
         bridge._hz_serial_times.clear()
+        bridge._hz_fix_n2s_times.clear()
+        bridge._hz_fix_s2n_times.clear()
         idle = bridge.navigation_quality_stats()
         self.assertEqual(idle.get("summary"), "No Data Stream")
         self.assertEqual(idle.get("num_sats"), 0)

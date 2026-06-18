@@ -80,6 +80,16 @@ class TestSerialHwidRemap(unittest.TestCase):
         self.assertTrue(ok)
         self.assertEqual(bridge.com, "COM12")
 
+    def test_try_remap_by_hwid_without_error_text(self) -> None:
+        bridge = SerialNetBridge.__new__(SerialNetBridge)
+        bridge.com = "COM7"
+        bridge._serial_hwid = "USB\\VID_1234"
+        bridge._ui_log = MagicMock()
+        with patch("bridge_core._find_com_by_hwid", return_value="COM12"):
+            ok = bridge._try_remap_com_by_hwid()
+        self.assertTrue(ok)
+        self.assertEqual(bridge.com, "COM12")
+
 
 if __name__ == "__main__":
     unittest.main()

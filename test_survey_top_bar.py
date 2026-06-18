@@ -281,6 +281,56 @@ class SurveyTopBarTests(unittest.TestCase):
         self.assertEqual(snap_insert_index(45, rects), 1)
         self.assertEqual(snap_insert_index(200, rects), 2)
 
+    def test_cluster_layout_content_sized_not_stretched(self) -> None:
+        app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+        bar = SurveyTopBar()
+        for key, label in (("view", "View"), ("hud", "HUD"), ("ui_switch", "Layout")):
+            btn = QtWidgets.QToolButton()
+            configure_topbar_button(btn, label)
+            bar.register(key, label, btn, pin_right=(key == "ui_switch"))
+        bar.set_layout_mode("cluster")
+        bar.set_interactive_chrome(False)
+        bar.set_prefs(["view", "hud", "ui_switch"], set())
+        host = QtWidgets.QWidget()
+        host.resize(900, 40)
+        lay = QtWidgets.QHBoxLayout(host)
+        bar.embed_track_in(host, lay)
+        host.show()
+        app.processEvents()
+        bar._apply_cluster_layout()
+        keys = bar._visible_keys()
+        total = sum(bar._chips[k].width() for k in keys)
+        self.assertLess(total, 900 // 2)
+        view = bar.chip("view")
+        self.assertIsNotNone(view)
+        assert view is not None
+        self.assertFalse(view._grip.isVisible())
+        self.assertFalse(view._resize_edge.isVisible())
+
+    def test_cluster_layout_survives_pending_spring_timer(self) -> None:
+        app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+        bar = SurveyTopBar()
+        for key, label in (("view", "View"), ("hud", "HUD"), ("ui_switch", "Layout")):
+            btn = QtWidgets.QToolButton()
+            configure_topbar_button(btn, label)
+            bar.register(key, label, btn, pin_right=(key == "ui_switch"))
+        bar.set_prefs(["view", "hud", "ui_switch"], set(), {"view": 2.0, "hud": 1.0})
+        bar._spring_layout_timer.start(16)
+        bar.set_layout_mode("cluster")
+        bar.set_interactive_chrome(False)
+        host = QtWidgets.QWidget()
+        host.resize(900, 40)
+        lay = QtWidgets.QHBoxLayout(host)
+        bar.embed_track_in(host, lay)
+        host.show()
+        app.processEvents()
+        bar._spring_layout_timer.stop()
+        bar._apply_spring_layout()
+        bar._apply_cluster_layout()
+        keys = bar._visible_keys()
+        total = sum(bar._chips[k].width() for k in keys)
+        self.assertLess(total, 900 // 2)
+
 
 if __name__ == "__main__":
     unittest.main()

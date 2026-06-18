@@ -59,6 +59,17 @@ class TestLineAssembler(unittest.TestCase):
         self.assertEqual(len(r.forward), 1)
         self.assertTrue(r.forward[0].endswith(b"\r\n"))
 
+    def test_strict_reject_counts_ingress(self) -> None:
+        asm = NmeaLineAssembler()
+        filt = NmeaFilter(enabled_types={"GGA"})
+        gga = b"$GPGGA,123519,4807.038,N,01131.000,E,1,08,0.9,545.4,M,46.9,M,,*47\r\n"
+        rmc = b"$GPRMC,123519,A,4807.038,N,01131.000,E,022.4,084.4,230394,003.1,W*6A\r\n"
+        r = asm.feed(gga + rmc, NmeaMode.STRICT, filt)
+        self.assertEqual(r.ingress_lines, 2)
+        self.assertEqual(r.ingress_fix_lines, 1)
+        self.assertEqual(len(r.forward), 1)
+        self.assertEqual(len(r.rejected), 1)
+
 
 class TestNmeaSentenceType(unittest.TestCase):
     def test_sddpt_is_dpt_not_dbt(self) -> None:

@@ -21,12 +21,18 @@ from ui.registry import UI_STANDARD
 
 class TestProductUiDefaults(unittest.TestCase):
     def test_sanitize_strips_web_dashboard_token_storage(self) -> None:
+        grid = (
+            '[{"id":"com-setup","x":0,"y":0,"w":6,"h":4},'
+            '{"id":"status","x":6,"y":0,"w":6,"h":5},'
+            '{"id":"map","x":0,"y":5,"w":6,"h":4},'
+            '{"id":"log","x":0,"y":13,"w":12,"h":6}]'
+        )
         raw = {
             "web_dashboard": {
                 "layout_mode": "gridstack",
                 "local_storage": {
                     "nmea-bridge-web-token": "secret",
-                    "nmea-gridstack-layout-v2": "[]",
+                    "nmea-gridstack-layout-v2": grid,
                 },
             },
         }

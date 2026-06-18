@@ -79,6 +79,26 @@ class TestWebHandoff(unittest.TestCase):
         self.assertTrue(_phone_tools_tab_active(win))
         win._refresh_phone_tab_qr.assert_called_once()
 
+    def test_modern_ui_skips_floating_qr(self) -> None:
+        win = QtWidgets.QWidget()
+        win._ui_mode = "modern"  # type: ignore[attr-defined]
+        win.chk_web_enabled = QtWidgets.QCheckBox()
+        win.chk_web_enabled.setChecked(True)
+        win.chk_web_lan = QtWidgets.QCheckBox()
+        win.chk_web_lan.setChecked(True)
+        calls: list[str] = []
+        win._refresh_phone_tab_qr = lambda: calls.append("qr")  # type: ignore[attr-defined]
+        win._sync_modern_phone_qr_btn = mock.Mock()  # type: ignore[attr-defined]
+
+        with mock.patch("ui.connect_qr_overlay.connect_qr_should_show", return_value=True):
+            refresh_connect_qr_overlay(win)
+
+        floater = getattr(win, "_connect_qr_overlay", None)
+        if floater is not None:
+            self.assertFalse(floater.isVisible())
+        self.assertEqual(calls, ["qr"])
+        win._sync_modern_phone_qr_btn.assert_called_once()
+
 
 if __name__ == "__main__":
     unittest.main()

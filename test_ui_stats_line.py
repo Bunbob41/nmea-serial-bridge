@@ -4,7 +4,10 @@ from __future__ import annotations
 import unittest
 
 from ui.stats_line import (
+    backpressure_alert_kind,
+    format_backpressure_chip,
     format_live_stats_line,
+    format_running_hz_chip,
     stats_snapshot_from_merged,
     transport_alert_active,
 )
@@ -186,6 +189,70 @@ class TestFormatLiveStatsLine(unittest.TestCase):
         )
         self.assertIn("GNSS:", s)
         self.assertIn("RTK", s)
+
+
+class TestBackpressureChip(unittest.TestCase):
+    def test_chip_hidden_when_healthy(self) -> None:
+        self.assertFalse(
+            transport_alert_active(
+                {"drops_n2s": 0, "drops_s2n": 0, "rej_n2s": 0, "rej_s2n": 0, "n2s_q": 0, "s2n_q": 0}
+            )
+        )
+
+    def test_chip_text_for_drops(self) -> None:
+        text, kind = format_backpressure_chip(
+            {"drops_n2s": 5, "drops_s2n": 0, "rej_n2s": 0, "rej_s2n": 0, "n2s_q": 0, "s2n_q": 0}
+        )
+        self.assertIn("5 drops", text)
+        self.assertEqual(kind, "error")
+        self.assertEqual(backpressure_alert_kind({"drops_n2s": 1}), "error")
+
+    def test_chip_text_for_rejects_only(self) -> None:
+        text, kind = format_backpressure_chip(
+            {"drops_n2s": 0, "drops_s2n": 0, "rej_n2s": 2, "rej_s2n": 0, "n2s_q": 0, "s2n_q": 0}
+        )
+        self.assertIn("2 rej", text)
+        self.assertEqual(kind, "warn")
+
+
+    def test_running_hz_chip_shows_gnss_fix_rate(self) -> None:
+        text, tip = format_running_hz_chip(
+            {
+                "hz_fix_down": 1.0,
+                "hz_fix_up": 0.0,
+                "hz_down": 18.0,
+                "hz_up": 0.0,
+                "hz_gui": 0.0,
+                "drops_n2s": 0,
+                "drops_s2n": 0,
+                "rej_n2s": 0,
+                "rej_s2n": 0,
+                "n2s_q": 0,
+                "s2n_q": 0,
+                "lines_down": 100,
+                "lines_up": 0,
+            }
+        )
+        self.assertIn("GNSS 1.0 Hz", text)
+        self.assertIn("18 msg/s", text)
+        self.assertNotIn("↓", text)
+        self.assertNotIn("↑", text)
+        self.assertIn("18.0", tip)
+        self.assertIn("GGA", tip)
+
+    def test_running_hz_chip_fallback_no_arrows(self) -> None:
+        text, _tip = format_running_hz_chip(
+            {
+                "hz_fix_down": 0.0,
+                "hz_fix_up": 0.0,
+                "hz_down": 8.0,
+                "hz_up": 0.0,
+                "hz_gui": 0.0,
+            }
+        )
+        self.assertEqual(text, "net 8.0/s")
+        self.assertNotIn("↓", text)
+        self.assertNotIn("↑", text)
 
 
 if __name__ == "__main__":

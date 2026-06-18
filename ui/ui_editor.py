@@ -55,7 +55,10 @@ MAIN_TAB_HINTS: dict[str, str] = {
     "Connect": "COM, UDP/TCP, Start/Stop",
     "Log": "Bridge log and filters",
     "Tools": "Presets, Phone, NMEA, Theme, Guide",
+    "Activity": "Live bridge traffic, terminal, filters, and pause/save",
+    "Control": "COM, baud, UDP/TCP listen, and connection presets",
     "Presets": "Named COM/UDP presets",
+    "Hub": "Connection hub — scan, fan-out, and quick picks",
     "NMEA": "Passthrough, strict, or raw",
     "Theme": "Optional colors (bench)",
     "Guide": "UDP/TCP workflows",
@@ -63,6 +66,9 @@ MAIN_TAB_HINTS: dict[str, str] = {
     "Terminal": "Local PowerShell / cmd",
     "Inject": "Send test NMEA to serial / network",
     "Diagnostics": "Bench checks and file log",
+    "Black box": "Raw session capture (.raw)",
+    "File log": "Rotating bridge text log",
+    "Checks": "Automated bench checks",
 }
 
 DEFAULT_TOPBAR_HIDDEN_CHIPS: frozenset[str] = frozenset(
@@ -365,6 +371,13 @@ class UiEditorDialog(QtWidgets.QDialog):
                 "and main tabs. Use <b>↑ ↓</b> on each row to reorder; checkboxes show or hide. "
                 "<b>OK</b> applies. <b>Restore defaults</b> resets only the tab you are viewing."
             )
+        elif ui_mode == "modern":
+            intro_text = (
+                "Customize the <b>Modern</b> layout: header tiles, "
+                "<b>Activity / Control / Tools</b> tabs, and the Tools sidebar "
+                "(Hub, Presets, NMEA, …). Use <b>↑ ↓</b> to reorder; checkboxes show or hide. "
+                "<b>OK</b> applies."
+            )
         else:
             intro_text = (
                 "Customize the <b>Field</b> layout: survey top bar and Tools drawer tabs. "
@@ -440,8 +453,13 @@ class UiEditorDialog(QtWidgets.QDialog):
             tab_rows = build_main_tab_editor_rows(
                 catalog, hidden_tabs, ui_mode=ui_mode, tabs_key=tabs_key
             )
+            main_intro = (
+                "Tabs under the top bar: Activity, Control, Tools."
+                if ui_mode == "modern"
+                else "Tabs under the top bar: Connect, Log, Tools."
+            )
             self._main_tabs_page = _EditorListPage(
-                "Tabs under the top bar: Connect, Log, Tools.",
+                main_intro,
                 legend="↑ ↓ reorder. Checkbox = show tab. At least one tab must stay on.",
             )
             self._main_tabs_page.set_tab_rows(tab_rows)
@@ -458,7 +476,11 @@ class UiEditorDialog(QtWidgets.QDialog):
             tools_intro = (
                 "Sidebar inside the Tools main tab (Presets, Phone, NMEA, …)."
                 if ui_mode == "standard"
-                else "Tabs inside the Field Tools drawer."
+                else (
+                    "Persistent left sidebar (Control, Setup, Logging, Bench)."
+                    if ui_mode == "modern"
+                    else "Tabs inside the Field Tools drawer."
+                )
             )
             self._tools_tabs_page = _EditorListPage(
                 tools_intro,
@@ -516,16 +538,30 @@ class UiEditorDialog(QtWidgets.QDialog):
             )
         if self._main_tabs_page is not None:
             catalog = getattr(self._win, "_tab_catalog", {}).get("main_tabs", {})
+            ui_mode = getattr(self._win, "_ui_mode", "standard")
+            if ui_mode == "modern":
+                default_names = ["Activity", "Control", "Tools"]
+            else:
+                default_names = list(catalog.keys())
             tab_rows = [
                 (name, name, MAIN_TAB_HINTS.get(name, ""), True, True)
-                for name in catalog
+                for name in default_names
+                if name in catalog
             ]
             self._main_tabs_page.set_tab_rows(tab_rows)
         if self._tools_tabs_page is not None:
             catalog = getattr(self._win, "_tab_catalog", {}).get("tools_tabs", {})
+            ui_mode = getattr(self._win, "_ui_mode", "standard")
+            if ui_mode == "modern":
+                from ui.tool_tabs import build_modern_tools_nav
+
+                default_names = [lbl for _sid, lbl, _icon in build_modern_tools_nav()]
+            else:
+                default_names = list(catalog.keys())
             tab_rows = [
                 (name, name, MAIN_TAB_HINTS.get(name, ""), True, True)
-                for name in catalog
+                for name in default_names
+                if name in catalog
             ]
             self._tools_tabs_page.set_tab_rows(tab_rows)
 
@@ -558,6 +594,19 @@ class UiEditorDialog(QtWidgets.QDialog):
         )
         if visible_order:
             save_tab_order(getattr(win, "_ui_mode", "standard"), tabs_key, visible_order)
+        if tabs_key == "tools_tabs" and getattr(win, "_tools_nav_buttons", None) is not None:
+            if hasattr(win, "_rebuild_modern_tools_nav_from_state"):
+                try:
+                    win._rebuild_modern_tools_nav_from_state(tabs_key)  # type: ignore[attr-defined]
+                    if hasattr(win, "_persist_modern_tools_nav_state"):
+                        win._persist_modern_tools_nav_state(tabs_key)  # type: ignore[attr-defined]
+                except Exception as exc:
+                    if hasattr(win, "_log_ui"):
+                        win._log_ui(
+                            f"[UI editor] Modern Tools sidebar rebuild failed: {exc}"
+                        )  # type: ignore[attr-defined]
+                    return False
+            return True
         if tabs_key == "tools_tabs" and getattr(win, "_tools_nav", None) is not None:
             if hasattr(win, "_rebuild_tools_nav_from_state"):
                 try:
@@ -570,6 +619,21 @@ class UiEditorDialog(QtWidgets.QDialog):
                             f"[UI editor] Tools sidebar rebuild failed: {exc}"
                         )  # type: ignore[attr-defined]
                     return False
+            return True
+        modern_main = getattr(win, "_modern_main_tabs", None)
+        if tabs_key == "main_tabs" and modern_main is not None and hasattr(
+            win, "_rebuild_modern_main_tabs_from_state"
+        ):
+            try:
+                win._rebuild_modern_main_tabs_from_state()  # type: ignore[attr-defined]
+                if hasattr(win, "_persist_tab_state"):
+                    win._persist_tab_state(modern_main, tabs_key)  # type: ignore[attr-defined]
+            except Exception as exc:
+                if hasattr(win, "_log_ui"):
+                    win._log_ui(
+                        f"[UI editor] Modern main tab rebuild failed: {exc}"
+                    )  # type: ignore[attr-defined]
+                return False
             return True
         tabs = (
             getattr(win, "_main_tabs", None)

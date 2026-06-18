@@ -56,7 +56,10 @@ from log_serial_coalesce import serial_timeout_line_suppress
 from py_interpreter import cli_python_gui_spawn, frozen_helper_program_args, qprocess_attach_no_console
 from ui.bench_setup import extract_operator_guide_section, show_bench_setup_dialog
 from ui.stats_line import (
+    format_backpressure_chip,
+    format_backpressure_tooltip,
     format_live_stats_line,
+    format_running_hz_chip,
     stats_snapshot_from_merged,
     transport_alert_active,
 )
@@ -126,6 +129,7 @@ from ui.ui_prefs import (
     load_tab_order,
     load_top_bar_prefs,
     load_hidden_tabs,
+    prepare_local_backup_dir_for_session,
     save_file_log_prefs,
     save_local_backup_prefs,
     save_ntrip_prefs,
@@ -155,7 +159,6 @@ _REPO_ROOT = _resolve_repo_root()
 _DEFAULT_DIAG_CARD_ORDER = [
     "file_log",
     "screen_log",
-    "traffic_quality",
     "automated_checks",
 ]
 
@@ -271,6 +274,9 @@ class BridgeLogicMixin:
         self._com_lock_state: Optional[object] = None
         self._com_lock_probe_key: tuple[str, int] = ("", 0)
         self._com_lock_probe_inflight: tuple[str, int] = ("", 0)
+        self._last_bridge_com_reported: str = ""
+        self._hub_serial_status_cache: dict[str, str] = {}
+        self._hub_programmatic_com_update = False
 
     @staticmethod
     def _qt_widget_alive(widget: Optional[QtWidgets.QWidget]) -> bool:
@@ -322,16 +328,22 @@ class BridgeLogicMixin:
 
     def _finalize_ui(self) -> None:
         lay = self.layout()
+        embed_header = getattr(self, "_topbar_embed_in_header", False)
         if isinstance(lay, QtWidgets.QVBoxLayout) and not getattr(self, "_survey_menu_placed", False):
             bar = self._create_survey_menu_bar()
             legend = self._create_shortcuts_legend_panel()
-            if self._topbar_position == "bottom":
+            self._survey_menu_placed = True
+            if embed_header:
+                legend.hide()
+                embed = getattr(self, "_embed_survey_bar_in_header", None)
+                if callable(embed):
+                    embed(bar)
+            elif self._topbar_position == "bottom":
                 lay.addWidget(legend)
                 lay.addWidget(bar)
             else:
                 lay.insertWidget(0, bar)
                 lay.insertWidget(1, legend)
-            self._survey_menu_placed = True
 
         from ui.controls import wire_connection_controls
         wire_connection_controls(self)
@@ -345,6 +357,7 @@ class BridgeLogicMixin:
         self._refresh_nmea_status_chip()
         self._sync_bench_setup_button_visibility()
         self._rebuild_recent_sessions_menu()
+        self._rebuild_stats_export_menu()
         self._refresh_preset_list()
         self._sync_preset_action_buttons()
         self._apply_theme(self._theme_id, persist=False)
@@ -407,21 +420,11 @@ class BridgeLogicMixin:
         act_hud = QtGui.QAction("HUD…", self)
         act_hud.setShortcut(QtGui.QKeySequence("Ctrl+Shift+S"))
         act_hud.setStatusTip(
-            "Open Survey HUD (Hz, GNSS, session) and Dashboard (bridge trust & reliability)"
+            "Open live metrics (Hz, GNSS, drops, transport health)"
         )
         act_hud.triggered.connect(self._open_hud)
         self.addAction(act_hud)
         view_menu.addAction(act_hud)
-
-        act_pop = QtGui.QAction("Survey HUD only…", self)
-        act_pop.setStatusTip("Live metrics window only (Hz, GNSS, backpressure tiles)")
-        act_pop.triggered.connect(self._open_stats_popout)
-        view_menu.addAction(act_pop)
-
-        act_dashboard = QtGui.QAction("Dashboard only…", self)
-        act_dashboard.setStatusTip("Bridge trust panel only (reliability checks & connection chips)")
-        act_dashboard.triggered.connect(self._open_dashboard)
-        view_menu.addAction(act_dashboard)
 
         act_ui_editor = QtGui.QAction("UI editor…", self)
         act_ui_editor.setStatusTip(self._ui_editor_status_tip())
@@ -625,6 +628,13 @@ class BridgeLogicMixin:
         """First impression: full top-bar labels when possible, else short readable tiles."""
         if getattr(self, "_readable_topbar_done", False):
             return
+        if getattr(self, "_topbar_embed_in_header", False):
+            bar = getattr(self, "_survey_top_bar", None)
+            if bar is not None:
+                bar.set_host_window(self)
+                bar._schedule_spring_layout()
+            self._readable_topbar_done = True
+            return
         self._readable_topbar_done = True
         bar = getattr(self, "_survey_top_bar", None)
         if bar is None:
@@ -766,11 +776,28 @@ class BridgeLogicMixin:
             )
             self._rebuild_tabs_from_state(main_tabs, "main_tabs")
 
+        modern_main = getattr(self, "_modern_main_tabs", None)
+        if modern_main is not None and "main_tabs" in getattr(self, "_tab_catalog", {}):
+            hidden = set(load_hidden_tabs(ui_mode, "main_tabs"))
+            if hasattr(self, "_migrate_modern_main_hidden"):
+                hidden = self._migrate_modern_main_hidden(hidden)  # type: ignore[attr-defined]
+            self._tab_hidden["main_tabs"] = hidden
+            if hasattr(self, "_rebuild_modern_main_tabs_from_state"):
+                self._rebuild_modern_main_tabs_from_state()
+
         if getattr(self, "_tools_nav", None) is not None:
             self._tab_hidden["tools_tabs"] = set(
                 load_hidden_tabs(ui_mode, "tools_tabs")
             )
             self._rebuild_tools_nav_from_state("tools_tabs")
+
+        if getattr(self, "_tools_nav_buttons", None) is not None and getattr(
+            self, "_ui_mode", ""
+        ) == "modern":
+            self._tab_hidden["tools_tabs"] = set(
+                load_hidden_tabs(ui_mode, "tools_tabs")
+            )
+            self._rebuild_modern_tools_nav_from_state("tools_tabs")
 
         drawer = getattr(self, "_drawer_tabs", None)
         if drawer is not None and "tools_tabs" in getattr(self, "_tab_catalog", {}):
@@ -1096,7 +1123,17 @@ class BridgeLogicMixin:
                 chosen = menu.exec(bar.mapToGlobal(pos))
                 if chosen is hide_action and tabs.count() > 1:
                     self._tab_hidden.setdefault(key, set()).add(label)
-                    self._rebuild_tabs_from_state(tabs, key)
+                    if key == "main_tabs" and tabs is getattr(
+                        self, "_modern_main_tabs", None
+                    ):
+                        self._rebuild_modern_main_tabs_from_state()
+                    elif key == "tools_tabs" and getattr(
+                        self, "_tools_nav_buttons", None
+                    ) is not None:
+                        self._rebuild_modern_tools_nav_from_state(key)
+                        self._persist_modern_tools_nav_state(key)
+                    else:
+                        self._rebuild_tabs_from_state(tabs, key)
                     self._persist_tab_state(tabs, key)
                 return
         if self._populate_hidden_tab_restore_actions(menu, key):
@@ -1109,6 +1146,15 @@ class BridgeLogicMixin:
         if key == "tools_tabs" and getattr(self, "_tools_nav", None) is not None:
             self._rebuild_tools_nav_from_state(key)
             self._persist_tools_nav_state(key)
+            return
+        if key == "tools_tabs" and getattr(self, "_tools_nav_buttons", None) is not None:
+            self._rebuild_modern_tools_nav_from_state(key)
+            self._persist_modern_tools_nav_state(key)
+            return
+        modern_main = getattr(self, "_modern_main_tabs", None)
+        if key == "main_tabs" and modern_main is not None:
+            self._rebuild_modern_main_tabs_from_state()
+            self._persist_tab_state(modern_main, key)
             return
         tabs = getattr(self, "_main_tabs", None) if key == "main_tabs" else getattr(self, "_drawer_tabs", None)
         if tabs is None:
@@ -1124,6 +1170,15 @@ class BridgeLogicMixin:
         if key == "tools_tabs" and getattr(self, "_tools_nav", None) is not None:
             self._rebuild_tools_nav_from_state(key)
             self._persist_tools_nav_state(key)
+            return
+        if key == "tools_tabs" and getattr(self, "_tools_nav_buttons", None) is not None:
+            self._rebuild_modern_tools_nav_from_state(key)
+            self._persist_modern_tools_nav_state(key)
+            return
+        modern_main = getattr(self, "_modern_main_tabs", None)
+        if key == "main_tabs" and modern_main is not None:
+            self._rebuild_modern_main_tabs_from_state()
+            self._persist_tab_state(modern_main, key)
             return
         tabs = getattr(self, "_main_tabs", None) if key == "main_tabs" else getattr(self, "_drawer_tabs", None)
         if tabs is None:
@@ -1151,9 +1206,22 @@ class BridgeLogicMixin:
                 "Show or hide top bar tiles, Connect sections, main tabs, and "
                 "Tools sidebar items (Presets, Phone, NMEA, …)"
             )
+        if mode == "modern":
+            return (
+                "Show or hide header tiles and Tools sidebar items "
+                "(Control, Activity, Hub, Presets, …)"
+            )
         return "Show or hide top bar tiles and Tools drawer tabs (Field layout)"
 
     def _toggle_log_visibility_shortcut(self) -> None:
+        if getattr(self, "_ui_mode", "") == "modern":
+            opener = getattr(self, "_open_modern_section_by_sid", None)
+            if callable(opener):
+                opener("activity")
+            view = getattr(getattr(self, "bridge_terminal", None), "_view", None)
+            if isinstance(view, QtWidgets.QWidget):
+                view.setFocus(QtCore.Qt.FocusReason.ShortcutFocusReason)
+            return
         if getattr(self, "_ui_mode", "") == "standard":
             self._focus_log_tab()
             return
@@ -1166,6 +1234,17 @@ class BridgeLogicMixin:
             chk.setChecked(not chk.isChecked())
 
     def _jump_to_tab_index(self, idx: int) -> None:
+        if getattr(self, "_ui_mode", "") == "modern":
+            buttons = getattr(self, "_tools_nav_buttons", None)
+            stack = getattr(self, "_tools_stack", None)
+            if buttons and stack is not None and 0 <= idx < len(buttons):
+                self._tools_nav_select(idx)
+            return
+        modern = getattr(self, "_modern_main_tabs", None)
+        if modern is not None:
+            if 0 <= idx < modern.count() and modern.isTabVisible(idx):
+                modern.setCurrentIndex(idx)
+            return
         tabs = getattr(self, "_main_tabs", None) or getattr(self, "_drawer_tabs", None)
         if tabs is None:
             return
@@ -1179,6 +1258,13 @@ class BridgeLogicMixin:
         view = getattr(self, "log_view", None)
         if view is not None:
             view.clear()
+        panel = getattr(self, "bridge_terminal", None)
+        if panel is not None:
+            try:
+                panel.clear_display()
+            except Exception:
+                pass
+        self._refresh_tools_page_status()
 
     def _save_live_log(self) -> None:
         view = getattr(self, "log_view", None)
@@ -1325,12 +1411,216 @@ class BridgeLogicMixin:
         strict_on = bool(
             getattr(self, "rb_nmea_strict", None) and self.rb_nmea_strict.isChecked()
         )
+        raw_on = bool(
+            getattr(self, "rb_nmea_raw", None) and self.rb_nmea_raw.isChecked()
+        )
         box = getattr(self, "_nmea_strict_types_box", None)
         if box is not None:
             box.setEnabled(strict_on)
         for cb in getattr(self, "_nmea_type_checks", {}).values():
             cb.setEnabled(strict_on)
+        strict_panel = getattr(self, "_nmea_strict_panel", None)
+        if strict_panel is not None:
+            strict_panel.setVisible(strict_on)
+        raw_note = getattr(self, "_nmea_raw_note", None)
+        if raw_note is not None:
+            raw_note.setVisible(raw_on)
+        # Prime the bridge terminal hex toggle to match the selected mode so it
+        # is ready before the bridge starts (auto-on for raw/binary presets).
+        panel = getattr(self, "bridge_terminal", None)
+        if panel is not None and not self._is_bridge_running():
+            try:
+                panel.set_raw_mode(raw_on)
+            except Exception:
+                pass
+        active_key = self._nmea_mode_label()
+        for card in self.findChildren(QtWidgets.QFrame, "modernNmeaModeCard"):
+            key = str(card.property("nmeaModeKey") or "")
+            if key == active_key:
+                card.setProperty("modeCard", "active")
+            elif bool(card.property("recommendedCard")):
+                card.setProperty("modeCard", "recommended")
+            else:
+                card.setProperty("modeCard", "normal")
+            style = card.style()
+            if style is not None:
+                style.unpolish(card)
+                style.polish(card)
+        self._update_nmea_config_summary()
         self._sync_log_hex_toggle()
+
+    def _update_nmea_config_summary(self) -> None:
+        lbl = getattr(self, "lbl_nmea_config_summary", None)
+        if lbl is None:
+            self._refresh_nmea_status_chip()
+            return
+        mode = self._nmea_mode_label()
+        checks = getattr(self, "_nmea_type_checks", {})
+        if mode == "raw":
+            lbl.setText(
+                "Next Start: Raw binary — bytes forwarded without NMEA line assembly."
+            )
+            lbl.setProperty("summaryKind", "raw")
+        elif mode == "passthrough":
+            lbl.setText(
+                "Next Start: Passthrough — all NMEA forwarded with minimal changes "
+                "(recommended for Trimble / survey UDP)."
+            )
+            lbl.setProperty("summaryKind", "ok")
+        else:
+            types = sorted(st for st, cb in checks.items() if cb.isChecked())
+            if types:
+                lbl.setText(
+                    "Next Start: Strict — checksum on · forwarding "
+                    f"{', '.join(types)} only."
+                )
+                lbl.setProperty("summaryKind", "strict")
+            else:
+                lbl.setText(
+                    "Next Start: Strict — checksum on · all sentence types allowed "
+                    "(use Quick picks or check types below to filter)."
+                )
+                lbl.setProperty("summaryKind", "warn")
+        style = lbl.style()
+        if style is not None:
+            style.unpolish(lbl)
+            style.polish(lbl)
+        self._refresh_nmea_status_chip()
+        self._refresh_tools_page_status()
+        self._refresh_nmea_preset_link()
+
+    def _refresh_nmea_preset_link(self) -> None:
+        lbl = getattr(self, "lbl_nmea_preset_link", None)
+        if lbl is None:
+            return
+        from ui.nmea_preset_link import format_nmea_preset_link
+
+        line, tip, kind = format_nmea_preset_link(self)
+        lbl.setText(line)
+        lbl.setToolTip(tip)
+        lbl.setProperty("summaryKind", kind)
+        style = lbl.style()
+        if style is not None:
+            style.unpolish(lbl)
+            style.polish(lbl)
+        target = self._nmea_target_preset_name()
+        for attr in ("btn_nmea_load_preset", "btn_nmea_save_preset"):
+            btn = getattr(self, attr, None)
+            if btn is not None:
+                btn.setEnabled(bool(target))
+        save_btn = getattr(self, "btn_nmea_save_preset", None)
+        if save_btn is not None and target:
+            save_btn.setText(f"Save NMEA to «{target}»")
+
+    def _nmea_target_preset_name(self) -> Optional[str]:
+        selected = self._selected_preset_name()
+        if selected:
+            return selected
+        active = (self._active_preset_name or "").strip()
+        return active or None
+
+    def _load_nmea_from_preset(self) -> None:
+        name = self._nmea_target_preset_name()
+        if not name:
+            QtWidgets.QMessageBox.information(
+                self,
+                "Load NMEA",
+                "Select a preset on Tools → Presets first.",
+            )
+            return
+        try:
+            data = load_preset(name)
+        except KeyError:
+            QtWidgets.QMessageBox.warning(
+                self,
+                "Load NMEA",
+                f"Preset «{name}» was not found.",
+            )
+            return
+        self._apply_preset_nmea_mode(data)
+        self._log_ui(f"[UI] Loaded NMEA from preset «{name}».")
+
+    def _save_nmea_to_preset(self) -> None:
+        name = self._nmea_target_preset_name()
+        if not name:
+            QtWidgets.QMessageBox.information(
+                self,
+                "Save NMEA",
+                "Select a preset on Tools → Presets first.",
+            )
+            return
+        try:
+            data = dict(load_preset(name))
+        except KeyError:
+            QtWidgets.QMessageBox.warning(
+                self,
+                "Save NMEA",
+                f"Preset «{name}» was not found.",
+            )
+            return
+        data.update(self._preset_nmea_from_ui())
+        boat = bool(data.get("pc_ip") or data.get("ins_ip"))
+        path = save_preset(name, data, boat_style=boat)
+        self._set_active_preset(name)
+        self._refresh_preset_list()
+        self._log_ui(f"[UI] Saved NMEA to preset «{name}» → {path}")
+
+    def _open_nmea_tools_page(self) -> None:
+        if getattr(self, "_ui_mode", "") == "modern":
+            opener = getattr(self, "_open_modern_tools_section", None)
+            if callable(opener):
+                opener("nmea")
+            return
+        tools_nav = getattr(self, "_tools_nav", None)
+        main_tabs = getattr(self, "_main_tabs", None)
+        if tools_nav is not None and main_tabs is not None:
+            for i in range(main_tabs.count()):
+                if main_tabs.tabText(i).lower() == "tools":
+                    main_tabs.setCurrentIndex(i)
+                    break
+            for row in range(tools_nav.count()):
+                item = tools_nav.item(row)
+                if item is not None and item.text().strip().lower() == "nmea":
+                    tools_nav.setCurrentRow(row)
+                    return
+        tabs = getattr(self, "_drawer_tabs", None)
+        if tabs is None:
+            return
+        drawer = getattr(self, "_drawer_btn", None)
+        if drawer is not None and not drawer.isChecked():
+            drawer.setChecked(True)
+        for i in range(tabs.count()):
+            if tabs.tabText(i).lower() == "nmea":
+                tabs.setCurrentIndex(i)
+                return
+
+    def _confirm_strict_start_if_needed(self) -> bool:
+        from ui.nmea_preset_link import strict_checksum_only_start
+
+        if not strict_checksum_only_start(self):
+            return True
+        box = QtWidgets.QMessageBox(self)
+        box.setIcon(QtWidgets.QMessageBox.Icon.Warning)
+        box.setWindowTitle("Strict mode — checksum only")
+        box.setText(
+            "Strict mode is on, but no sentence types are checked.\n\n"
+            "Every checksum-valid NMEA sentence will reach COM — this is not a type filter."
+        )
+        box.setInformativeText(
+            "Use Survey GPS on Tools → NMEA, or load a preset with strict types."
+        )
+        btn_start = box.addButton("Start anyway", QtWidgets.QMessageBox.ButtonRole.AcceptRole)
+        btn_nmea = box.addButton("Open NMEA", QtWidgets.QMessageBox.ButtonRole.ActionRole)
+        box.addButton(QtWidgets.QMessageBox.StandardButton.Cancel)
+        box.setDefaultButton(btn_nmea)
+        box.exec()
+        clicked = box.clickedButton()
+        if clicked == btn_nmea:
+            self._open_nmea_tools_page()
+            return False
+        if clicked == btn_start:
+            return True
+        return False
 
     def _sync_log_hex_toggle(self, *_args) -> None:
         chk = getattr(self, "chk_log_hex", None)
@@ -1366,6 +1656,7 @@ class BridgeLogicMixin:
             elide_status_label(chip, f"NMEA: {mode} · starting")
         else:
             elide_status_label(chip, f"NMEA: {mode}")
+        self._refresh_connection_health_chip()
         self._refresh_gnss_status_chip()
 
     def _refresh_gnss_status_chip(self) -> None:
@@ -1392,10 +1683,7 @@ class BridgeLogicMixin:
         )
         chip.setToolTip(format_gnss_status_tooltip(nav, running=running, raw_mode=raw_mode))
 
-    def _rebuild_recent_sessions_menu(self) -> None:
-        menu = getattr(self, "_recent_sessions_menu", None)
-        if menu is None:
-            return
+    def _populate_recent_sessions_menu(self, menu: QtWidgets.QMenu) -> None:
         menu.clear()
         sessions = load_recent_sessions()
         if not sessions:
@@ -1412,16 +1700,23 @@ class BridgeLogicMixin:
                 pin = "📌 " if bool(entry.get("pinned", False)) else ""
                 label = f"{pin}{com} @ {baud} · {host}:{port} · {mode}"
                 act = QtGui.QAction(label, self)
-
-                def _apply(e: dict = entry) -> None:
-                    self._apply_recent_session(e)
-
-                act.triggered.connect(_apply)
+                act.triggered.connect(
+                    lambda _checked=False, ent=entry: self._apply_recent_session(ent)
+                )
                 menu.addAction(act)
         menu.addSeparator()
         manage = QtGui.QAction("Manage recent sessions…", self)
         manage.triggered.connect(self._open_recent_sessions_manager)
         menu.addAction(manage)
+
+    def _rebuild_recent_sessions_menu(self) -> None:
+        for name in ("_recent_sessions_menu", "_modern_recent_menu"):
+            menu = getattr(self, name, None)
+            if menu is not None:
+                self._populate_recent_sessions_menu(menu)
+        btn = getattr(self, "_btn_header_recent", None)
+        if btn is not None:
+            btn.setEnabled(bool(load_recent_sessions()))
 
     def _open_recent_sessions_manager(self) -> None:
         dlg = QtWidgets.QDialog(self)
@@ -1523,6 +1818,7 @@ class BridgeLogicMixin:
         else:
             self.com_cb.insertItem(0, com)
             self.com_cb.setCurrentIndex(0)
+        self._control_network_dirty = False
         self.udp_host.setText(str(entry.get("udp_host", "0.0.0.0")))
         self.udp_port.setText(str(entry.get("udp_port", "10110")))
         nmea = str(entry.get("nmea_mode", "passthrough"))
@@ -1541,8 +1837,23 @@ class BridgeLogicMixin:
                 self.rb_nmea_passthrough.setChecked(True)
         self._sync_log_hex_toggle()
         self._refresh_nmea_status_chip()
+        refresh_health = getattr(self, "_refresh_connection_health_chip", None)
+        if callable(refresh_health):
+            refresh_health()
         baud_s = read_baud_widget(self.baud_edit)
         self._log_ui(f"[UI] Loaded recent session: {com} @ {baud_s} · NMEA {nmea}")
+        probe = getattr(self, "_schedule_com_lock_probe", None)
+        if callable(probe):
+            probe()
+        focus = getattr(self, "_focus_connect_tab", None)
+        if callable(focus):
+            focus()
+        refresh_tools = getattr(self, "_refresh_tools_page_status", None)
+        if callable(refresh_tools):
+            refresh_tools()
+        hint = getattr(self, "_apply_intent_hint_display", None)
+        if callable(hint):
+            hint()
 
     def _record_recent_session(self) -> None:
         push_recent_session(
@@ -1557,73 +1868,57 @@ class BridgeLogicMixin:
         )
         self._rebuild_recent_sessions_menu()
 
+    def _gather_stats_snapshot(self) -> dict:
+        from ui.session_stats_export import gather_session_stats_snapshot
+
+        return gather_session_stats_snapshot(self)
+
     def _copy_stats_to_clipboard(self) -> None:
-        mode = "udp_listen"
-        if self.chk_advanced_net.isChecked():
-            if self.rb_udp_remote.isChecked():
-                mode = "udp_remote"
-            elif self.rb_tcp_server.isChecked():
-                mode = "tcp_server"
-            elif self.rb_tcp_client.isChecked():
-                mode = "tcp_client"
-        com = self.com_cb.currentText().strip() or "?"
-        baud = read_baud_widget(self.baud_edit) or "?"
-        udp_host = self.udp_host.text().strip() or "0.0.0.0"
-        udp_port = self.udp_port.text().strip() or "10110"
-        if mode == "udp_remote":
-            net_detail = f"{self.remote_host.text().strip() or '?'}:{self.remote_port.text().strip() or '?'}"
-        elif mode == "tcp_server":
-            net_detail = (
-                f"{self.tcp_srv_host.text().strip() or '0.0.0.0'}:"
-                f"{self.tcp_srv_port.text().strip() or '4001'}"
-            )
-        elif mode == "tcp_client":
-            net_detail = (
-                f"{self.tcp_cli_host.text().strip() or '127.0.0.1'}:"
-                f"{self.tcp_cli_port.text().strip() or '4001'}"
-            )
-        else:
-            net_detail = f"{udp_host}:{udp_port}"
+        from ui.session_stats_export import format_stats_clipboard_text
 
-        running = self.bridge is not None
-        merged = self._merge_bridge_stats({}) if running else {}
-        snap = stats_snapshot_from_merged(merged)
-        nav = merged if running else {}
-
-        status_serial = (self.status_serial.text() or "").strip()
-        status_network = (self.status_network.text() or "").strip()
-        status_nmea = (self.status_nmea.text() or "").strip()
-        status_gnss = (getattr(self, "status_gnss", None).text() if hasattr(self, "status_gnss") else "") or ""
-        stats_line = (getattr(self, "lbl_stats", None).text() if hasattr(self, "lbl_stats") else "") or ""
-        preset = (self._active_preset_name or "").strip() or last_preset_name()
-        state = "running" if running else ("starting" if self._starting else "stopped")
-
-        text = (
-            "Serial Link stats snapshot\n"
-            f"state: {state}\n"
-            f"preset: {preset}\n"
-            f"serial: {com} @ {baud}\n"
-            f"network_mode: {mode}\n"
-            f"network_target: {net_detail}\n"
-            f"nmea_mode: {self._nmea_mode_label()}\n"
-            f"status_serial: {status_serial}\n"
-            f"status_network: {status_network}\n"
-            f"status_nmea: {status_nmea}\n"
-            f"status_gnss: {status_gnss.strip()}\n"
-            f"wire_hz_down: {snap['hz_down']:.2f}\n"
-            f"wire_hz_up: {snap['hz_up']:.2f}\n"
-            f"inject_hz: {snap['hz_gui']:.2f}\n"
-            f"drops_down: {snap['drops_n2s']}\n"
-            f"drops_up: {snap['drops_s2n']}\n"
-            f"rejects_down: {snap['rej_n2s']}\n"
-            f"rejects_up: {snap['rej_sn']}\n"
-            f"session_down: {snap['lines_down']}\n"
-            f"session_up: {snap['lines_up']}\n"
-            f"gnss_summary: {nav.get('summary', '—')}\n"
-            f"stats_line: {stats_line.strip()}"
-        ).strip()
+        snap = self._gather_stats_snapshot()
+        text = format_stats_clipboard_text(snap)
         QtWidgets.QApplication.clipboard().setText(text)
         self._log_ui(f"[UI] Copied stats: {text[:120]}{'…' if len(text) > 120 else ''}")
+
+    def _export_stats_csv(self) -> None:
+        from ui.session_stats_export import (
+            default_stats_csv_name,
+            format_stats_csv,
+        )
+
+        snap = self._gather_stats_snapshot()
+        default_name = default_stats_csv_name(snap)
+        path, _ = QtWidgets.QFileDialog.getSaveFileName(
+            self,
+            "Export session stats",
+            default_name,
+            "CSV files (*.csv);;All files (*)",
+        )
+        if not path:
+            return
+        try:
+            Path(path).write_text(format_stats_csv(snap), encoding="utf-8")
+        except OSError as exc:
+            QtWidgets.QMessageBox.warning(
+                self,
+                "Export failed",
+                f"Could not write stats CSV:\n{exc}",
+            )
+            return
+        self._log_ui(f"[UI] Exported stats CSV: {path}")
+
+    def _rebuild_stats_export_menu(self) -> None:
+        menu = getattr(self, "_modern_stats_menu", None)
+        if menu is None:
+            return
+        menu.clear()
+        copy_act = QtGui.QAction("Copy stats to clipboard", self)
+        copy_act.triggered.connect(self._copy_stats_to_clipboard)
+        menu.addAction(copy_act)
+        csv_act = QtGui.QAction("Save stats as CSV…", self)
+        csv_act.triggered.connect(self._export_stats_csv)
+        menu.addAction(csv_act)
 
     def _apply_theme(self, theme_id: str, *, persist: bool = True) -> None:
         if theme_id not in THEME_IDS:
@@ -1945,23 +2240,27 @@ class BridgeLogicMixin:
         self._stop_auto_discovery_thread()
 
     def _hide_to_tray(self) -> None:
-        from ui.tray_support import update_tray_tooltip
+        from ui.tray_support import sync_tray_menu_state, update_tray_tooltip
 
+        self.setWindowState(
+            self.windowState() & ~QtCore.Qt.WindowState.WindowMinimized
+        )
         self.hide()
         tray = getattr(self, "_tray_icon", None)
         if tray is None:
             return
         running = self._is_bridge_running()
         tip = (
-            "Serial Link — bridge running (double-click to show)"
+            "Serial Link — bridge running (click tray to show)"
             if running
             else "Serial Link"
         )
         update_tray_tooltip(tray, tip)
+        sync_tray_menu_state(self)
         if running:
             tray.showMessage(
                 "Serial Link",
-                "Bridge still running. Double-click the tray icon to reopen.",
+                "Bridge still running. Click the tray icon to reopen.",
                 QtWidgets.QSystemTrayIcon.MessageIcon.Information,
                 4000,
             )
@@ -2215,8 +2514,15 @@ class BridgeLogicMixin:
         pop.destroyed.connect(self._on_stats_popout_destroyed)
         self._stats_popout_window = pop
         try:
-            seed = self.log_view.toPlainText().splitlines()[-120:]
-            pop.append_nmea_log_lines(seed)
+            if getattr(self, "_ui_mode", "") == "modern":
+                panel = getattr(self, "bridge_terminal", None)
+                view = getattr(panel, "_view", None) if panel is not None else None
+                if view is not None:
+                    seed = view.toPlainText().splitlines()[-120:]
+                    pop.append_nmea_log_lines(seed)
+            else:
+                seed = self.log_view.toPlainText().splitlines()[-120:]
+                pop.append_nmea_log_lines(seed)
         except Exception:
             pass
         pop.prepare_for_display()
@@ -2253,17 +2559,8 @@ class BridgeLogicMixin:
         pop.apply_snapshot(merged, serial, network, running=running)
 
     def _open_hud(self) -> None:
-        """Survey HUD (metrics) + Dashboard (bridge trust)."""
+        """Survey HUD — live metrics in a single detachable window."""
         self._open_stats_popout()
-        self._open_dashboard()
-        hud = self._stats_popout_window
-        dash = self._dashboard_window
-        if hud is not None and dash is not None:
-            try:
-                dash.place_beside(hud)
-                dash.raise_()
-            except RuntimeError:
-                pass
 
     def _open_dashboard(self) -> None:
         pop = self._dashboard_window
@@ -2945,6 +3242,21 @@ class BridgeLogicMixin:
         QtGui.QDesktopServices.openUrl(QtCore.QUrl(base.rstrip("/") + "/"))
         self._log_ui(f"[Web] Opened dashboard in browser ({base}).")
 
+    def _on_web_open_dashboard_map(self) -> None:
+        """Open local dashboard with Position map enabled and prioritized."""
+        chk = getattr(self, "chk_web_enabled", None)
+        if chk is not None and not chk.isChecked():
+            self._log_ui("[Web] Enable Web API, then use Open full map again.")
+            return
+        self._ensure_web_server_running()
+        base = self._web_dashboard_local_url()
+        if not base:
+            self._log_ui("[Web] Set a valid Web API port, then open the full map again.")
+            return
+        url = base.rstrip("/") + "/?map=1"
+        QtGui.QDesktopServices.openUrl(QtCore.QUrl(url))
+        self._log_ui(f"[Web] Opened full map in browser ({url}).")
+
     def _on_web_copy_phone_setup(self) -> None:
         ok, msg = self._phone_url_ready_for_remote()
         if not ok:
@@ -3093,7 +3405,9 @@ class BridgeLogicMixin:
         self._ensure_discovery_for_web()
         self._hub_selected_device_id: Optional[str] = None
         self._manual_override_dirty = False
+        self._control_network_dirty = False
         hub.selection_changed.connect(self._on_hub_selection)
+        hub.card_activated.connect(self._on_hub_card_activated)
         hub.manual_override_toggled.connect(self._on_manual_override_toggled)
         hub.refresh_requested.connect(self._on_hub_refresh_discovery)
         hub.unlock_requested.connect(self._on_hub_unlock_ports)
@@ -3107,7 +3421,9 @@ class BridgeLogicMixin:
         ):
             if w is None:
                 continue
-            if hasattr(w, "textChanged"):
+            if w is self.com_cb:
+                w.currentIndexChanged.connect(self._on_control_com_index_changed)
+            elif hasattr(w, "textChanged"):
                 w.textChanged.connect(self._mark_manual_override_dirty)
             elif hasattr(w, "currentTextChanged"):
                 w.currentTextChanged.connect(self._mark_manual_override_dirty)
@@ -3118,9 +3434,207 @@ class BridgeLogicMixin:
             getattr(self, "rb_tcp_client", None),
         ):
             if rb is not None:
-                rb.toggled.connect(self._mark_manual_override_dirty)
+                rb.toggled.connect(self._mark_control_network_dirty)
+        for w in (
+            getattr(self, "remote_host", None),
+            getattr(self, "remote_port", None),
+            getattr(self, "tcp_srv_host", None),
+            getattr(self, "tcp_srv_port", None),
+            getattr(self, "tcp_cli_host", None),
+            getattr(self, "tcp_cli_port", None),
+        ):
+            if w is not None and hasattr(w, "textChanged"):
+                w.textChanged.connect(self._mark_control_network_dirty)
+        for w in (self.udp_host, self.udp_port):
+            w.textChanged.connect(self._mark_control_network_dirty)
+        QtCore.QTimer.singleShot(0, self._sync_hub_selection_from_control_on_launch)
+
+    def _sync_hub_selection_from_control_on_launch(self) -> None:
+        """Align hub serial tile with Control preset; preserve network tile picks."""
+        hub = getattr(self, "connection_hub", None)
+        if hub is None:
+            return
+        sel = hub.selected_device_id() or ""
+        if sel.startswith("net:"):
+            return
+        self._sync_hub_selection_from_control(force=True)
+
+    def _control_com_port(self) -> str:
+        port = self.com_cb.currentText().strip()
+        if not port or port.startswith("("):
+            return ""
+        return port
+
+    def _serial_port_for_hub_device(self, device_id: str) -> Optional[str]:
+        """Resolve COM name for a hub serial tile (snapshot or visible card title)."""
+        hub = getattr(self, "connection_hub", None)
+        if hub is None or not device_id.startswith("serial:"):
+            return None
+        port = hub.find_serial_port(device_id)
+        if port:
+            return port.strip()
+        card = hub._cards.get(device_id)
+        if card is not None:
+            title = card._title.text().strip()
+            if title and not title.startswith("("):
+                return title
+        return None
+
+    def _hub_selected_serial_port(self) -> str:
+        hub = getattr(self, "connection_hub", None)
+        if hub is None:
+            return ""
+        did = hub.selected_device_id() or ""
+        if not did.startswith("serial:"):
+            return ""
+        return (self._serial_port_for_hub_device(did) or "").strip()
+
+    def _hub_serial_matches_control(self) -> bool:
+        hub_port = self._hub_selected_serial_port()
+        control = self._control_com_port()
+        if not hub_port or not control:
+            return True
+        return hub_port.upper() == control.upper()
+
+    def _reconcile_hub_serial_with_control(self) -> None:
+        """Keep Hub and Control COM aligned; authority depends on who the operator touched last."""
+        hub = getattr(self, "connection_hub", None)
+        if hub is None:
+            return
+        sel = hub.selected_device_id() or ""
+        if sel.startswith("net:"):
+            return
+        if self._hub_serial_matches_control():
+            return
+        if getattr(self, "_manual_override_dirty", False):
+            self._sync_hub_selection_from_control(force=True)
+            return
+        hub_port = self._hub_selected_serial_port()
+        if hub_port:
+            self._set_com_cb_port(hub_port)
+            return
+        self._sync_hub_selection_from_control(force=True)
+
     def _mark_manual_override_dirty(self, *_args: object) -> None:
         self._manual_override_dirty = True
+
+    def _mark_control_network_dirty(self, *_args: object) -> None:
+        """Control-tab network edits must not be overwritten by serial hub LKG."""
+        self._control_network_dirty = True
+        self._manual_override_dirty = True
+
+    def _on_hub_card_activated(self, device_id: str) -> None:
+        """Double-click: same as select, then jump to Control."""
+        opener = getattr(self, "_open_modern_section_by_sid", None)
+        if callable(opener) and getattr(self, "_ui_mode", "") == "modern":
+            opener("control")
+            return
+        focus = getattr(self, "_focus_connect_tab", None)
+        if callable(focus):
+            focus()
+
+    def _apply_hub_discovery_snapshot(self, snap: object) -> None:
+        from dataclasses import replace
+
+        from discovery_service import DiscoverySnapshot, apply_serial_status_cache
+
+        if not isinstance(snap, DiscoverySnapshot):
+            return
+        params = self._discovery_scan_params()
+        serial = apply_serial_status_cache(
+            list(snap.serial_devices),
+            dict(getattr(self, "_hub_serial_status_cache", {})),
+            selected_port=params.get("selected_port"),
+            bridge_running=bool(params.get("bridge_running")),
+            bridge_com=params.get("bridge_com"),
+        )
+        merged = replace(snap, serial_devices=serial)
+        hub = getattr(self, "connection_hub", None)
+        if hub is not None:
+            hub.set_snapshot(merged)
+        self._reconcile_hub_serial_with_control()
+
+    def _refresh_hub_serial_status_cache(self, snap: object) -> None:
+        from discovery_service import DiscoverySnapshot
+
+        if not isinstance(snap, DiscoverySnapshot):
+            return
+        cache = dict(getattr(self, "_hub_serial_status_cache", {}))
+        for dev in snap.serial_devices:
+            if dev.status != "available":
+                cache[dev.port] = dev.status
+        self._hub_serial_status_cache = cache
+
+    def _probe_hub_serial_port(self, port: str) -> None:
+        port = (port or "").strip()
+        if not port or port.startswith("("):
+            return
+        from port_release import serial_port_discovery_status
+
+        from ui.connection_fields import parse_baud
+
+        baud = parse_baud(read_baud_widget(self.baud_edit)) or 115200
+        running = self._is_bridge_running()
+        bridge_com = self.bridge.com if self.bridge else None
+        status = serial_port_discovery_status(
+            port,
+            baud,
+            bridge_running=running,
+            bridge_com=bridge_com,
+        )
+        self._hub_serial_status_cache[port] = status
+        hub = getattr(self, "connection_hub", None)
+        if hub is None or hub._snapshot is None:
+            return
+        from dataclasses import replace
+
+        serial = []
+        for dev in hub._snapshot.serial_devices:
+            if dev.port == port:
+                serial.append(replace(dev, status=status))
+            else:
+                serial.append(dev)
+        snap = replace(hub._snapshot, serial_devices=serial)
+        hub._snapshot = snap
+        for dev in serial:
+            card = hub._cards.get(dev.device_id)
+            if card is not None:
+                title = dev.port
+                subtitle = " · ".join(
+                    x for x in (dev.description, dev.manufacturer, dev.match_keyword) if x
+                )
+                card.update_card(title, subtitle, dev.status)
+
+    def _sync_hub_selection_from_control(self, *, force: bool = False) -> None:
+        """Align hub serial tile with Control COM — never clobber network/preset picks."""
+        hub = getattr(self, "connection_hub", None)
+        if hub is None:
+            return
+        sel = hub.selected_device_id() or ""
+        if not force and sel.startswith("net:"):
+            return
+        port = self.com_cb.currentText().strip()
+        if hub.select_serial_port(port, clear_if_missing=bool(port)):
+            self._hub_selected_device_id = hub.selected_device_id()
+        elif force:
+            self._hub_selected_device_id = None
+
+    def _on_control_com_index_changed(self, _index: int) -> None:
+        if getattr(self, "_hub_programmatic_com_update", False):
+            return
+        self._on_control_com_changed(self.com_cb.currentText())
+
+    def _on_control_com_changed(self, text: str) -> None:
+        """User picked COM on Control — mirror to hub serial tile only."""
+        self._mark_manual_override_dirty()
+        self._sync_hub_selection_from_control(force=True)
+        port = (text or "").strip()
+        if port and not port.startswith("("):
+            self._probe_hub_serial_port(port)
+
+    def _align_hub_selection_with_com(self, port: str) -> None:
+        """Legacy alias — prefer _sync_hub_selection_from_control."""
+        self._sync_hub_selection_from_control(force=True)
 
     def _on_manual_override_toggled(self, enabled: bool) -> None:
         if not enabled:
@@ -3212,9 +3726,8 @@ class BridgeLogicMixin:
     def _on_discovery_worker_snapshot(self, snap: object, counts: object) -> None:
         if snap is not None:
             self._discovery_stable_counts = counts if isinstance(counts, dict) else {}
-            hub = getattr(self, "connection_hub", None)
-            if hub is not None:
-                hub.set_snapshot(snap)
+            self._refresh_hub_serial_status_cache(snap)
+            self._apply_hub_discovery_snapshot(snap)
             self._update_field_connect_summary()
             facade = getattr(self, "_app_facade", None)
             if facade is not None:
@@ -3288,9 +3801,7 @@ class BridgeLogicMixin:
             bridge_com=params.get("bridge_com"),
             probe_serial_locks=False,
         )
-        hub = getattr(self, "connection_hub", None)
-        if hub is not None:
-            hub.set_snapshot(snap)
+        self._apply_hub_discovery_snapshot(snap)
         self._update_field_connect_summary()
         facade = getattr(self, "_app_facade", None)
         if facade is not None:
@@ -3315,69 +3826,84 @@ class BridgeLogicMixin:
             f"{preset_note}{nmea_note}{sel_note}"
         )
 
+    def _set_com_cb_port(self, port: str) -> None:
+        """Update Control COM without treating it as a manual override."""
+        port = (port or "").strip()
+        self._hub_programmatic_com_update = True
+        try:
+            idx = self.com_cb.findText(port)
+            if idx >= 0:
+                self.com_cb.setCurrentIndex(idx)
+            elif port:
+                self.com_cb.insertItem(0, port)
+                self.com_cb.setCurrentIndex(0)
+        finally:
+            self._hub_programmatic_com_update = False
+
     def _on_hub_selection(self, device_id: str) -> None:
         from ui.ui_prefs import load_last_known_good
 
         self._hub_selected_device_id = device_id
+        self._manual_override_dirty = False
         hub = getattr(self, "connection_hub", None)
+
+        serial_port: Optional[str] = None
+        if device_id.startswith("serial:"):
+            serial_port = self._serial_port_for_hub_device(device_id)
+            if serial_port:
+                self._set_com_cb_port(serial_port)
+                self._probe_hub_serial_port(serial_port)
+
         lkg = load_last_known_good(device_id)
         if lkg:
-            self._apply_last_known_good(lkg)
+            apply_network = device_id.startswith("net:")
+            self._apply_last_known_good(lkg, apply_network=apply_network)
+            if serial_port:
+                self._set_com_cb_port(serial_port)
+            self._manual_override_dirty = False
             return
         if hub is None:
             return
-        if device_id.startswith("serial:"):
-            port = hub.find_serial_port(device_id)
-            if port:
-                idx = self.com_cb.findText(port)
-                if idx >= 0:
-                    self.com_cb.setCurrentIndex(idx)
-                else:
-                    self.com_cb.insertItem(0, port)
-                    self.com_cb.setCurrentIndex(0)
-        elif device_id.startswith("net:"):
+        if device_id.startswith("net:"):
             card = hub.find_network_card(device_id)
             if card:
+                self._control_network_dirty = False
                 self.rb_udp_listen.setChecked(True)
                 self.udp_host.setText(card.host)
                 self.udp_port.setText(str(card.port))
         self._mode_toggle()
         self._refresh_intent_hint()
 
-    def _apply_last_known_good(self, lkg: dict) -> None:
+    def _apply_last_known_good(self, lkg: dict, *, apply_network: bool = True) -> None:
         com = str(lkg.get("com", "")).strip()
         if com:
-            idx = self.com_cb.findText(com)
-            if idx >= 0:
-                self.com_cb.setCurrentIndex(idx)
-            else:
-                self.com_cb.insertItem(0, com)
-                self.com_cb.setCurrentIndex(0)
+            self._set_com_cb_port(com)
         if lkg.get("baud") is not None:
             from ui.connection_fields import coerce_baud
 
             self.baud_edit.setCurrentText(str(coerce_baud(int(lkg["baud"]))))
-        if lkg.get("udp_host"):
-            self.udp_host.setText(str(lkg["udp_host"]))
-        if lkg.get("udp_port") is not None:
-            self.udp_port.setText(str(lkg["udp_port"]))
-        fanout = getattr(self, "chk_udp_fanout", None)
-        if fanout is not None and "udp_fanout" in lkg:
-            fanout.setChecked(bool(lkg["udp_fanout"]))
-        sink_chk = getattr(self, "chk_tcp_sink_enable", None)
-        if sink_chk is not None and "tcp_sink_enabled" in lkg:
-            sink_chk.setChecked(bool(lkg["tcp_sink_enabled"]))
-        if getattr(self, "tcp_sink_port", None) is not None and lkg.get("tcp_sink_port"):
-            self.tcp_sink_port.setText(str(lkg["tcp_sink_port"]))
-        mode = str(lkg.get("net_mode", "")).strip()
-        if mode == "udp_remote":
-            self.rb_udp_remote.setChecked(True)
-        elif mode == "tcp_server":
-            self.rb_tcp_server.setChecked(True)
-        elif mode == "tcp_client":
-            self.rb_tcp_client.setChecked(True)
-        else:
-            self.rb_udp_listen.setChecked(True)
+        if apply_network and not getattr(self, "_control_network_dirty", False):
+            if lkg.get("udp_host"):
+                self.udp_host.setText(str(lkg["udp_host"]))
+            if lkg.get("udp_port") is not None:
+                self.udp_port.setText(str(lkg["udp_port"]))
+            fanout = getattr(self, "chk_udp_fanout", None)
+            if fanout is not None and "udp_fanout" in lkg:
+                fanout.setChecked(bool(lkg["udp_fanout"]))
+            sink_chk = getattr(self, "chk_tcp_sink_enable", None)
+            if sink_chk is not None and "tcp_sink_enabled" in lkg:
+                sink_chk.setChecked(bool(lkg["tcp_sink_enabled"]))
+            if getattr(self, "tcp_sink_port", None) is not None and lkg.get("tcp_sink_port"):
+                self.tcp_sink_port.setText(str(lkg["tcp_sink_port"]))
+            mode = str(lkg.get("net_mode", "")).strip()
+            if mode == "udp_remote":
+                self.rb_udp_remote.setChecked(True)
+            elif mode == "tcp_server":
+                self.rb_tcp_server.setChecked(True)
+            elif mode == "tcp_client":
+                self.rb_tcp_client.setChecked(True)
+            else:
+                self.rb_udp_listen.setChecked(True)
         self._mode_toggle()
         self._refresh_intent_hint()
 
@@ -3390,12 +3916,27 @@ class BridgeLogicMixin:
         return True
 
     def _apply_hub_selection_for_start(self) -> None:
+        """Apply hub pick at Start without clobbering Control network edits."""
         hub = getattr(self, "connection_hub", None)
         if hub is None:
             return
         device_id = hub.selected_device_id()
-        if device_id:
+        if not device_id:
+            return
+        if device_id.startswith("net:"):
             self._on_hub_selection(device_id)
+            return
+        from ui.ui_prefs import load_last_known_good
+
+        self._hub_selected_device_id = device_id
+        serial_port = self._serial_port_for_hub_device(device_id)
+        if serial_port:
+            self._set_com_cb_port(serial_port)
+        lkg = load_last_known_good(device_id)
+        if lkg:
+            self._apply_last_known_good(lkg, apply_network=False)
+            if serial_port:
+                self._set_com_cb_port(serial_port)
 
     def _collect_last_known_good_config(self) -> dict:
         cfg: dict = {
@@ -3629,16 +4170,19 @@ class BridgeLogicMixin:
         if chip is None:
             return
         if available:
-            chip.setText(f"{com}: available — ready to Start")
+            chip.setText(f"{com}: ready")
             chip.setProperty("lockKind", "ok")
         else:
             short = reason.strip() or f"{com} is not available"
-            if len(short) > 72:
-                short = short[:69] + "…"
-            chip.setText(f"{com}: in use — {short}")
-            chip.setProperty("lockKind", "busy")
+            if len(short) > 56:
+                short = short[:53] + "…"
+            blocked = self._com_lock_blocks_start()
+            chip.setText(f"{com}: blocked — {short}" if blocked else f"{com}: {short}")
+            chip.setProperty("lockKind", "blocked" if blocked else "warn")
         chip.style().unpolish(chip)
         chip.style().polish(chip)
+        self._refresh_connection_health_chip()
+        self._sync_run_button_state()
 
     def _sync_run_button_state(self) -> None:
         running = self._is_bridge_running()
@@ -3654,12 +4198,18 @@ class BridgeLogicMixin:
             self.start_btn.setToolTip("Start UDP/TCP ↔ serial bridging with current settings")
 
     def _sync_com_cb_from_bridge(self) -> None:
+        """Push bridge COM → Control only when the bridge remaps (not on every stats tick)."""
         bridge = self.bridge
         if bridge is None or not getattr(bridge, "running", False):
+            self._last_bridge_com_reported = ""
             return
         live = str(getattr(bridge, "com", "") or "").strip()
         if not live:
             return
+        if live == self._last_bridge_com_reported:
+            return
+        prev = self._last_bridge_com_reported
+        self._last_bridge_com_reported = live
         cur = self.com_cb.currentText().strip()
         if cur == live:
             return
@@ -3669,7 +4219,9 @@ class BridgeLogicMixin:
         else:
             self.com_cb.insertItem(0, live)
             self.com_cb.setCurrentIndex(0)
-        self._log_ui(f"[Serial] COM selection updated to {live} (adapter re-enumerated).")
+        if prev:
+            self._log_ui(f"[Serial] COM selection updated to {live} (adapter re-enumerated).")
+        self._sync_hub_selection_from_control(force=True)
 
     def _main_tab_index_by_label(self, label: str) -> int:
         tabs = getattr(self, "_main_tabs", None)
@@ -3688,6 +4240,11 @@ class BridgeLogicMixin:
             tabs.setCurrentIndex(idx)
 
     def _focus_connect_tab(self) -> None:
+        if getattr(self, "_ui_mode", "") == "modern":
+            opener = getattr(self, "_open_modern_section_by_sid", None)
+            if callable(opener):
+                opener("control")
+                return
         idx = self._main_tab_index_by_label("Connect")
         tabs = getattr(self, "_main_tabs", None)
         if tabs is not None and idx >= 0:
@@ -3772,6 +4329,7 @@ class BridgeLogicMixin:
         self._refresh_preset_list_selection()
         self._rebuild_presets_quick_menu()
         self._refresh_intent_hint()
+        self._refresh_tools_page_status()
 
     def _intent_hint_text(self) -> str:
         if self.chk_advanced_net.isChecked() and self.rb_tcp_server.isChecked():
@@ -3902,9 +4460,41 @@ class BridgeLogicMixin:
             f"{base}\n\n"
             "Quick fixes:\n"
             f"1) Close any app using {port} (PuTTY, terminal, another bridge).\n"
-            "2) Click Connect → Unlock, then Refresh.\n"
-            "3) Replug the USB/serial adapter if the port disappeared."
+            "2) Hub → Unlock COM, then Control → Refresh ports.\n"
+            "3) Tools → Checks → Run com_free for a detailed probe.\n"
+            "4) Replug the USB/serial adapter if the port disappeared."
         )
+
+    def _show_com_start_blocked(self, com: str, detail: str) -> None:
+        """Rich dialog when COM blocks Start (probe or validation)."""
+        port = com.strip() or "COM"
+        summary = (detail or f"Cannot open {port}.").strip()
+        fixes = (
+            f"1) Close any app using {port} (PuTTY, terminal, another bridge).\n"
+            "2) Hub → Unlock COM, then Control → Refresh ports.\n"
+            "3) Tools → Checks → Run com_free for a detailed probe.\n"
+            "4) Replug USB if the port disappeared."
+        )
+        self._log_ui(f"[COM preflight] {summary}")
+        self._focus_connect_tab()
+        box = QtWidgets.QMessageBox(self)
+        box.setIcon(QtWidgets.QMessageBox.Icon.Warning)
+        box.setWindowTitle(f"{port} not ready")
+        box.setText(summary)
+        box.setInformativeText(fixes)
+        btn_control = box.addButton("Open Control", QtWidgets.QMessageBox.ButtonRole.ActionRole)
+        btn_unlock = box.addButton("Unlock COM", QtWidgets.QMessageBox.ButtonRole.ActionRole)
+        btn_probe = box.addButton("Run com_free", QtWidgets.QMessageBox.ButtonRole.ActionRole)
+        box.addButton(QtWidgets.QMessageBox.StandardButton.Cancel)
+        box.setDefaultButton(btn_control)
+        box.exec()
+        clicked = box.clickedButton()
+        if clicked == btn_unlock:
+            self._on_hub_unlock_ports()
+        elif clicked == btn_probe:
+            self._diag_run_com_free()
+        elif clicked == btn_control:
+            self._focus_connect_tab()
 
     def _restore_ntrip_prefs(self) -> None:
         prefs = load_ntrip_prefs()
@@ -4018,6 +4608,9 @@ class BridgeLogicMixin:
             chk.setChecked(bool(prefs.get("enabled", True)))
         finally:
             chk.blockSignals(False)
+        from ui.local_backup_settings import sync_local_backup_location_ui
+
+        sync_local_backup_location_ui(self)
         self._refresh_backup_status_label()
 
     def _save_local_backup_pref(self, *_args: object) -> None:
@@ -4026,6 +4619,50 @@ class BridgeLogicMixin:
             return
         save_local_backup_prefs(enabled=chk.isChecked())
         self._refresh_backup_status_label()
+
+    def _save_local_backup_path_from_ui(self) -> None:
+        path_edit = getattr(self, "local_backup_path", None)
+        if path_edit is None:
+            return
+        save_local_backup_prefs(base_dir=path_edit.text().strip())
+        self._refresh_backup_status_label()
+
+    def _save_local_backup_session_folders_pref(self, checked: bool) -> None:
+        save_local_backup_prefs(session_folders=bool(checked))
+        self._refresh_backup_status_label()
+
+    def _browse_local_backup_dir(self) -> None:
+        path_edit = getattr(self, "local_backup_path", None)
+        if path_edit is None:
+            return
+        from ui.ui_prefs import effective_local_backup_base_dir
+
+        start = path_edit.text().strip() or str(effective_local_backup_base_dir())
+        chosen = QtWidgets.QFileDialog.getExistingDirectory(
+            self,
+            "Choose backup folder",
+            start,
+        )
+        if not chosen:
+            return
+        path_edit.setText(chosen)
+        save_local_backup_prefs(base_dir=chosen)
+        self._refresh_backup_status_label()
+
+    def _create_local_backup_dated_folder(self) -> None:
+        from ui.local_backup_settings import create_dated_backup_folder, sync_local_backup_location_ui
+
+        folder = create_dated_backup_folder(parent=self)
+        if folder is None:
+            return
+        sync_local_backup_location_ui(self)
+        self._refresh_backup_status_label()
+        self._log_ui(f"Backup folder ready: {folder}")
+        QtWidgets.QMessageBox.information(
+            self,
+            "Dated folder created",
+            f"Next backup session will write here:\n{folder}",
+        )
 
     def _session_enable_local_backup(self) -> bool:
         chk = getattr(self, "chk_local_backup", None)
@@ -4073,24 +4710,194 @@ class BridgeLogicMixin:
         if style is not None:
             style.unpolish(lbl)
             style.polish(lbl)
+        self._refresh_tools_page_status(stats=merged)
+        sync = getattr(self, "_sync_modern_session_chrome", None)
+        if getattr(self, "_ui_mode", "") == "modern" and callable(sync):
+            sync()
+
+    def _refresh_connection_health_chip(self) -> None:
+        chip = getattr(self, "lbl_connection_health", None)
+        if chip is None:
+            return
+        from ui.connection_health import format_connection_health_chip
+        from ui.controls import elide_status_label
+
+        serial_line = self.status_serial.text() if hasattr(self, "status_serial") else ""
+        network_line = self.status_network.text() if hasattr(self, "status_network") else ""
+        com_cb = getattr(self, "com_cb", None)
+        fallback_com = com_cb.currentText().strip() if com_cb is not None else "COM"
+        udp_port = getattr(self, "udp_port", None)
+        fallback_port = udp_port.text().strip() if udp_port is not None else "10110"
+        text, kind, tip = format_connection_health_chip(
+            serial_line=serial_line,
+            network_line=network_line,
+            nmea_mode=self._nmea_mode_label(),
+            running=self._is_bridge_running(),
+            starting=bool(getattr(self, "_starting", False)),
+            fallback_com=fallback_com,
+            fallback_udp_port=fallback_port,
+        )
+        elide_status_label(chip, text)
+        chip.setProperty("healthKind", kind)
+        chip.setToolTip(tip)
+        style = chip.style()
+        if style is not None:
+            style.unpolish(chip)
+            style.polish(chip)
+
+    def _refresh_hz_chip(self, stats: Optional[dict] = None) -> None:
+        chip = getattr(self, "lbl_hz_chip", None)
+        if chip is None:
+            return
+        running = self._is_bridge_running()
+        merged = stats if stats is not None else getattr(self, "_bridge_stats_cache", {}) or {}
+        if not running:
+            chip.hide()
+            sync = getattr(self, "_sync_modern_session_chrome", None)
+            if getattr(self, "_ui_mode", "") == "modern" and callable(sync):
+                sync()
+            return
+        from ui.controls import elide_status_label
+
+        text, tip = format_running_hz_chip(merged)
+        elide_status_label(chip, text)
+        chip.setToolTip(tip)
+        chip.show()
+        sync = getattr(self, "_sync_modern_session_chrome", None)
+        if getattr(self, "_ui_mode", "") == "modern" and callable(sync):
+            sync()
+
+    def _refresh_backpressure_chip(self, stats: Optional[dict] = None) -> None:
+        chip = getattr(self, "lbl_backpressure_chip", None)
+        if chip is None:
+            return
+        running = self._is_bridge_running()
+        merged = stats if stats is not None else getattr(self, "_bridge_stats_cache", {}) or {}
+        if not running or not transport_alert_active(merged):
+            chip.hide()
+            sync = getattr(self, "_sync_modern_session_chrome", None)
+            if getattr(self, "_ui_mode", "") == "modern" and callable(sync):
+                sync()
+            return
+        text, kind = format_backpressure_chip(merged)
+        chip.setText(text)
+        chip.setProperty("alertKind", kind)
+        chip.setToolTip(format_backpressure_tooltip(merged))
+        style = chip.style()
+        if style is not None:
+            style.unpolish(chip)
+            style.polish(chip)
+        chip.show()
+        sync = getattr(self, "_sync_modern_session_chrome", None)
+        if getattr(self, "_ui_mode", "") == "modern" and callable(sync):
+            sync()
+
+    def _refresh_tools_page_status(self, stats: Optional[dict] = None) -> None:
+        from ui.backup_status import (
+            format_activity_page_status,
+            format_black_box_page_status,
+            format_file_log_page_status,
+            format_presets_page_status,
+        )
+
+        def _apply_live_chip(lbl: QtWidgets.QLabel, line: str, tip: str, kind: str) -> None:
+            from ui.modern_live_status import apply_modern_live_status
+
+            apply_modern_live_status(lbl, line, tip, summary_kind=kind)
+
+        merged = stats if stats is not None else getattr(self, "_bridge_stats_cache", {})
+        running = self._is_bridge_running()
+
+        bb_lbl = getattr(self, "lbl_black_box_live_status", None)
+        if bb_lbl is not None:
+            enabled = self._session_enable_local_backup()
+            active = bool(merged.get("local_backup_active"))
+            backup_open = (
+                self.bridge is not None
+                and getattr(self.bridge, "_local_backup", None) is not None
+            )
+            err = str(merged.get("local_backup_error") or "").strip()
+            failed = running and enabled and not active and not backup_open
+            line, tip = format_black_box_page_status(
+                enabled=enabled,
+                running=failed,
+                active=active,
+                error=err,
+                path=str(merged.get("local_backup_path") or ""),
+                nbytes=int(merged.get("local_backup_bytes") or 0),
+                dropped=int(merged.get("local_backup_dropped") or 0),
+            )
+            if err or failed:
+                kind = "error"
+            elif active:
+                kind = "recording"
+            elif enabled:
+                kind = "ready"
+            else:
+                kind = "idle"
+            _apply_live_chip(bb_lbl, line, tip, kind)
+
+        fl_lbl = getattr(self, "lbl_file_log_live_status", None)
+        if fl_lbl is not None:
+            chk = getattr(self, "chk_file_log", None)
+            enabled = bool(chk.isChecked()) if chk is not None else False
+            path_edit = getattr(self, "file_log_path", None)
+            path = path_edit.text().strip() if path_edit is not None else ""
+            file_log_active = running and enabled and getattr(self, "_file_log", None) is not None
+            failed = running and enabled and not file_log_active
+            line, tip = format_file_log_page_status(
+                enabled=enabled,
+                running=running,
+                active=file_log_active,
+                path=path,
+            )
+            if failed:
+                kind = "error"
+            elif file_log_active:
+                kind = "recording"
+            elif enabled:
+                kind = "ready"
+            else:
+                kind = "idle"
+            _apply_live_chip(fl_lbl, line, tip, kind)
+
+        pr_lbl = getattr(self, "lbl_presets_live_status", None)
+        if pr_lbl is not None:
+            line, tip, kind = format_presets_page_status(self)
+            _apply_live_chip(pr_lbl, line, tip, kind)
+
+        act_lbl = getattr(self, "lbl_activity_live_status", None)
+        if act_lbl is not None:
+            line, tip, kind = format_activity_page_status(self)
+            _apply_live_chip(act_lbl, line, tip, kind)
 
     def _apply_com_preset(self, com: str, baud: int, udp_host: str, udp_port: int) -> None:
-        idx = self.com_cb.findText(com)
-        if idx >= 0:
-            self.com_cb.setCurrentIndex(idx)
-        else:
-            self.com_cb.addItem(com)
-            self.com_cb.setCurrentText(com)
+        """Apply desk/boat/Cube fields from a named preset — preset wins over hub tiles."""
+        self._manual_override_dirty = True
+        self._hub_programmatic_com_update = True
+        try:
+            idx = self.com_cb.findText(com)
+            if idx >= 0:
+                self.com_cb.setCurrentIndex(idx)
+            else:
+                self.com_cb.insertItem(0, com)
+                self.com_cb.setCurrentIndex(0)
+        finally:
+            self._hub_programmatic_com_update = False
         from ui.connection_fields import coerce_baud
 
         self.baud_edit.setCurrentText(str(coerce_baud(baud)))
         self.rb_udp_listen.setChecked(True)
+        self._control_network_dirty = False
         self.udp_host.setText(udp_host)
         self.udp_port.setText(str(udp_port))
-        self.rb_nmea_passthrough.setChecked(True)
         self.chk_verbose_log.setChecked(True)
         self._mode_toggle()
         self._refresh_intent_hint()
+        self._sync_hub_selection_from_control(force=True)
+        probe = getattr(self, "_schedule_com_lock_probe", None)
+        if callable(probe):
+            probe()
 
     def _connection_preset_from_ui(self) -> dict[str, str | int]:
         com = self.com_cb.currentText().strip()
@@ -4166,8 +4973,10 @@ class BridgeLogicMixin:
             self.rb_nmea_passthrough.setChecked(True)
         types = data.get("nmea_types")
         checks = getattr(self, "_nmea_type_checks", None)
-        if nmea == "strict" and isinstance(types, list) and checks:
-            enabled = {str(t).strip().upper() for t in types}
+        if nmea == "strict" and checks:
+            enabled: set[str] = set()
+            if isinstance(types, list):
+                enabled = {str(t).strip().upper() for t in types}
             for st, cb in checks.items():
                 cb.setChecked(st in enabled)
         self._sync_nmea_mode_ui()
@@ -4285,13 +5094,11 @@ class BridgeLogicMixin:
         else:
             self.start_bridge()
 
-    def _rebuild_presets_quick_menu(self) -> None:
-        menu = getattr(self, "_presets_quick_menu", None)
-        group = getattr(self, "_presets_menu_group", None)
-        if menu is None or group is None:
-            return
-        for old in list(group.actions()):
-            group.removeAction(old)
+    def _populate_presets_quick_menu(self, menu: QtWidgets.QMenu, *, use_group: bool) -> None:
+        group = getattr(self, "_presets_menu_group", None) if use_group else None
+        if group is not None:
+            for old in list(group.actions()):
+                group.removeAction(old)
         menu.clear()
         names = list_preset_names()
         checked = self._presets_menu_checked_name()
@@ -4304,15 +5111,32 @@ class BridgeLogicMixin:
             act = QtGui.QAction(name, self)
             act.setCheckable(True)
             act.setData(name)
-            group.addAction(act)
             act.setChecked(name == checked)
+            if group is not None:
+                group.addAction(act)
             menu.addAction(act)
         menu.addSeparator()
         act_edit = QtGui.QAction("Open Presets tab…", self)
         act_edit.setData("open_presets_tab")
         menu.addAction(act_edit)
 
+    def _rebuild_presets_quick_menu(self) -> None:
+        quick = getattr(self, "_presets_quick_menu", None)
+        if quick is not None:
+            self._populate_presets_quick_menu(quick, use_group=True)
+        modern = getattr(self, "_modern_presets_menu", None)
+        if modern is not None:
+            self._populate_presets_quick_menu(modern, use_group=False)
+        btn = getattr(self, "_btn_header_presets", None)
+        if btn is not None:
+            btn.setEnabled(bool(list_preset_names()))
+
     def _open_phone_tab(self) -> None:
+        if getattr(self, "_ui_mode", "") == "modern":
+            opener = getattr(self, "_open_modern_tools_section", None)
+            if callable(opener):
+                opener("phone")
+            return
         tools_nav = getattr(self, "_tools_nav", None)
         main_tabs = getattr(self, "_main_tabs", None)
         if tools_nav is not None and main_tabs is not None:
@@ -4338,6 +5162,11 @@ class BridgeLogicMixin:
                 return
 
     def _open_presets_tab(self) -> None:
+        if getattr(self, "_ui_mode", "") == "modern":
+            opener = getattr(self, "_open_modern_tools_section", None)
+            if callable(opener):
+                opener("presets")
+            return
         # Standard layout: Presets lives inside the Tools tab as a sidebar nav item.
         tools_nav = getattr(self, "_tools_nav", None)
         main_tabs = getattr(self, "_main_tabs", None)
@@ -4388,6 +5217,8 @@ class BridgeLogicMixin:
             self.tcp_sink_port.setText(str(data["tcp_sink_port"]))
         self._apply_preset_survey_fields(data)
         self._apply_preset_nmea_mode(data)
+        self._manual_override_dirty = True
+        self._sync_hub_selection_from_control(force=True)
         self._update_field_connect_summary()
         if name:
             self._set_active_preset(name)
@@ -4428,6 +5259,9 @@ class BridgeLogicMixin:
             return
         self._apply_preset_survey_fields(data)
         self._sync_preset_action_buttons()
+        refresh = getattr(self, "_refresh_tools_page_status", None)
+        if callable(refresh):
+            refresh()
 
     def _activate_preset_by_name(self, name: str, *, log: bool = True) -> None:
         """Select in list + load Connect + survey fields (Load, double-click, menu)."""
@@ -4742,11 +5576,20 @@ class BridgeLogicMixin:
             )
             if not self._log_pause:
                 facade.append_log_lines(chunk)
-        self.log_view.appendPlainText("\n".join(chunk))
+        if getattr(self, "_ui_mode", "") == "modern":
+            panel = getattr(self, "bridge_terminal", None)
+            if panel is not None:
+                for line in chunk:
+                    try:
+                        panel.append_ops_line(line)
+                    except Exception:
+                        pass
+        else:
+            self.log_view.appendPlainText("\n".join(chunk))
+            if self._log_autoscroll:
+                sb = self.log_view.verticalScrollBar()
+                sb.setValue(sb.maximum())
         self._append_connect_mini_log(chunk)
-        if self._log_autoscroll:
-            sb = self.log_view.verticalScrollBar()
-            sb.setValue(sb.maximum())
         pop = getattr(self, "_stats_popout_window", None)
         if pop is not None:
             try:
@@ -4852,7 +5695,6 @@ class BridgeLogicMixin:
         labels = {
             "file_log": "Rotating file log",
             "screen_log": "On-screen log",
-            "traffic_quality": "Traffic & data quality",
             "automated_checks": "Automated checks",
         }
         dlg = QtWidgets.QDialog(self)
@@ -4957,17 +5799,19 @@ class BridgeLogicMixin:
 
     def _update_status_bar(self, serial_line: str, network_line: str) -> None:
         from ui.controls import elide_status_label
-        from ui.tray_support import update_tray_tooltip
+        from ui.tray_support import sync_tray_menu_state, update_tray_tooltip
 
         self._maybe_refresh_ports_on_serial_retry(serial_line)
         elide_status_label(self.status_serial, serial_line)
         elide_status_label(self.status_network, network_line)
         self._sync_serial_status_chrome(serial_line)
+        self._refresh_connection_health_chip()
         self._refresh_nmea_status_chip()
         self._refresh_stats_popout()
         tray = getattr(self, "_tray_icon", None)
         if tray is not None:
             update_tray_tooltip(tray, f"Serial Link — {serial_line} | {network_line}")
+            sync_tray_menu_state(self)
 
     def _set_connection_locked(self, locked: bool) -> None:
         for w in self._connection_widgets:
@@ -5037,8 +5881,10 @@ class BridgeLogicMixin:
             "n2s_q": b.net_to_serial.qsize(),
             "s2n_q": b.serial_to_net.qsize(),
             "hz_down": b.hz_remote_to_serial(),
+            "hz_fix_down": b.hz_fix_to_serial(),
             "hz_gui": b.hz_gui_to_serial(),
             "hz_up": b.hz_serial_to_net(),
+            "hz_fix_up": b.hz_fix_from_serial(),
             "lines_down": b.lines_remote_to_serial,
             "lines_up": b.lines_serial_to_net,
             "udp_peers": b.udp_peer_count,
@@ -5087,9 +5933,42 @@ class BridgeLogicMixin:
         self._sync_transport_alert_chrome(merged)
         self.lbl_stats.setToolTip(self._stats_tooltip())
         self._refresh_backup_status_label(merged)
+        self._refresh_backpressure_chip(merged)
+        self._refresh_hz_chip(merged)
         self._refresh_gnss_status_chip()
+        self._refresh_control_map(merged)
         self._refresh_stats_popout()
         self._refresh_dashboard()
+
+    def _refresh_control_map(self, merged: dict | None = None) -> None:
+        widget = getattr(self, "control_position_map", None)
+        if widget is None:
+            return
+        if not self._is_bridge_running():
+            widget.set_session_idle("Stopped — map updates when bridge runs")
+            return
+        if self._nmea_mode_label() == "raw":
+            widget.set_session_idle("Raw binary — no GGA/RMC map")
+            return
+        stats = merged if merged is not None else getattr(self, "_bridge_stats_cache", {})
+        if not isinstance(stats, dict):
+            stats = {}
+        q_raw = stats.get("quality")
+        quality_i: int | None = None
+        if q_raw is not None:
+            try:
+                quality_i = int(q_raw)
+            except (TypeError, ValueError):
+                quality_i = None
+        widget.update_position(
+            lat=stats.get("position_lat"),
+            lon=stats.get("position_lon"),
+            stale=bool(stats.get("position_stale")) or bool(stats.get("nav_stale")),
+            stream_idle=bool(stats.get("stream_idle")),
+            quality=quality_i,
+            source=str(stats.get("position_source") or ""),
+            fix_label=str(stats.get("fix_label") or ""),
+        )
 
     def _tick_stats(self) -> None:
         if self._is_bridge_running():
@@ -5107,7 +5986,10 @@ class BridgeLogicMixin:
             self._sync_transport_alert_chrome({})
             self.lbl_stats.setToolTip(self._stats_tooltip())
             self._refresh_backup_status_label()
+            self._refresh_backpressure_chip()
+            self._refresh_hz_chip()
             self._refresh_gnss_status_chip()
+            self._refresh_control_map()
             self._refresh_stats_popout()
             self._refresh_dashboard()
 
@@ -5678,6 +6560,10 @@ class BridgeLogicMixin:
         finally:
             self.com_cb.blockSignals(False)
         self._schedule_com_lock_probe()
+        hub = getattr(self, "connection_hub", None)
+        sel = (hub.selected_device_id() if hub else None) or ""
+        if not sel.startswith("net:"):
+            self._sync_hub_selection_from_control(force=True)
 
     def _send_raw_manual(self, where: str, raw: str) -> None:
         if not self._is_bridge_running():
@@ -5755,7 +6641,14 @@ class BridgeLogicMixin:
         err = self._validate_before_start()
         if err:
             self._log_ui(err)
-            QtWidgets.QMessageBox.warning(self, "Cannot start", err)
+            com = self.com_cb.currentText().strip()
+            if self._com_lock_blocks_start() or "Cannot open" in err or "COM port" in err:
+                detail = err.split("\n\n", 1)[0]
+                self._show_com_start_blocked(com or "COM", detail)
+            else:
+                QtWidgets.QMessageBox.warning(self, "Cannot start", err)
+            return
+        if not self._confirm_strict_start_if_needed():
             return
         self._starting = True
         self._sync_preset_action_buttons()
@@ -5775,10 +6668,7 @@ class BridgeLogicMixin:
         preflight_err = self._preflight_com(com, baud)
         if preflight_err:
             self._clear_stale_start_ui()
-            self._focus_connect_tab()
-            msg = self._compose_com_preflight_error(com, preflight_err)
-            self._log_ui(f"[Start preflight] {preflight_err}")
-            QtWidgets.QMessageBox.warning(self, "Cannot start", msg)
+            self._show_com_start_blocked(com, preflight_err)
             return
 
         if self.chk_file_log.isChecked():
@@ -5876,6 +6766,11 @@ class BridgeLogicMixin:
                 is None
                 or self.chk_serial_auto_reconnect.isChecked(),
                 enable_local_backup=self._session_enable_local_backup(),
+                local_backup_dir=(
+                    prepare_local_backup_dir_for_session()
+                    if self._session_enable_local_backup()
+                    else None
+                ),
                 wire_tap_cb=self._on_bridge_wire_tap,
             )
             if mode == NetMode.TCP_SERVER:
@@ -5985,6 +6880,7 @@ class BridgeLogicMixin:
 
     def _on_bridge_started(self, b: SerialNetBridge) -> None:
         self._starting = False
+        self._last_bridge_com_reported = str(getattr(b, "com", "") or "").strip()
         # Notify the bridge terminal panel of the current NMEA mode for hex toggle.
         panel = getattr(self, "bridge_terminal", None)
         if panel is not None:
@@ -6128,6 +7024,7 @@ class BridgeLogicMixin:
 
     def _finish_stop_ui(self) -> None:
         """Re-enable controls on the Qt main thread after async stop."""
+        self._last_bridge_com_reported = ""
         self._bridge_stop_mono = time.monotonic()
         self._log_tab_auto_timer.stop()
         self._stop_ntrip()
@@ -6145,6 +7042,10 @@ class BridgeLogicMixin:
         self._update_status_bar("Serial: stopped", "Network: stopped")
         self._refresh_backup_status_label()
         self._refresh_nmea_status_chip()
+        map_widget = getattr(self, "control_position_map", None)
+        if map_widget is not None:
+            map_widget.clear_session()
+        self._refresh_control_map()
         self._sync_preset_action_buttons()
         self._apply_hub_quality()
         pending = self._presets_menu_pending
@@ -6153,6 +7054,9 @@ class BridgeLogicMixin:
             QtCore.QTimer.singleShot(
                 0, lambda n=pending: self._activate_preset_by_name(n, log=True)
             )
+        from ui.tray_support import sync_tray_menu_state
+
+        sync_tray_menu_state(self)
 
     def closeEvent(self, event: QtGui.QCloseEvent) -> None:
         if not getattr(self, "_force_quit", False):

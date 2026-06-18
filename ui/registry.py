@@ -32,8 +32,8 @@ UI_DESCRIPTIONS: Dict[str, str] = {
         "Replaces the old Minimal and Log-first layouts."
     ),
     UI_MODERN: (
-        "Ultra-readable dashboard: Discovery hub, centered live log, connect/run module, "
-        "wide scrollbars, and high-contrast COM/LAN cards."
+        "Focused bridge cockpit: Activity traffic view, Control setup, Hub discovery, "
+        "and Tools (logging, remote, presets, checks, and more)."
     ),
 }
 

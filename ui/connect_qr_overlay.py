@@ -176,10 +176,27 @@ def _persist_qr_float_pos(win: QtWidgets.QWidget) -> None:
 
 def _qr_placement_anchor(win: QtWidgets.QWidget) -> QtCore.QRect:
     """Region to center the QR on first launch (log pane / tabs / splitter top)."""
+    terminal = getattr(win, "bridge_terminal", None)
+    if terminal is not None:
+        view = getattr(terminal, "_view", None)
+        if isinstance(view, QtWidgets.QWidget) and view.isVisible():
+            origin = view.mapTo(win, QtCore.QPoint(0, 0))
+            return QtCore.QRect(origin, view.size())
+
     log_view = getattr(win, "log_view", None)
     if isinstance(log_view, QtWidgets.QWidget) and log_view.isVisible():
         origin = log_view.mapTo(win, QtCore.QPoint(0, 0))
         return QtCore.QRect(origin, log_view.size())
+
+    workspace = getattr(win, "_tools_stack", None)
+    if isinstance(workspace, QtWidgets.QStackedWidget) and workspace.isVisible():
+        origin = workspace.mapTo(win, QtCore.QPoint(0, 0))
+        return QtCore.QRect(origin, workspace.size())
+
+    modern_tabs = getattr(win, "_modern_main_tabs", None)
+    if isinstance(modern_tabs, QtWidgets.QTabWidget) and modern_tabs.isVisible():
+        origin = modern_tabs.mapTo(win, QtCore.QPoint(0, 0))
+        return QtCore.QRect(origin, modern_tabs.size())
 
     tabs = getattr(win, "_main_tabs", None)
     if isinstance(tabs, QtWidgets.QTabWidget) and tabs.isVisible():
@@ -302,6 +319,11 @@ def schedule_refresh_connect_qr_overlay(win: QtWidgets.QWidget, *, delay_ms: int
 
 
 def _phone_tools_tab_active(win: QtWidgets.QWidget) -> bool:
+    section_index = getattr(win, "_tools_section_index", None)
+    stack = getattr(win, "_tools_stack", None)
+    if isinstance(section_index, dict) and stack is not None:
+        phone_idx = section_index.get("phone")
+        return isinstance(phone_idx, int) and stack.currentIndex() == phone_idx
     nav = getattr(win, "_tools_nav", None)
     if nav is None:
         return False
@@ -313,6 +335,19 @@ def _phone_tools_tab_active(win: QtWidgets.QWidget) -> bool:
 
 def refresh_connect_qr_overlay(win: QtWidgets.QWidget) -> None:
     """Show/update/hide floating Connect QR from Web API + LAN prefs."""
+    if getattr(win, "_ui_mode", "") == "modern":
+        floater = getattr(win, "_connect_qr_overlay", None)
+        if isinstance(floater, ConnectQrFloat) and floater.isVisible():
+            floater.hide()
+        win._connect_qr_last_show = False  # type: ignore[attr-defined]
+        sync = getattr(win, "_sync_modern_phone_qr_btn", None)
+        if callable(sync):
+            sync()
+        refresh = getattr(win, "_refresh_phone_tab_qr", None)
+        if callable(refresh):
+            refresh()
+        return
+
     if getattr(win, "_connect_qr_overlay", None) is None:
         setup_connect_qr_overlay(win)
     floater: ConnectQrFloat | None = getattr(win, "_connect_qr_overlay", None)

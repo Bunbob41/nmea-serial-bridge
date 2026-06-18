@@ -21,6 +21,29 @@ class TestAppIconAssets(unittest.TestCase):
         fill = min(right - left, bottom - top) / img.size[0]
         self.assertGreaterEqual(fill, 0.72, "glyph should fill most of the squircle")
 
+    def test_16px_shell_layer_has_bright_glyph(self) -> None:
+        """Taskbar smallest size — glyph must remain visible."""
+        from PIL import Image
+
+        with Image.open(ICO) as img:
+            self.assertIn((16, 16), set(img.info.get("sizes", [])))
+            img.size = (16, 16)  # type: ignore[method-assign]
+            small = img.copy().convert("RGBA")
+        w, h = small.size
+        bright = 0
+        ink = 0
+        for y in range(h):
+            for x in range(w):
+                r, g, b, a = small.getpixel((x, y))
+                if a < 80:
+                    continue
+                if r + g + b > 420:
+                    bright += 1
+                if a >= 200 and r + g + b > 500:
+                    ink += 1
+        self.assertGreater(bright, 18, "16px layer should show a bold light logo, not a speck")
+        self.assertGreater(ink, 30, "16px connector should cover a solid region of pixels")
+
     def test_32px_shell_layer_has_bright_glyph(self) -> None:
         """Taskbar uses small ICO layers — shell tier must not be dark-on-dark."""
         from PIL import Image
@@ -53,7 +76,7 @@ class TestAppIconAssets(unittest.TestCase):
         self.assertTrue(ICO.is_file(), "run tools/make_app_icon.py")
         with Image.open(ICO) as img:
             sizes = set(img.info.get("sizes", []))
-        for dim in (32, 48, 256):
+        for dim in (16, 32, 48, 256):
             self.assertIn((dim, dim), sizes, f"missing {dim}px icon layer")
 
 

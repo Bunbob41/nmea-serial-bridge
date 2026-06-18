@@ -154,6 +154,18 @@ def create_mission_review_tab(win: BridgeLogicMixin) -> QtWidgets.QWidget:
     win._mission_integrity_note.setWordWrap(True)
     lay.addWidget(win._mission_integrity_note)
 
+    from ui.local_backup_settings import mount_local_backup_location_row
+
+    win._mission_backup_location_box = QtWidgets.QWidget()
+    backup_lay = QtWidgets.QVBoxLayout(win._mission_backup_location_box)
+    backup_lay.setContentsMargins(0, 0, 0, 0)
+    backup_lay.setSpacing(8)
+    section = QtWidgets.QLabel("Next session backup location")
+    section.setObjectName("modernTabSectionTitle")
+    backup_lay.addWidget(section)
+    mount_local_backup_location_row(win, backup_lay, show_session_file=True)
+    lay.addWidget(win._mission_backup_location_box)
+
     actions = QtWidgets.QHBoxLayout()
     win._mission_btn_quick_export = QtWidgets.QPushButton("Quick Export")
     win._mission_btn_quick_export.setObjectName("modernStartBtn")
@@ -163,7 +175,7 @@ def create_mission_review_tab(win: BridgeLogicMixin) -> QtWidgets.QWidget:
     win._mission_btn_quick_export.clicked.connect(win._on_mission_quick_export)
     actions.addWidget(win._mission_btn_quick_export)
     actions.addStretch(1)
-    btn_pipeline = QtWidgets.QPushButton("Back to Pipeline")
+    btn_pipeline = QtWidgets.QPushButton("Back to Activity")
     btn_pipeline.clicked.connect(win._show_modern_pipeline_tab)
     actions.addWidget(btn_pipeline)
     lay.addLayout(actions)
@@ -214,32 +226,31 @@ def populate_mission_review(
     win._mission_session_record = record
     win._mission_session_summary = dict(summary)
 
+    from ui.local_backup_settings import set_mission_session_path_label, sync_local_backup_location_ui
+
+    sync_local_backup_location_ui(win)
+    set_mission_session_path_label(win, str(summary.get("path") or record.backup_path or ""))
+
 
 def reveal_mission_review_tab(
     win: BridgeLogicMixin,
     record: MissionSessionRecord,
     summary: dict[str, object],
 ) -> None:
-    """Show Mission Review tab and switch to it (Modern UI only)."""
+    """Show Mission Review and switch to it (Modern UI only)."""
     try:
-        tabs = getattr(win, "_modern_main_tabs", None)
-        idx = getattr(win, "_mission_review_tab_index", -1)
-        if tabs is None or idx < 0:
-            return
         populate_mission_review(win, record, summary)
-        tabs.setTabVisible(idx, True)
-        tabs.setCurrentIndex(idx)
+        opener = getattr(win, "_open_modern_section_by_sid", None)
+        if callable(opener):
+            opener("mission_review")
     except Exception:
         pass
 
 
 def hide_mission_review_tab(win: BridgeLogicMixin) -> None:
     try:
-        tabs = getattr(win, "_modern_main_tabs", None)
-        idx = getattr(win, "_mission_review_tab_index", -1)
-        if tabs is None or idx < 0:
-            return
-        tabs.setTabVisible(idx, False)
-        tabs.setCurrentIndex(0)
+        opener = getattr(win, "_open_modern_section_by_sid", None)
+        if callable(opener):
+            opener("activity")
     except Exception:
         pass

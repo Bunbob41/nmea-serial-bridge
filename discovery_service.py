@@ -392,6 +392,50 @@ def resolve_network_bind_from_device_id(
     return None
 
 
+def serial_probe_summary(serial_devices: Sequence[SerialDeviceInfo]) -> str:
+    """Short hub header note after a COM lock probe pass."""
+    free = sum(1 for d in serial_devices if d.status == "ready")
+    busy = sum(1 for d in serial_devices if d.status in ("port_busy", "in_use"))
+    active = sum(1 for d in serial_devices if d.status == "running")
+    parts: list[str] = []
+    if free:
+        parts.append(f"{free} COM free")
+    if busy:
+        parts.append(f"{busy} busy")
+    if active:
+        parts.append(f"{active} active")
+    return " · ".join(parts)
+
+
+def apply_serial_status_cache(
+    devices: list[SerialDeviceInfo],
+    cache: dict[str, str],
+    *,
+    selected_port: Optional[str] = None,
+    bridge_running: bool = False,
+    bridge_com: Optional[str] = None,
+) -> list[SerialDeviceInfo]:
+    """Keep last Refresh/click probe results across lightweight 2 s hub polls."""
+    if not cache:
+        return devices
+    sel = (selected_port or "").strip()
+    live = (bridge_com or "").strip()
+    out: list[SerialDeviceInfo] = []
+    for dev in devices:
+        if bridge_running and live and dev.port.upper() == live.upper():
+            out.append(replace(dev, status="running"))
+            continue
+        if dev.port == sel and dev.status != "available":
+            out.append(dev)
+            continue
+        cached = cache.get(dev.port)
+        if cached:
+            out.append(replace(dev, status=cached))
+        else:
+            out.append(dev)
+    return out
+
+
 def annotate_serial_lock_status(
     devices: list[SerialDeviceInfo],
     *,
@@ -493,6 +537,10 @@ def build_snapshot(
     if network_scan_results is not None:
         n = len([r for r in network_scan_results if r])
         scan_note = f"LAN scan: {n} host(s)" if n else "LAN scan: no extra hosts"
+    if probe_serial_locks:
+        probe_note = serial_probe_summary(serial_devices)
+        if probe_note:
+            scan_note = f"{scan_note} · {probe_note}".strip(" ·")
     return (
         DiscoverySnapshot(
             mono_ts=time.monotonic(),

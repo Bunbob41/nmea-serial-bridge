@@ -76,6 +76,25 @@ def _step_success(
     return False
 
 
+def run_unittest_file(name: str, module: str) -> tuple[int, bool]:
+    print(f"\n>> {name}: python -m unittest {module}", flush=True)
+    proc = subprocess.run(
+        [PY, "-m", "unittest", module],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        **subprocess_no_console_kwargs(),
+    )
+    if proc.stdout:
+        print(proc.stdout, end="" if proc.stdout.endswith("\n") else "\n", flush=True)
+    if proc.stderr:
+        print(proc.stderr, end="" if proc.stderr.endswith("\n") else "\n", flush=True)
+    tb_seen = _has_traceback(proc.stdout or "") or _has_traceback(proc.stderr or "")
+    if proc.returncode == 0 and not tb_seen:
+        return 0, False
+    return proc.returncode or 1, tb_seen
+
+
 def run(name: str, args: list[str], *, echo_output: bool = True) -> tuple[int, bool]:
     print(f"\n>> {name}: {' '.join(args)}", flush=True)
     script = args[0]
@@ -122,6 +141,7 @@ def main() -> int:
 
     steps: list[tuple[str, list[str] | None]] = [
         ("compileall", None),
+        ("app_icon", ["test_app_icon.py"]),
         ("unittest", ["tools/run_unittests.py"]),
         ("com_free", ["com_free.py"]),
         ("check_setup", ["check_setup.py"]),
@@ -145,6 +165,8 @@ def main() -> int:
             print("\n>> compileall: project sources (excludes dist/, venv/)", flush=True)
             code = compile_repo()
             tb_seen = False
+        elif name == "app_icon":
+            code, tb_seen = run_unittest_file(name, args[0])
         else:
             code, tb_seen = run(name, args or [])
         if code != 0 or tb_seen:

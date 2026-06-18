@@ -89,6 +89,8 @@ MAX_ASSEMBLER_BUFFER = 64 * 1024
 class ProcessResult:
     forward: List[bytes] = field(default_factory=list)
     rejected: List[str] = field(default_factory=list)
+    ingress_lines: int = 0
+    ingress_fix_lines: int = 0
 
 
 def parse_nmea_utc(line: str) -> Optional[str]:
@@ -197,6 +199,10 @@ class NmeaLineAssembler:
             if len(line) > MAX_NMEA_LINE_LEN:
                 out.rejected.append(f"line too long ({len(line)} chars), dropped")
                 continue
+
+            out.ingress_lines += 1
+            if nmea_sentence_type(line) == "GGA":
+                out.ingress_fix_lines += 1
 
             if mode == NmeaMode.STRICT:
                 ok, reason = _classify_strict(line, nmea_filter)

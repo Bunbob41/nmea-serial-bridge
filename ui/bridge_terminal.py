@@ -5,8 +5,8 @@ bridge with timestamp, direction, and NMEA syntax colouring.  Filters, hex
 toggle, pause, and save are all non-blocking and purely UI-side.
 
 Wire-tap data is fed from bridge_core via BridgeLogicMixin._on_bridge_wire_tap,
-which calls BridgeTerminalPanel.feed() through a QTimer.singleShot so the
-asyncio bridge thread never touches Qt directly.
+which calls BridgeTerminalPanel.feed(); a Qt Signal queues delivery to the GUI
+thread (QMetaObject.invokeMethod with bytes is unreliable in PySide6).
 
 Directions emitted by bridge_core:
     "net→com"   — assembled sentence forwarded to the serial port
@@ -101,10 +101,11 @@ class _NmeaHighlighter(QtGui.QSyntaxHighlighter):
         self._f_checksum  = _fmt(_MUTED)
         self._f_hex_byte  = _fmt(_ACCENT_BLUE)
         self._f_raw_label = _fmt(_ACCENT_AMBER, bold=True)
+        self._f_event     = _fmt(_MUTED, bold=True)
 
         # pre-compiled patterns
         self._re_ts    = re.compile(r"^\d{2}:\d{2}:\d{2}\.\d{3}")
-        self._re_dir   = re.compile(r"\b(NET→COM|COM→NET|REJECT|RAW)\b")
+        self._re_dir   = re.compile(r"\b(NET→COM|COM→NET|REJECT|RAW|EVENT)\b")
         self._re_start = re.compile(r"\$([A-Z]{2})([A-Z]{3})")
         self._re_cksum = re.compile(r"\*[0-9A-Fa-f]{2}")
         self._re_hex   = re.compile(r"\b[0-9a-f]{2}\b")
@@ -124,6 +125,8 @@ class _NmeaHighlighter(QtGui.QSyntaxHighlighter):
                 fmt = self._f_com_net
             elif label == "REJECT":
                 fmt = self._f_reject
+            elif label == "EVENT":
+                fmt = self._f_event
             else:
                 fmt = self._f_raw_label
             self.setFormat(m.start(), m.end() - m.start(), fmt)
@@ -153,8 +156,10 @@ class BridgeTerminalPanel(QtWidgets.QWidget):
     """Live wire-tap view of bridge data flow.
 
     Thread-safety: feed() may be called from the bridge callback thread.
-    All Qt mutations are deferred to the GUI thread via QMetaObject.invokeMethod.
+    All Qt mutations are queued to the GUI thread via _wire_feed Signal.
     """
+
+    _wire_feed = QtCore.Signal(str, object)
 
     def __init__(self, parent: Optional[QtWidgets.QWidget] = None) -> None:
         super().__init__(parent)
@@ -170,7 +175,13 @@ class BridgeTerminalPanel(QtWidgets.QWidget):
         self._type_filter: Optional[str] = None   # None = all; "GGA", "RMC", …
         self._seen_types: set[str] = set()
         self._pending: list[str] = []             # batched line strings
+        # Full session buffer for filter replay: (direction, sentence_type, line)
+        self._history: list[tuple[str, str, str]] = []
         self._is_raw_mode = False
+        # Binary auto-detection state — resets on each new session
+        self._bin_sample_nonprint = 0   # non-printable bytes seen so far
+        self._bin_sample_total = 0      # total bytes sampled
+        self._bin_auto_triggered = False
 
         root = QtWidgets.QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
@@ -180,68 +191,82 @@ class BridgeTerminalPanel(QtWidgets.QWidget):
         toolbar = QtWidgets.QFrame()
         toolbar.setObjectName("wireTerminalToolbar")
         tb = QtWidgets.QHBoxLayout(toolbar)
-        tb.setContentsMargins(10, 6, 10, 6)
-        tb.setSpacing(6)
+        tb.setContentsMargins(10, 5, 10, 5)
+        tb.setSpacing(8)
 
-        # direction filter chips
-        self._btn_all = self._chip("All",     None,      checked=True)
-        self._btn_n2c = self._chip("NET→COM", "net→com")
-        self._btn_c2n = self._chip("COM→NET", "com→net")
-        self._btn_rej = self._chip("Reject",  "reject")
-        tb.addWidget(self._btn_all)
-        tb.addWidget(self._btn_n2c)
-        tb.addWidget(self._btn_c2n)
-        tb.addWidget(self._btn_rej)
+        # direction filter — segmented control
+        seg = QtWidgets.QFrame()
+        seg.setObjectName("wireSegmentBar")
+        seg_lay = QtWidgets.QHBoxLayout(seg)
+        seg_lay.setContentsMargins(2, 2, 2, 2)
+        seg_lay.setSpacing(0)
 
-        tb.addWidget(_vline())
+        self._dir_group = QtWidgets.QButtonGroup(self)
+        self._dir_group.setExclusive(True)
+        self._btn_all = self._seg_btn("All", None, edge="left", checked=True)
+        self._btn_n2c = self._seg_btn("NET→COM", "net→com", edge="mid")
+        self._btn_c2n = self._seg_btn("COM→NET", "com→net", edge="mid")
+        self._btn_rej = self._seg_btn("Reject", "reject", edge="right")
+        for btn in (self._btn_all, self._btn_n2c, self._btn_c2n, self._btn_rej):
+            self._dir_group.addButton(btn)
+            seg_lay.addWidget(btn)
+        self._dir_group.buttonClicked.connect(self._on_dir_segment_clicked)
+        tb.addWidget(seg)
 
-        # sentence type filter
-        type_lbl = QtWidgets.QLabel("Type:")
-        type_lbl.setObjectName("wireToolbarLabel")
+        # sentence type filter — popup until types appear on the wire
+        self._type_menu = QtWidgets.QMenu(self)
+        self._type_menu.aboutToShow.connect(self._populate_type_menu)
+        self._btn_type = QtWidgets.QToolButton()
+        self._btn_type.setObjectName("wireTypeBtn")
+        self._btn_type.setText("Type")
+        self._btn_type.setPopupMode(QtWidgets.QToolButton.ToolButtonPopupMode.InstantPopup)
+        self._btn_type.setMenu(self._type_menu)
+        self._btn_type.setToolTip("Filter by NMEA sentence type (GGA, RMC, …)")
+        self._btn_type.setVisible(False)
+        tb.addWidget(self._btn_type)
+
+        # hidden combo keeps mixin/tests compat for type enumeration
         self._type_combo = QtWidgets.QComboBox()
         self._type_combo.setObjectName("wireTypeCombo")
-        self._type_combo.setFixedWidth(86)
         self._type_combo.addItem("All types", None)
-        self._type_combo.setToolTip("Filter by NMEA sentence type (GGA, RMC, …)")
+        self._type_combo.hide()
         self._type_combo.currentIndexChanged.connect(self._on_type_filter_changed)
-        tb.addWidget(type_lbl)
-        tb.addWidget(self._type_combo)
-
-        tb.addWidget(_vline())
 
         # hex toggle (visible only in RAW mode)
-        self._chk_hex = QtWidgets.QCheckBox("Hex")
-        self._chk_hex.setObjectName("wireHexCheck")
-        self._chk_hex.setToolTip("Show raw bytes as hex dump (RAW mode only)")
-        self._chk_hex.setVisible(False)
-        self._chk_hex.stateChanged.connect(self._on_hex_toggled)
-        tb.addWidget(self._chk_hex)
+        self._btn_hex = QtWidgets.QToolButton()
+        self._btn_hex.setObjectName("wireHexBtn")
+        self._btn_hex.setText("Hex")
+        self._btn_hex.setCheckable(True)
+        self._btn_hex.setToolTip("Show raw bytes as hex dump (RAW mode only)")
+        self._btn_hex.setVisible(False)
+        self._btn_hex.toggled.connect(self._on_hex_toggled)
+        tb.addWidget(self._btn_hex)
 
         tb.addStretch(1)
 
-        # right-side action buttons
-        self._btn_pause = QtWidgets.QPushButton("⏸  Pause")
-        self._btn_pause.setObjectName("wireActionBtn")
-        self._btn_pause.setFixedHeight(26)
-        self._btn_pause.setCheckable(True)
-        self._btn_pause.setToolTip("Pause/resume the live display (bridge keeps running)")
+        # right-side icon actions
+        self._btn_wrap = self._icon_btn(
+            "⏎", "Toggle line wrap (long lines vs. horizontal scroll)", checkable=True
+        )
+        self._btn_wrap.setToolTip("Wrap long lines  (click to toggle)")
+        self._btn_wrap.toggled.connect(self._on_wrap_toggled)
+        self._btn_pause = self._icon_btn("⏸", "Pause live display (bridge keeps running)", checkable=True)
         self._btn_pause.toggled.connect(self._on_pause_toggled)
-
-        btn_clear = QtWidgets.QPushButton("Clear")
-        btn_clear.setObjectName("wireActionBtn")
-        btn_clear.setFixedHeight(26)
-        btn_clear.setToolTip("Clear the display (no data is lost from the bridge)")
-        btn_clear.clicked.connect(self._view.clear if hasattr(self, "_view") else lambda: None)
-
-        self._btn_save = QtWidgets.QPushButton("Save…")
-        self._btn_save.setObjectName("wireActionBtn")
-        self._btn_save.setFixedHeight(26)
-        self._btn_save.setToolTip("Save visible traffic to a .txt file")
+        btn_clear = self._icon_btn("⌫", "Clear display")
+        self._btn_save = self._icon_btn("💾", "Save visible traffic to file")
+        btn_clear.clicked.connect(self._on_clear)
         self._btn_save.clicked.connect(self._on_save)
 
-        tb.addWidget(self._btn_pause)
-        tb.addWidget(btn_clear)
-        tb.addWidget(self._btn_save)
+        actions = QtWidgets.QWidget()
+        actions.setObjectName("wireToolbarActions")
+        act_lay = QtWidgets.QHBoxLayout(actions)
+        act_lay.setContentsMargins(0, 0, 0, 0)
+        act_lay.setSpacing(4)
+        act_lay.addWidget(self._btn_wrap)
+        act_lay.addWidget(self._btn_pause)
+        act_lay.addWidget(btn_clear)
+        act_lay.addWidget(self._btn_save)
+        tb.addWidget(actions)
 
         root.addWidget(toolbar)
 
@@ -255,10 +280,6 @@ class BridgeTerminalPanel(QtWidgets.QWidget):
         from ui.fonts import monospace_ui_font
         self._view.setFont(monospace_ui_font())
         root.addWidget(self._view, 1)
-
-        # hook up deferred clear now that _view exists
-        btn_clear.clicked.disconnect()
-        btn_clear.clicked.connect(self._on_clear)
 
         # NMEA syntax highlighter
         self._highlighter = _NmeaHighlighter(self._view.document())
@@ -275,87 +296,219 @@ class BridgeTerminalPanel(QtWidgets.QWidget):
         self._flush_timer.timeout.connect(self._flush)
         self._flush_timer.start()
 
-    # ── chip helper ───────────────────────────────────────────────────────────
+        self._wire_feed.connect(self._feed_gui, QtCore.Qt.ConnectionType.QueuedConnection)
 
-    def _chip(
-        self, label: str, direction: Optional[str], checked: bool = False
+    # ── toolbar helpers ───────────────────────────────────────────────────────
+
+    def _seg_btn(
+        self,
+        label: str,
+        direction: Optional[str],
+        *,
+        edge: str = "mid",
+        checked: bool = False,
     ) -> QtWidgets.QPushButton:
         btn = QtWidgets.QPushButton(label)
-        btn.setObjectName("wireDirChip")
+        btn.setObjectName("wireSegBtn")
+        btn.setProperty("segmentEdge", edge)
+        btn.setProperty("directionKey", "" if direction is None else direction)
         btn.setCheckable(True)
         btn.setChecked(checked)
-        btn.setFixedHeight(24)
+        btn.setFixedHeight(26)
         btn.setToolTip(f"Show {label} traffic only" if direction else "Show all traffic")
-        btn.clicked.connect(lambda: self._set_dir_filter(direction))
         return btn
+
+    def _icon_btn(
+        self, glyph: str, tooltip: str, *, checkable: bool = False
+    ) -> QtWidgets.QToolButton:
+        btn = QtWidgets.QToolButton()
+        btn.setObjectName("wireIconBtn")
+        btn.setText(glyph)
+        btn.setToolTip(tooltip)
+        btn.setFixedSize(28, 28)
+        if checkable:
+            btn.setCheckable(True)
+        return btn
+
+    def _on_dir_segment_clicked(self, btn: QtWidgets.QAbstractButton) -> None:
+        key = btn.property("directionKey")
+        direction = None if not key else str(key)
+        self._set_dir_filter(direction)
+
+    def _populate_type_menu(self) -> None:
+        self._type_menu.clear()
+        all_act = self._type_menu.addAction("All types")
+        all_act.triggered.connect(lambda: self._set_type_filter(None))
+        for stype in sorted(self._seen_types):
+            act = self._type_menu.addAction(stype)
+            act.triggered.connect(lambda _checked=False, s=stype: self._set_type_filter(s))
+
+    def _set_type_filter(self, stype: Optional[str]) -> None:
+        self._type_filter = stype
+        if stype:
+            self._btn_type.setText(stype)
+            self._btn_type.setProperty("filterActive", "true")
+        else:
+            self._btn_type.setText("Type")
+            self._btn_type.setProperty("filterActive", "false")
+        self._btn_type.style().unpolish(self._btn_type)
+        self._btn_type.style().polish(self._btn_type)
+        idx = 0
+        if stype:
+            for i in range(self._type_combo.count()):
+                if self._type_combo.itemData(i) == stype:
+                    idx = i
+                    break
+        self._type_combo.blockSignals(True)
+        self._type_combo.setCurrentIndex(idx)
+        self._type_combo.blockSignals(False)
+        self._rebuild_view()
 
     # ── public API ────────────────────────────────────────────────────────────
 
     def set_raw_mode(self, raw: bool) -> None:
-        """Called by the mixin when bridge NMEA mode changes."""
+        """Called by the mixin when bridge NMEA mode changes.
+
+        Auto-enables hex display when entering raw/binary mode so binary
+        streams (MAVLink, RTCM, etc.) are immediately readable.  Also resets
+        the binary auto-detection state so it can re-sample the new session.
+        """
+        # Reset detection so the new session is sampled fresh
+        self._bin_sample_nonprint = 0
+        self._bin_sample_total = 0
+        self._bin_auto_triggered = False
+
         self._is_raw_mode = raw
-        self._chk_hex.setVisible(raw)
-        if not raw:
-            self._chk_hex.setChecked(False)
+        self._btn_hex.setVisible(raw)
+        if raw:
+            self._btn_hex.setChecked(True)
+        else:
+            self._btn_hex.setChecked(False)
 
     def feed(self, direction: str, data: bytes) -> None:
-        """Called from bridge callback thread — deferred to GUI thread."""
-        QtCore.QMetaObject.invokeMethod(
-            self,
-            "_feed_gui",
-            QtCore.Qt.ConnectionType.QueuedConnection,
-            QtCore.Q_ARG(str, direction),
-            QtCore.Q_ARG(bytes, data),
-        )
+        """Called from bridge callback thread — queued to GUI thread via Signal."""
+        if not data:
+            return
+        self._wire_feed.emit(direction, bytes(data))
 
-    @QtCore.Slot(str, bytes)
-    def _feed_gui(self, direction: str, data: bytes) -> None:
+    def append_ops_line(self, text: str) -> None:
+        """Bridge status / bench messages (GUI thread only)."""
+        if self._paused:
+            return
+        for raw_line in text.splitlines():
+            line = raw_line.rstrip()
+            if not line:
+                continue
+            formatted = f"{_ts()}  EVENT  {line}"
+            self._history.append(("event", "", formatted))
+            if len(self._history) > _MAX_LINES:
+                self._history = self._history[-_MAX_LINES:]
+            if self._matches_filters("event", ""):
+                self._pending.append(formatted)
+
+    def clear_display(self) -> None:
+        """Clear the visible traffic view and session buffer."""
+        self._on_clear()
+
+    @QtCore.Slot(str, object)
+    def _feed_gui(self, direction: str, data: object) -> None:
         """All display logic runs on the GUI thread."""
+        if not isinstance(data, (bytes, bytearray, memoryview)):
+            return
+        raw = bytes(data)
         if self._paused:
             return
 
-        # direction filter
-        if self._dir_filter is not None and direction != self._dir_filter:
-            return
-
-        # sentence type filter and type-combo population
-        stype = _sentence_type(data)
+        stype = _sentence_type(raw)
         if stype and stype not in self._seen_types:
             self._seen_types.add(stype)
             self._type_combo.addItem(stype, stype)
+            self._btn_type.setVisible(True)
 
-        if self._type_filter is not None and stype != self._type_filter:
-            return
+        # ── Binary auto-detection ─────────────────────────────────────────────
+        # Sample the first ~512 bytes of actual data; if >25% are non-printable
+        # (outside tab/LF/CR/space-tilde range), treat as binary and auto-enable hex.
+        if not self._bin_auto_triggered and self._bin_sample_total < 512:
+            _PRINT = frozenset(range(0x20, 0x7F)) | {0x09, 0x0A, 0x0D}
+            self._bin_sample_nonprint += sum(1 for b in raw if b not in _PRINT)
+            self._bin_sample_total += len(raw)
+            if (
+                self._bin_sample_total >= 32
+                and self._bin_sample_nonprint / self._bin_sample_total > 0.25
+            ):
+                self._bin_auto_triggered = True
+                self._is_raw_mode = True
+                self._btn_hex.setVisible(True)
+                self._btn_hex.setChecked(True)  # triggers _on_hex_toggled → _hex_mode = True
+                # Inject a notice line so the operator knows why the view changed
+                ts = _ts()
+                notice = (
+                    f"{ts}  EVENT  "
+                    f"[Terminal] Binary stream detected "
+                    f"({self._bin_sample_nonprint}/{self._bin_sample_total} non-printable bytes) "
+                    f"— hex display enabled automatically."
+                )
+                self._history.append(("event", "", notice))
+                self._pending.append(notice)
 
-        # format line
+        # ── format line ───────────────────────────────────────────────────────
         dir_label = {
             "net→com": "NET→COM",
             "com→net": "COM→NET",
             "reject":  "REJECT ",
         }.get(direction, direction.upper())
 
-        if self._hex_mode and self._is_raw_mode:
-            body = f"[RAW {len(data)} bytes]\n{_hex_format(data)}"
+        # Hex display works whenever _hex_mode is on, regardless of _is_raw_mode.
+        # _is_raw_mode still controls whether the Hex button is visible.
+        if self._hex_mode:
+            body = f"[RAW {len(raw)} bytes]\n{_hex_format(raw)}"
         else:
             try:
-                body = data.decode("utf-8", errors="replace").rstrip("\r\n")
+                body = raw.decode("utf-8", errors="replace").rstrip("\r\n")
             except Exception:
-                body = repr(data)
+                body = repr(raw)
 
         line = f"{_ts()}  {dir_label}  {body}"
-        self._pending.append(line)
+        self._history.append((direction, stype, line))
+        if len(self._history) > _MAX_LINES:
+            self._history = self._history[-_MAX_LINES:]
+
+        if self._matches_filters(direction, stype):
+            self._pending.append(line)
+
+    def _matches_filters(self, direction: str, stype: str) -> bool:
+        if direction == "event":
+            return self._dir_filter is None and self._type_filter is None
+        if self._dir_filter is not None and direction != self._dir_filter:
+            return False
+        if self._type_filter is not None and stype != self._type_filter:
+            return False
+        return True
+
+    def _rebuild_view(self) -> None:
+        """Re-render the text view from session history using active filters."""
+        self._pending.clear()
+        lines = [
+            line
+            for direction, stype, line in self._history
+            if self._matches_filters(direction, stype)
+        ]
+        self._view.setPlainText("\n".join(lines))
+        if lines:
+            bar = self._view.verticalScrollBar()
+            bar.setValue(bar.maximum())
 
     # ── flush ─────────────────────────────────────────────────────────────────
 
     def _flush(self) -> None:
         if not self._pending:
             return
-        blob = "\n".join(self._pending)
+        blob = "\n".join(self._pending) + "\n"
         self._pending.clear()
         at_bottom = self._at_bottom()
         cursor = self._view.textCursor()
         cursor.movePosition(QtGui.QTextCursor.MoveOperation.End)
-        cursor.insertText(("\n" if self._view.document().blockCount() > 1 else "") + blob)
+        cursor.insertText(blob)
         if at_bottom:
             self._view.verticalScrollBar().setValue(
                 self._view.verticalScrollBar().maximum()
@@ -376,21 +529,42 @@ class BridgeTerminalPanel(QtWidgets.QWidget):
             (self._btn_rej, "reject"),
         ):
             btn.setChecked(d == direction)
+        self._rebuild_view()
 
     def _on_type_filter_changed(self, index: int) -> None:
         self._type_filter = self._type_combo.itemData(index)
+        self._rebuild_view()
 
-    def _on_hex_toggled(self, state: int) -> None:
-        self._hex_mode = bool(state)
+    def _on_hex_toggled(self, checked: bool) -> None:
+        self._hex_mode = bool(checked)
+
+    def _on_wrap_toggled(self, checked: bool) -> None:
+        mode = (
+            QtWidgets.QPlainTextEdit.LineWrapMode.WidgetWidth
+            if checked
+            else QtWidgets.QPlainTextEdit.LineWrapMode.NoWrap
+        )
+        self._view.setLineWrapMode(mode)
+        self._btn_wrap.setToolTip(
+            "Line wrap ON — click to disable" if checked else "Wrap long lines  (click to toggle)"
+        )
 
     def _on_pause_toggled(self, checked: bool) -> None:
         self._paused = checked
-        self._btn_pause.setText("▶  Resume" if checked else "⏸  Pause")
+        self._btn_pause.setText("▶" if checked else "⏸")
+        self._btn_pause.setToolTip(
+            "Resume live display" if checked else "Pause live display (bridge keeps running)"
+        )
 
     def _on_clear(self) -> None:
         self._view.clear()
         self._pending.clear()
+        self._history.clear()
         self._seen_types.clear()
+        # Reset binary auto-detection so the next session samples fresh
+        self._bin_sample_nonprint = 0
+        self._bin_sample_total = 0
+        self._bin_auto_triggered = False
         # preserve "All types" entry
         self._type_combo.blockSignals(True)
         while self._type_combo.count() > 1:
@@ -398,6 +572,11 @@ class BridgeTerminalPanel(QtWidgets.QWidget):
         self._type_combo.setCurrentIndex(0)
         self._type_combo.blockSignals(False)
         self._type_filter = None
+        self._btn_type.setText("Type")
+        self._btn_type.setProperty("filterActive", "false")
+        self._btn_type.setVisible(False)
+        self._btn_type.style().unpolish(self._btn_type)
+        self._btn_type.style().polish(self._btn_type)
 
     def _on_save(self) -> None:
         path, _ = QtWidgets.QFileDialog.getSaveFileName(
@@ -420,17 +599,20 @@ class BridgeTerminalPanel(QtWidgets.QWidget):
             )
 
 
-# ── helper ────────────────────────────────────────────────────────────────────
+def create_modern_activity_tab(parent: QtWidgets.QWidget) -> BridgeTerminalPanel:
+    """Activity tab: wire-tap traffic plus hidden log_view for mixin compat."""
+    from ui.controls import create_log_panel
 
-def _vline() -> QtWidgets.QFrame:
-    f = QtWidgets.QFrame()
-    f.setFrameShape(QtWidgets.QFrame.Shape.VLine)
-    f.setObjectName("wireToolbarSep")
-    return f
+    hidden = create_log_panel(parent, show_header=False)
+    hidden.setParent(parent)
+    hidden.hide()
+    panel = BridgeTerminalPanel()
+    parent.bridge_terminal = panel  # type: ignore[attr-defined]
+    return panel
 
 
 def create_bridge_terminal_tab(parent: QtWidgets.QWidget) -> BridgeTerminalPanel:
-    """Build and return a BridgeTerminalPanel; stores reference on parent."""
+    """Legacy alias — prefer create_modern_activity_tab for Modern layout."""
     panel = BridgeTerminalPanel()
     parent.bridge_terminal = panel  # type: ignore[attr-defined]
     return panel

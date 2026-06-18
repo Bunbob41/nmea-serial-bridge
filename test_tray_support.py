@@ -49,6 +49,9 @@ class TestTraySupport(unittest.TestCase):
             def _shutdown_background_services(self) -> None:
                 pass
 
+            def _close_auxiliary_windows(self) -> None:
+                pass
+
             def close(self) -> None:
                 pass
 

@@ -11,7 +11,7 @@ const MAP_ENABLED_KEY = "nmea-bridge-map-enabled";
 const MAP_BASE_LAYER_KEY = "nmea-bridge-map-base-layer";
 const MAP_TRACK_MAX = 120;
 /** Bumped when dashboard.js changes — used for ?v= cache bust on script tags. */
-const DASHBOARD_SCRIPT_REV = "1.17.61";
+const DASHBOARD_SCRIPT_REV = "1.31.1";
 
 /** Phone sideways: compact header (see dashboard.css landscape HUD media query). */
 const PHONE_LANDSCAPE_HEADER_MQ = "(orientation: landscape) and (max-height: 520px) and (max-width: 960px)";
@@ -486,6 +486,7 @@ async function init() {
     initPositionMap();
     initDashboardChromeMenus();
     initDeviceListClicks();
+    consumeMapDeepLink();
   } catch (e) {
     showAlert("run-alert", "Dashboard init error: " + e.message, "error");
   }
@@ -1225,6 +1226,41 @@ function ensureMapEnabledFromChrome() {
   localStorage.setItem(MAP_ENABLED_KEY, "1");
   syncMapVisibility();
   ensureBridgeMap();
+}
+
+function consumeMapDeepLink() {
+  const params = new URLSearchParams(location.search);
+  const hash = location.hash.slice(1).toLowerCase();
+  const want =
+    params.get("map") === "1" ||
+    params.get("focus") === "map" ||
+    hash === "map" ||
+    hash.startsWith("map");
+  if (!want) return;
+  setMapPrioritized(true);
+  ensureMapEnabledFromChrome();
+  const mapCard = document.getElementById("map-card");
+  if (mapCard) {
+    if (typeof setDashboardPanelOpen === "function") {
+      setDashboardPanelOpen(mapCard, true, false);
+    }
+    requestAnimationFrame(() => {
+      mapCard.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      mapInstance?.invalidateSize();
+    });
+  }
+  if (params.has("map") || params.get("focus") === "map") {
+    params.delete("map");
+    params.delete("focus");
+    const q = params.toString();
+    const cleanHash =
+      hash === "map" || hash.startsWith("map") ? "" : location.hash;
+    history.replaceState(
+      null,
+      "",
+      location.pathname + (q ? `?${q}` : "") + cleanHash
+    );
+  }
 }
 
 function syncMapTrackVisibility(show) {

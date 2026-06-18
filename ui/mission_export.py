@@ -10,9 +10,9 @@ from ui.mission_session import MissionSessionRecord
 
 
 def default_export_dir() -> Path:
-    from core.local_logger import default_local_backup_dir
+    from ui.ui_prefs import effective_local_backup_base_dir
 
-    return default_local_backup_dir().parent / "exports"
+    return effective_local_backup_base_dir() / "exports"
 
 
 def build_mission_summary_text(record: MissionSessionRecord) -> str:

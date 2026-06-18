@@ -704,7 +704,7 @@ class _HudLayoutDialog(QtWidgets.QDialog):
         hl.setContentsMargins(16, 16, 16, 16)
         title = QtWidgets.QLabel("Survey HUD Configuration")
         title.setObjectName("layoutDialogTitle")
-        sub = QtWidgets.QLabel("Tailor your telemetry views. (Curated by Argo)")
+        sub = QtWidgets.QLabel("Choose which metrics and sections appear on the HUD.")
         sub.setObjectName("layoutDialogSub")
         hl.addWidget(title)
         hl.addWidget(sub)

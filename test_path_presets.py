@@ -176,6 +176,27 @@ class TestPathPresets(unittest.TestCase):
         self.assertEqual(d["udp_port"], 40810)
         self.assertIn("NORBIT_DCT", d.get("notes", "").replace("\\", "/"))
 
+    def test_builtin_cube_mavlink_preset(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "bench_defaults.json").write_text(
+                (Path(__file__).resolve().parent / "bench_defaults.json").read_text(
+                    encoding="utf-8"
+                ),
+                encoding="utf-8",
+            )
+            with mock.patch.object(bc, "_bench_defaults_roots", return_value=[root]):
+                builtins = bc._builtin_presets()
+                names = bc.list_preset_names()
+            with mock.patch.object(bc, "USER_PRESETS_PATH", Path(tmp) / "empty.json"):
+                with mock.patch.object(bc, "_bench_defaults_roots", return_value=[root]):
+                    names_fresh = bc.list_preset_names()
+        self.assertIn("Cube MAVLink", builtins)
+        d = builtins["Cube MAVLink"]
+        self.assertEqual(d["nmea_mode"], "raw")
+        self.assertEqual(d["udp_port"], 14550)
+        self.assertIn("Cube MAVLink", names_fresh)
+
     def test_bench_defaults_local_overrides_public(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

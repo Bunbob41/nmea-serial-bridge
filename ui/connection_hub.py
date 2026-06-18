@@ -18,6 +18,7 @@ class EndpointCardWidget(QtWidgets.QFrame):
     """One selectable serial or network endpoint card."""
 
     clicked = QtCore.Signal(str)
+    activated = QtCore.Signal(str)
     MIN_WIDTH = 220
 
     def __init__(
@@ -57,12 +58,15 @@ class EndpointCardWidget(QtWidgets.QFrame):
     @staticmethod
     def _status_label(status: str) -> str:
         return {
-            "available": "Available",
-            "ready": "Ready",
-            "running": "Running",
+            "available": "Detected",
+            "ready": "Free",
+            "running": "Active",
             "port_busy": "Port busy",
             "stale": "Stale",
             "in_use": "In use",
+            "warn": "Warn",
+            "ok": "Live",
+            "idle": "Idle",
         }.get(status, status.replace("_", " ").title())
 
     def set_selected(self, selected: bool) -> None:
@@ -75,11 +79,19 @@ class EndpointCardWidget(QtWidgets.QFrame):
         self._subtitle.setText(subtitle)
         self._chip.setText(self._status_label(status))
         self.setProperty("cardStatus", status)
+        self.style().unpolish(self)
+        self.style().polish(self)
 
     def mousePressEvent(self, event: QtGui.QMouseEvent) -> None:
         if event.button() == QtCore.Qt.MouseButton.LeftButton:
             self.clicked.emit(self.device_id)
         super().mousePressEvent(event)
+
+    def mouseDoubleClickEvent(self, event: QtGui.QMouseEvent) -> None:
+        if event.button() == QtCore.Qt.MouseButton.LeftButton:
+            self.clicked.emit(self.device_id)
+            self.activated.emit(self.device_id)
+        super().mouseDoubleClickEvent(event)
 
 
 
@@ -87,6 +99,7 @@ class ConnectionHubWidget(QtWidgets.QWidget):
     """Grid of endpoint cards driven by ``DiscoverySnapshot``."""
 
     selection_changed = QtCore.Signal(str)
+    card_activated = QtCore.Signal(str)
     manual_override_toggled = QtCore.Signal(bool)
     refresh_requested = QtCore.Signal()
     unlock_requested = QtCore.Signal()
@@ -102,10 +115,12 @@ class ConnectionHubWidget(QtWidgets.QWidget):
         parent: Optional[QtWidgets.QWidget] = None,
         *,
         standalone: bool = True,
+        show_page_header: bool = True,
     ) -> None:
         super().__init__(parent)
         self.setObjectName("connectionHub")
         self._standalone = bool(standalone)
+        self._show_page_header = bool(show_page_header)
         self._bridge_win: Optional[QtWidgets.QWidget] = None
         self._splitter: QtWidgets.QSplitter | None = None
         self._manual_box: QtWidgets.QGroupBox | None = None
@@ -119,7 +134,8 @@ class ConnectionHubWidget(QtWidgets.QWidget):
             QtWidgets.QSizePolicy.Policy.Minimum,
         )
         if self._standalone:
-            self.setMinimumHeight(cards_view_h + 96)
+            extra = 96 if self._show_page_header else 48
+            self.setMinimumHeight(cards_view_h + extra)
         else:
             self.setMinimumHeight(300)
         root = QtWidgets.QVBoxLayout(self)
@@ -127,11 +143,14 @@ class ConnectionHubWidget(QtWidgets.QWidget):
         root.setSpacing(6)
 
         header = QtWidgets.QHBoxLayout()
-        title = QtWidgets.QLabel("Connection hub")
-        title.setObjectName("connectionHubTitle")
-        header.addWidget(title)
+        if self._show_page_header:
+            title = QtWidgets.QLabel("Connection hub")
+            title.setObjectName("connectionHubTitle")
+            header.addWidget(title)
         self.btn_refresh = QtWidgets.QPushButton("Refresh discovery")
-        self.btn_refresh.setToolTip("Re-scan USB serial and LAN (ARP + UDP probe).")
+        self.btn_refresh.setToolTip(
+            "Re-scan USB serial, probe each COM for Free/Port busy, and scan LAN hosts."
+        )
         self.btn_refresh.clicked.connect(self.refresh_requested.emit)
         self.btn_unlock = QtWidgets.QPushButton("Unlock ports")
         self.btn_unlock.setToolTip("Probe/release COM lock; check UDP listen port availability.")
@@ -144,21 +163,22 @@ class ConnectionHubWidget(QtWidgets.QWidget):
         header.addWidget(self._refresh_lbl)
         root.addLayout(header)
 
-        if self._standalone:
-            hint_text = (
-                "Pick a detected GNSS serial port or UDP listen context. "
-                "Two rows shown — scroll inside for more. "
-                "Manual COM/UDP fields live on the Control tab."
-            )
-        else:
-            hint_text = (
-                "Pick a detected GNSS serial port or UDP listen context. "
-                "Drag the splitter handle to resize the card area vs Manual override."
-            )
-        hint = QtWidgets.QLabel(hint_text)
-        hint.setWordWrap(True)
-        hint.setObjectName("tabHint")
-        root.addWidget(hint)
+        if self._show_page_header:
+            if self._standalone:
+                hint_text = (
+                    "Click a serial or network tile to fill Control — blue border = hub pick for Start. "
+                    "Changing COM on Control syncs the matching serial tile only. "
+                    "Refresh discovery probes COM ports for Free (green) vs Port busy (amber)."
+                )
+            else:
+                hint_text = (
+                    "Click a tile to fill Control fields — it does not Start the bridge. "
+                    "Drag the splitter to resize cards vs Manual override."
+                )
+            hint = QtWidgets.QLabel(hint_text)
+            hint.setWordWrap(True)
+            hint.setObjectName("tabHint")
+            root.addWidget(hint)
 
         cards_wrap = self._build_cards_pane(cards_view_h)
         if self._standalone:
@@ -191,6 +211,7 @@ class ConnectionHubWidget(QtWidgets.QWidget):
             )
 
         self._selected_id: Optional[str] = None
+        self._pending_serial_port: str = ""
         self._cards: dict[str, EndpointCardWidget] = {}
         self._snapshot: Optional[DiscoverySnapshot] = None
         self._max_cols = 2
@@ -311,6 +332,57 @@ class ConnectionHubWidget(QtWidgets.QWidget):
     def selected_device_id(self) -> Optional[str]:
         return self._selected_id
 
+    def clear_selection(self) -> None:
+        self._selected_id = None
+        self._pending_serial_port = ""
+        for card in self._cards.values():
+            card.set_selected(False)
+
+    def select_serial_port(self, port: str, *, clear_if_missing: bool = True) -> bool:
+        """Highlight the hub tile for this COM port (case-insensitive)."""
+        port = (port or "").strip()
+        if not port or port.startswith("("):
+            if clear_if_missing:
+                self.clear_selection()
+            return False
+        match_id: Optional[str] = None
+        snap = self._snapshot
+        if snap is not None:
+            for dev in snap.serial_devices:
+                if dev.port.upper() == port.upper():
+                    match_id = dev.device_id
+                    break
+        if match_id is None:
+            for did, card in self._cards.items():
+                if did.startswith("serial:") and card._title.text().strip().upper() == port.upper():
+                    match_id = did
+                    break
+        if match_id is None:
+            self._pending_serial_port = port
+            if clear_if_missing:
+                self._selected_id = None
+                for card in self._cards.values():
+                    card.set_selected(False)
+            return False
+        self._pending_serial_port = ""
+        self._selected_id = match_id
+        for did, card in self._cards.items():
+            card.set_selected(did == match_id)
+        self._apply_quality_to_card(match_id)
+        return True
+
+    def select_device_id(self, device_id: str) -> bool:
+        """Highlight any hub tile (serial or network) by device_id."""
+        device_id = (device_id or "").strip()
+        if not device_id or device_id not in self._cards:
+            return False
+        self._pending_serial_port = ""
+        self._selected_id = device_id
+        for did, card in self._cards.items():
+            card.set_selected(did == device_id)
+        self._apply_quality_to_card(device_id)
+        return True
+
     def manual_override_active(self) -> bool:
         if self._manual_box is None:
             return False
@@ -351,6 +423,8 @@ class ConnectionHubWidget(QtWidgets.QWidget):
             self._mark_stale_selected(self._selected_id)
         elif self._selected_id:
             self._cards[self._selected_id].set_selected(True)
+        elif self._pending_serial_port:
+            self.select_serial_port(self._pending_serial_port, clear_if_missing=False)
 
         n = len(snapshot.serial_devices) + len(snapshot.network_cards)
         note = getattr(snapshot, "scan_note", "") or ""
@@ -403,6 +477,7 @@ class ConnectionHubWidget(QtWidgets.QWidget):
                 dev.device_id, title, subtitle, status, parent=self._cards_host
             )
             card.clicked.connect(self._on_card_clicked)
+            card.activated.connect(self.card_activated.emit)
             self._cards[dev.device_id] = card
         else:
             card.update_card(title, subtitle, status)
@@ -410,8 +485,6 @@ class ConnectionHubWidget(QtWidgets.QWidget):
         return card
 
     def _on_card_clicked(self, device_id: str) -> None:
-        if self._selected_id == device_id:
-            return
         self._selected_id = device_id
         for did, card in self._cards.items():
             card.set_selected(did == device_id)
@@ -458,14 +531,15 @@ class ConnectionHubWidget(QtWidgets.QWidget):
             return
         if quality is not None and hasattr(quality, "summary"):
             sub = card._subtitle.text().split(" · QoS:")[0]
-            st = str(card.property("cardStatus") or "ready")
-            card.update_card(card._title.text(), f"{sub} · QoS: {quality.summary}", st)
-            card.setProperty("cardStatus", getattr(quality, "state", "idle"))
-            card.style().unpolish(card)
-            card.style().polish(card)
+            qos_state = str(getattr(quality, "state", "idle") or "idle")
+            card.update_card(card._title.text(), f"{sub} · QoS: {quality.summary}", qos_state)
             return
         if self._quality_state:
-            card.setProperty("cardStatus", self._quality_state)
+            card.update_card(
+                card._title.text(),
+                card._subtitle.text(),
+                str(self._quality_state),
+            )
 
     def _column_count_for_width(self) -> int:
         w = self.width()

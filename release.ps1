@@ -46,6 +46,10 @@ if ($PublishOnly) {
         python -m pip install -r requirements-web.txt -q 2>&1 | Out-Null
         python -m pip install "pyinstaller>=6.0" -q 2>&1 | Out-Null
         $ErrorActionPreference = $prevEap
+        if (Test-Path "assets\app-icon.png") {
+            python "$PSScriptRoot\tools\make_app_icon.py"
+            if ($LASTEXITCODE -ne 0) { throw "make_app_icon failed" }
+        }
         python -m PyInstaller nmea_serial_bridge.spec --noconfirm
         if ($LASTEXITCODE -ne 0) { throw "PyInstaller failed" }
         python "$PSScriptRoot\tools\check_frozen_bundle.py" $distDir

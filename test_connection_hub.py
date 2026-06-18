@@ -45,6 +45,20 @@ class TestConnectionHubWidget(unittest.TestCase):
         self.assertEqual(emitted, ["serial:b"])
         self.assertEqual(hub.selected_device_id(), "serial:b")
 
+    def test_select_serial_port_highlights_card(self) -> None:
+        hub = ConnectionHubWidget()
+        snap = DiscoverySnapshot(
+            serial_devices=[
+                SerialDeviceInfo("serial:a", "COM7", "Trimble", "", "Trimble", "available"),
+                SerialDeviceInfo("serial:b", "COM9", "U-blox", "", "U-blox", "available"),
+            ],
+            network_cards=[],
+        )
+        hub.set_snapshot(snap)
+        self.assertTrue(hub.select_serial_port("com9"))
+        self.assertEqual(hub.selected_device_id(), "serial:b")
+        self.assertTrue(hub._cards["serial:b"].property("selected"))
+
     def test_refresh_unlock_signals(self) -> None:
         hub = ConnectionHubWidget()
         refreshed: list[bool] = []

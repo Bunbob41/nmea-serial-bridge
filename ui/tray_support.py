@@ -23,7 +23,7 @@ def install_tray_icon(win: QtWidgets.QWidget) -> Optional[QtWidgets.QSystemTrayI
     tray.setToolTip("Serial Link — stopped")
 
     menu = QtWidgets.QMenu(win)
-    act_show = menu.addAction("Show window")
+    act_show = menu.addAction("Show Serial Link")
     act_show.triggered.connect(lambda: show_main_window(win))
     menu.addSeparator()
     act_stop = menu.addAction("Stop bridge")
@@ -32,6 +32,7 @@ def install_tray_icon(win: QtWidgets.QWidget) -> Optional[QtWidgets.QSystemTrayI
     act_exit = menu.addAction("Exit")
     act_exit.triggered.connect(lambda: win._quit_application())
     tray.setContextMenu(menu)
+    win._tray_act_stop = act_stop  # type: ignore[attr-defined]
 
     def _on_activated(reason: QtWidgets.QSystemTrayIcon.ActivationReason) -> None:
         if reason in (
@@ -42,6 +43,7 @@ def install_tray_icon(win: QtWidgets.QWidget) -> Optional[QtWidgets.QSystemTrayI
 
     tray.activated.connect(_on_activated)
     tray.show()
+    sync_tray_menu_state(win)
     return tray
 
 
@@ -57,6 +59,19 @@ def update_tray_tooltip(tray: Optional[QtWidgets.QSystemTrayIcon], text: str) ->
     tray.setToolTip(text[:220])
 
 
+def sync_tray_menu_state(win: QtWidgets.QWidget) -> None:
+    """Enable Stop in the tray menu only while the bridge is running."""
+    act = getattr(win, "_tray_act_stop", None)
+    if act is None:
+        return
+    running = False
+    try:
+        running = bool(win._is_bridge_running())  # type: ignore[attr-defined]
+    except Exception:
+        pass
+    act.setEnabled(running)
+
+
 def destroy_tray_icon(win: QtWidgets.QWidget) -> None:
     """Remove tray icon so QApplication can exit (tray alone keeps the process alive)."""
     tray = getattr(win, "_tray_icon", None)
@@ -66,3 +81,4 @@ def destroy_tray_icon(win: QtWidgets.QWidget) -> None:
     tray.setContextMenu(None)
     tray.deleteLater()
     win._tray_icon = None  # type: ignore[attr-defined]
+    win._tray_act_stop = None  # type: ignore[attr-defined]

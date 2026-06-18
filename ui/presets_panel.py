@@ -11,27 +11,31 @@ def create_presets_tab(
     parent: QtWidgets.QWidget,
     *,
     include_advanced_net: bool = True,
+    embedded: bool = False,
 ) -> QtWidgets.QWidget:
     host = QtWidgets.QWidget()
     lay = QtWidgets.QVBoxLayout(host)
-    lay.setContentsMargins(14, 14, 14, 14)
+    margins = 0 if embedded else 14
+    lay.setContentsMargins(margins, margins, margins, margins)
     lay.setSpacing(10)
 
-    hint = QtWidgets.QLabel(
-        "Save COM, UDP listen, NMEA mode (Tools → NMEA: passthrough / strict / raw), "
-        "and optional survey Ethernet targets under names you choose. "
-        "Click a preset to edit its survey fields below; use Load (or double-click) to apply "
-        "connection + NMEA to Connect, then Start."
-    )
-    hint.setWordWrap(True)
-    hint.setObjectName("tabHint")
-    lay.addWidget(hint)
+    if not embedded:
+        hint = QtWidgets.QLabel(
+            "Save COM, UDP listen, NMEA mode (Tools → NMEA: passthrough / strict / raw), "
+            "and optional survey Ethernet targets under names you choose. "
+            "Click a preset to edit its survey fields below; use Load (or double-click) to apply "
+            "connection + NMEA to Connect, then Start."
+        )
+        hint.setWordWrap(True)
+        hint.setObjectName("tabHint")
+        lay.addWidget(hint)
 
     row = QtWidgets.QHBoxLayout()
     parent.preset_list = QtWidgets.QListWidget()
     parent.preset_list.setObjectName("presetList")
     parent.preset_list.setMinimumWidth(160)
-    parent.preset_list.setMinimumHeight(96)
+    min_h = 140 if embedded else 96
+    parent.preset_list.setMinimumHeight(min_h)
     parent.preset_list.setSelectionMode(QtWidgets.QAbstractItemView.SelectionMode.SingleSelection)
     parent.preset_list.setDragEnabled(True)
     parent.preset_list.setAcceptDrops(True)
@@ -71,6 +75,7 @@ def create_presets_tab(
     lay.addLayout(row, 1)
 
     net_box = QtWidgets.QGroupBox("Survey network (optional — boat / LAN)")
+    net_box.setObjectName("modernToolsFormGroup")
     nf = QtWidgets.QFormLayout(net_box)
     parent.preset_pc_ip = QtWidgets.QLineEdit()
     parent.preset_subnet = QtWidgets.QLineEdit()
@@ -92,11 +97,10 @@ def create_presets_tab(
         lay.addWidget(adv)
     else:
         note = QtWidgets.QLabel(
-            "TCP server/client and UDP remote are on the Connect tab under "
-            "Network → Advanced network."
+            "TCP / UDP remote modes: Control tab → Network → Advanced network."
         )
         note.setWordWrap(True)
-        note.setObjectName("tabHint")
+        note.setObjectName("tabNote")
         lay.addWidget(note)
 
     parent.btn_preset_load.clicked.connect(parent._preset_load_selected)
@@ -111,4 +115,6 @@ def create_presets_tab(
     if model is not None and hasattr(model, "rowsMoved"):
         model.rowsMoved.connect(parent._on_preset_rows_moved)
 
+    if embedded:
+        return host
     return _scrollable(host)

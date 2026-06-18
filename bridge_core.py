@@ -60,8 +60,6 @@ START_WATCHDOG_MS = 15_000
 START_ASYNC_TIMEOUT_S = 10.0
 STATS_EMIT_MIN_INTERVAL_S = 0.20
 UI_EVENT_LOG_MIN_INTERVAL_S = 0.40
-# com0com / driver often splits one COM write into several read() calls; coalesce for HUD wire Hz.
-SERIAL_WIRE_HZ_COALESCE_S = 0.12
 SERIAL_RECONNECT_INTERVAL_S = 2.0
 
 
@@ -464,6 +462,8 @@ class SerialNetBridge:
         self._hz_remote_times: deque[float] = deque()
         self._hz_gui_times: deque[float] = deque()
         self._hz_serial_times: deque[float] = deque()
+        self._hz_fix_n2s_times: deque[float] = deque()
+        self._hz_fix_s2n_times: deque[float] = deque()
 
         self._asm_n2s = NmeaLineAssembler()
         self._asm_s2n = NmeaLineAssembler()
@@ -611,6 +611,7 @@ class SerialNetBridge:
         """Write to COM. On Windows, bypass pyserial-asyncio poll writer (can stall under Qt)."""
         if not self.running or not chunk or not self.serial_writer:
             return
+        self._tap_local_backup(chunk)
         if self._serial_write_lock is None:
             self._serial_write_lock = asyncio.Lock()
         async with self._serial_write_lock:
@@ -633,30 +634,29 @@ class SerialNetBridge:
         await asyncio.wait_for(self.serial_writer.drain(), timeout=SERIAL_WRITE_TIMEOUT_S)
 
     def hz_remote_to_serial(self) -> float:
-        """Rolling ~1 s rate of network receive chunks (UDP datagram / TCP read), not NMEA lines."""
+        """Rolling ~1 s rate of sentences received net→COM (before strict drops)."""
         return rolling_hz_last_second(self._hz_remote_times)
 
     def hz_serial_to_net(self) -> float:
-        """Rolling ~1 s rate of serial read chunks toward network, not NMEA lines."""
+        """Rolling ~1 s rate of sentences received COM→net (before strict drops)."""
         return rolling_hz_last_second(self._hz_serial_times)
 
+    def hz_fix_to_serial(self) -> float:
+        """Rolling ~1 s rate of GGA fixes received net→COM (survey GNSS Hz)."""
+        return rolling_hz_last_second(self._hz_fix_n2s_times)
+
+    def hz_fix_from_serial(self) -> float:
+        """Rolling ~1 s rate of GGA fixes received COM→net."""
+        return rolling_hz_last_second(self._hz_fix_s2n_times)
+
     def hz_gui_to_serial(self) -> float:
-        """Rolling ~1 s rate of GUI inject batches toward COM, not lines per batch."""
+        """Rolling ~1 s rate of inject sentences received toward COM."""
         return rolling_hz_last_second(self._hz_gui_times)
 
     @property
     def udp_peer_count(self) -> int:
         """Number of distinct UDP peers registered for fan-out this session."""
         return len(self._udp_peers)
-
-    def _note_serial_wire_hz(self, now: float) -> None:
-        """One wire-Hz tick per serial read burst (avoids com0com echo inflating From COM)."""
-        if (
-            self._hz_serial_times
-            and (now - self._hz_serial_times[-1]) < SERIAL_WIRE_HZ_COALESCE_S
-        ):
-            return
-        self._hz_serial_times.append(now)
 
     def _emit_stats(self) -> None:
         self._last_stats_emit_mono = time.monotonic()
@@ -669,8 +669,10 @@ class SerialNetBridge:
                 "n2s_q": self.net_to_serial.qsize(),
                 "s2n_q": self.serial_to_net.qsize(),
                 "hz_down": self.hz_remote_to_serial(),
+                "hz_fix_down": self.hz_fix_to_serial(),
                 "hz_gui": self.hz_gui_to_serial(),
                 "hz_up": self.hz_serial_to_net(),
+                "hz_fix_up": self.hz_fix_from_serial(),
                 "lines_down": self.lines_remote_to_serial,
                 "lines_up": self.lines_serial_to_net,
                 "udp_peers": self.udp_peer_count,
@@ -716,7 +718,7 @@ class SerialNetBridge:
             loop.call_soon_threadsafe(self._schedule_stats_emit)
 
     def _tap_local_backup(self, data: bytes) -> None:
-        """Record physical COM ingress before decode/queue (non-blocking)."""
+        """Record raw COM traffic (reads and writes) before decode/queue (non-blocking)."""
         backup = self._local_backup
         if backup is None or not data:
             return
@@ -838,15 +840,22 @@ class SerialNetBridge:
         else:
             self._log(direction, data)
 
+    def _note_ingress_hz(self, times: deque[float], now: float, count: int) -> None:
+        """Append one rolling-Hz tick per complete sentence seen on the wire."""
+        if count <= 0:
+            return
+        for _ in range(count):
+            times.append(now)
+
     def _ingest_net(self, data: bytes, direction: str) -> None:
         if not self.running:
             return
         now = time.monotonic()
-        if direction.startswith(("UDP", "TCP")):
-            self._hz_remote_times.append(now)
-        elif direction.startswith(("GUI", "INJECT")):
-            self._hz_gui_times.append(now)
         if self.nmea_mode == NmeaMode.RAW:
+            if direction.startswith(("UDP", "TCP")):
+                self._hz_remote_times.append(now)
+            elif direction.startswith(("GUI", "INJECT")):
+                self._hz_gui_times.append(now)
             if direction.startswith(("UDP", "TCP")):
                 self.lines_remote_to_serial += 1
             elif direction.startswith(("GUI", "INJECT")):
@@ -871,6 +880,11 @@ class SerialNetBridge:
             )
             if self._wire_tap_cb is not None:
                 self._wire_tap_cb("reject", reason.encode("utf-8", errors="replace"))
+        if direction.startswith(("UDP", "TCP")):
+            self._note_ingress_hz(self._hz_remote_times, now, result.ingress_lines)
+            self._note_ingress_hz(self._hz_fix_n2s_times, now, result.ingress_fix_lines)
+        elif direction.startswith(("GUI", "INJECT")):
+            self._note_ingress_hz(self._hz_gui_times, now, result.ingress_lines)
         for line in result.forward:
             if direction.startswith(("UDP", "TCP")):
                 self.lines_remote_to_serial += 1
@@ -884,11 +898,11 @@ class SerialNetBridge:
     def _ingest_serial(self, data: bytes, direction: str) -> None:
         if not self.running:
             return
-        if direction.startswith("SER"):
-            self._note_serial_wire_hz(time.monotonic())
+        now = time.monotonic()
         if self.nmea_mode == NmeaMode.RAW:
             if direction.startswith("SER"):
                 self.lines_serial_to_net += 1
+                self._hz_serial_times.append(now)
             self._enqueue_serial_to_net(data, direction)
             if self._wire_tap_cb is not None:
                 self._wire_tap_cb("com→net", data)
@@ -909,6 +923,9 @@ class SerialNetBridge:
             )
             if self._wire_tap_cb is not None:
                 self._wire_tap_cb("reject", reason.encode("utf-8", errors="replace"))
+        if direction.startswith("SER"):
+            self._note_ingress_hz(self._hz_serial_times, now, result.ingress_lines)
+            self._note_ingress_hz(self._hz_fix_s2n_times, now, result.ingress_fix_lines)
         for line in result.forward:
             if direction.startswith("SER"):
                 self.lines_serial_to_net += 1
@@ -1244,13 +1261,12 @@ class SerialNetBridge:
         if writer is not None:
             await self._await_closed(writer, "Serial")
 
-    def _maybe_remap_com_after_reenum(self, err_text: str) -> bool:
-        """USB unplug/replug may change COM number while hwid stays stable."""
-        low = (err_text or "").lower()
-        if "not found" not in low and "no such file" not in low:
-            return False
+    def _try_remap_com_by_hwid(self) -> bool:
+        """Follow adapter when Windows reassigns COM after USB replug."""
         if not self._serial_hwid:
             self._serial_hwid = _lookup_serial_hwid(self.com)
+        if not self._serial_hwid:
+            return False
         new_com = _find_com_by_hwid(self._serial_hwid)
         if not new_com or new_com.upper() == self.com.upper():
             return False
@@ -1259,18 +1275,38 @@ class SerialNetBridge:
         self._ui_log(f"Serial adapter re-enumerated: {old} → {new_com}")
         return True
 
+    def _maybe_remap_com_after_reenum(self, err_text: str) -> bool:
+        """USB unplug/replug may change COM number while hwid stays stable."""
+        low = (err_text or "").lower()
+        if not any(
+            token in low
+            for token in (
+                "not found",
+                "no such file",
+                "does not exist",
+                "cannot find",
+                "file not found",
+            )
+        ):
+            return False
+        return self._try_remap_com_by_hwid()
+
     async def _try_reopen_serial(self) -> bool:
-        for attempt in range(2):
+        for attempt in range(3):
             try:
                 self.serial_reader, self.serial_writer = await self._open_serial_stream()
             except asyncio.TimeoutError:
+                if attempt < 2 and self._try_remap_com_by_hwid():
+                    continue
                 self._ui_log_serial_coalesced(
                     f"Serial reconnect timed out opening {self.com} ({SERIAL_OPEN_TIMEOUT_S:.0f}s)"
                 )
                 return False
             except Exception as e:
                 err = _friendly_serial_error(e, self.com)
-                if attempt == 0 and self._maybe_remap_com_after_reenum(err):
+                if attempt < 2 and (
+                    self._maybe_remap_com_after_reenum(err) or self._try_remap_com_by_hwid()
+                ):
                     continue
                 self._ui_log_serial_coalesced(err)
                 return False
@@ -1299,7 +1335,11 @@ class SerialNetBridge:
                 raise
             except Exception as e:
                 if self.running and not self._teardown:
-                    self._ui_log_serial_coalesced(_friendly_serial_error(e, self.com))
+                    err = _friendly_serial_error(e, self.com)
+                    if self._maybe_remap_com_after_reenum(err):
+                        disconnected = True
+                        break
+                    self._ui_log_serial_coalesced(err)
                 disconnected = True
                 break
             if not data:
@@ -1318,6 +1358,7 @@ class SerialNetBridge:
                     if not await self._try_reopen_serial():
                         if not self.serial_auto_reconnect:
                             break
+                        self._try_remap_com_by_hwid()
                         self._set_status(
                             f"Serial: {self.com} — reconnecting every "
                             f"{SERIAL_RECONNECT_INTERVAL_S:.0f}s…",
@@ -1367,7 +1408,10 @@ class SerialNetBridge:
                         )
                 except Exception as e:
                     if self.running and not self._teardown:
-                        self._ui_log_serial_coalesced(_friendly_serial_error(e, self.com))
+                        err = _friendly_serial_error(e, self.com)
+                        self._maybe_remap_com_after_reenum(err)
+                        self._ui_log_serial_coalesced(err)
+                        await self._close_serial_streams()
         except asyncio.CancelledError:
             pass
 

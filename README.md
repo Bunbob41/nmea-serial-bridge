@@ -33,7 +33,9 @@
 
 - **Live log** — throttled; optional **verbose** per-sentence view (NMEA text modes).
 
-- **NMEA tab** — **Passthrough** (recommended for Trimble NMEA), **Strict** (+ checksum + sentence filter), or **Raw binary** (RTCM / other binary passthrough).
+- **NMEA tab** — **Passthrough** (recommended for Trimble NMEA), **Strict** (+ checksum + sentence filter), or **Raw binary** (RTCM / **MAVLink** / other binary passthrough).
+
+- **Cube / MAVLink + Mission Planner** — Raw binary + UDP listen; GCS uses **UDP Client** to the bridge (see `docs/OPERATOR_GUIDE.md` §5.6). Shipped **Cube MAVLink** preset.
 
 - **Send tab** — inject NMEA text (`\r\n` normalized); **not** for binary streams.
 

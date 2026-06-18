@@ -63,9 +63,9 @@ class TestStartValidation(unittest.TestCase):
             "Cannot open COM7: port is already in use by another program.",
         )
         self.assertIn("Cannot open COM7", msg)
-        self.assertIn("Connect", msg)
         self.assertIn("Unlock", msg)
         self.assertIn("Refresh", msg)
+        self.assertIn("com_free", msg)
 
 
 if __name__ == "__main__":

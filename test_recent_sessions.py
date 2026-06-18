@@ -5,7 +5,7 @@ import sys
 import unittest
 from unittest import mock
 
-from PySide6 import QtWidgets
+from PySide6 import QtGui, QtWidgets
 
 from ui.mixin import BridgeLogicMixin
 
@@ -49,6 +49,28 @@ class TestRecentSessions(unittest.TestCase):
         BridgeLogicMixin._apply_recent_session(host, entry)  # type: ignore[arg-type]
         self.assertTrue(host.rb_nmea_strict.isChecked())
         self.assertEqual(host.rb_nmea_passthrough.isChecked(), False)
+
+    def test_recent_menu_trigger_passes_session_entry(self) -> None:
+        host = _make_host()
+        entry = {
+            "com": "COM9",
+            "baud": 9600,
+            "udp_host": "127.0.0.1",
+            "udp_port": "4001",
+            "nmea_mode": "passthrough",
+        }
+        menu = QtWidgets.QMenu()
+        act = QtGui.QAction("COM9 @ 9600", host)
+        act.triggered.connect(
+            lambda _checked=False, ent=entry: BridgeLogicMixin._apply_recent_session(  # type: ignore[arg-type]
+                host, ent
+            )
+        )
+        menu.addAction(act)
+        act.trigger()
+        self.assertEqual(host.com_cb.currentText(), "COM9")
+        self.assertEqual(host.udp_host.text(), "127.0.0.1")
+        self.assertEqual(host.udp_port.text(), "4001")
 
     def test_apply_recent_blocked_when_bridge_running(self) -> None:
         host = _make_host()

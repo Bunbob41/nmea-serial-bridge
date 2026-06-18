@@ -23,6 +23,8 @@ FROZEN_HELPER_FILES = (
 )
 
 FROZEN_STATIC_FILES = (
+    "assets/app-icon.ico",
+    "assets/app-icon.png",
     "web/static/index.html",
     "web/static/dashboard.js",
     "web/static/dashboard.css",

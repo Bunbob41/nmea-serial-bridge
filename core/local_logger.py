@@ -1,4 +1,4 @@
-"""Non-blocking local raw backup for COM→network ingress (black-box safeguard)."""
+"""Non-blocking local raw backup for COM traffic (reads + writes, black-box safeguard)."""
 from __future__ import annotations
 
 import os
@@ -17,6 +17,9 @@ _WRITER_JOIN_S = 8.0
 _ERROR_COOLDOWN_S = 15.0
 
 
+SESSION_FOLDER_STEM_FMT = "%Y-%m-%d_%H-%M"
+
+
 def default_local_backup_dir() -> Path:
     """Directory beside the app / repo for per-session .raw backups."""
     if getattr(sys, "frozen", False):
@@ -29,6 +32,29 @@ def _open_binary_write(path: Path) -> int:
     if hasattr(os, "O_BINARY"):
         flags |= os.O_BINARY
     return os.open(str(path), flags, 0o644)
+
+
+def format_session_folder_name(*, now: datetime | None = None) -> str:
+    """Human-sortable folder stem, e.g. 2026-06-16_19-58."""
+    return (now or datetime.now()).strftime(SESSION_FOLDER_STEM_FMT)
+
+
+def allocate_session_folder(base_dir: Path, *, now: datetime | None = None) -> Path:
+    """Create a unique dated subfolder under base_dir for one bridge session."""
+    base_dir.mkdir(parents=True, exist_ok=True)
+    stem = format_session_folder_name(now=now)
+    candidate = base_dir / stem
+    if not candidate.exists():
+        candidate.mkdir(parents=True, exist_ok=True)
+        return candidate
+    for n in range(2, 100):
+        alt = base_dir / f"{stem}_{n:02d}"
+        if not alt.exists():
+            alt.mkdir(parents=True, exist_ok=True)
+            return alt
+    fallback = base_dir / f"{stem}_{int(time.time())}"
+    fallback.mkdir(parents=True, exist_ok=True)
+    return fallback
 
 
 def _allocate_session_path(base_dir: Path, *, now: datetime | None = None) -> Path:

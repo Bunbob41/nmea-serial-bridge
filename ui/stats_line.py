@@ -25,6 +25,79 @@ def transport_alert_active(d: dict) -> bool:
     return bool(d_ns or d_sn or r_ns or r_sn or queue_backlog(q_ns, q_sn))
 
 
+def backpressure_alert_kind(d: dict) -> str:
+    """Header chip severity: error when bytes were dropped, else warn."""
+    if int(d.get("drops_n2s", 0)) or int(d.get("drops_s2n", 0)):
+        return "error"
+    return "warn"
+
+
+def format_backpressure_chip(d: dict) -> tuple[str, str]:
+    """Compact Modern header chip text and alertKind (warn | error)."""
+    d_ns = int(d.get("drops_n2s", 0))
+    d_sn = int(d.get("drops_s2n", 0))
+    r_ns = int(d.get("rej_n2s", 0))
+    r_sn = int(d.get("rej_s2n", 0))
+    q_ns = int(d.get("n2s_q", 0))
+    q_sn = int(d.get("s2n_q", 0))
+
+    parts: list[str] = []
+    drop_total = d_ns + d_sn
+    rej_total = r_ns + r_sn
+    if drop_total:
+        parts.append(f"{drop_total} drop{'s' if drop_total != 1 else ''}")
+    if rej_total:
+        parts.append(f"{rej_total} rej")
+    q_hi_ns = q_ns >= QUEUE_BACKLOG_DEPTH
+    q_hi_sn = q_sn >= QUEUE_BACKLOG_DEPTH
+    if q_hi_ns and q_hi_sn:
+        parts.append(f"Q {q_ns}+{q_sn}")
+    elif q_hi_ns:
+        parts.append(f"Q net {q_ns}")
+    elif q_hi_sn:
+        parts.append(f"Q COM {q_sn}")
+
+    prefix = "⚠ " if drop_total else "▲ "
+    label = prefix + (" · ".join(parts) if parts else "Backpressure")
+    return label, backpressure_alert_kind(d)
+
+
+def format_backpressure_tooltip(d: dict) -> str:
+    """One-line operator hint for the backpressure header chip."""
+    line = format_live_stats_line(d)
+    if " · " in line:
+        transport = line.split(" · ", 1)[1]
+        return f"Transport pressure — {transport}"
+    return line
+
+
+def format_running_hz_chip(d: dict) -> tuple[str, str]:
+    """Compact GNSS fix-rate pill for Modern header (GGA/RMC updates per second)."""
+    fix_d = float(d.get("hz_fix_down", 0.0))
+    fix_u = float(d.get("hz_fix_up", 0.0))
+    sent_d = float(d.get("hz_down", 0.0))
+    sent_u = float(d.get("hz_up", 0.0))
+    hz_i = float(d.get("hz_gui", 0.0))
+    if fix_d > 0.0 or fix_u > 0.0:
+        text = f"GNSS {fix_d:.1f} Hz"
+        if sent_d >= 0.5:
+            text += f" · {sent_d:.0f} msg/s"
+        if fix_u >= 0.05:
+            text += f" · COM {fix_u:.1f} Hz"
+    else:
+        text = f"net {sent_d:.1f}/s"
+        if sent_u >= 0.05:
+            text += f" · COM {sent_u:.1f}/s"
+    if hz_i >= 0.05:
+        text += f" · inj {hz_i:.1f}"
+    tip = (
+        "GGA position fix rate (rolling 1 s). "
+        f"All sentences received: {sent_d:.1f} net→COM, {sent_u:.1f} COM→net. "
+        + format_live_stats_line(d)
+    )
+    return text, tip
+
+
 def _fmt_k(n: int) -> str:
     if n >= 1_000_000:
         return f"{n / 1e6:.1f}M"
@@ -44,6 +117,8 @@ def format_live_stats_line(d: dict) -> str:
     hz_d = float(d.get("hz_down", 0.0))
     hz_i = float(d.get("hz_gui", 0.0))
     hz_u = float(d.get("hz_up", 0.0))
+    fix_d = float(d.get("hz_fix_down", 0.0))
+    fix_u = float(d.get("hz_fix_up", 0.0))
     ld = int(d.get("lines_down", 0))
     lu = int(d.get("lines_up", 0))
 
@@ -54,9 +129,18 @@ def format_live_stats_line(d: dict) -> str:
     q_ns = int(d.get("n2s_q", 0))
     q_sn = int(d.get("s2n_q", 0))
 
-    parts: list[str] = [f"↓{hz_d:.1f} ↑{hz_u:.1f} Hz wire"]
+    if fix_d > 0.0 or fix_u > 0.0:
+        parts: list[str] = [f"GNSS {fix_d:.1f} Hz"]
+        if fix_u >= 0.05:
+            parts.append(f" · COM fixes {fix_u:.1f} Hz")
+        if hz_d >= 0.5 or hz_u >= 0.05:
+            parts.append(f" · net {hz_d:.1f}/s · COM {hz_u:.1f}/s")
+    else:
+        parts = [f"net {hz_d:.1f}/s"]
+        if hz_u >= 0.05:
+            parts.append(f" · COM {hz_u:.1f}/s")
     if hz_i >= 0.05:
-        parts.append(f" · inject {hz_i:.1f} Hz")
+        parts.append(f" · inject {hz_i:.1f} msg/s")
 
     alerts: list[str] = []
     if d_ns and d_sn:
@@ -78,9 +162,9 @@ def format_live_stats_line(d: dict) -> str:
     if q_hi_ns and q_hi_sn:
         alerts.append(f"queues {q_ns}+{q_sn} chunks waiting (backlog)")
     elif q_hi_ns:
-        alerts.append(f"queue {q_ns} chunks net→COM (backlog)")
+        alerts.append(f"queue net→COM {q_ns} chunks (backlog)")
     elif q_hi_sn:
-        alerts.append(f"queue {q_sn} chunks COM→net (backlog)")
+        alerts.append(f"queue COM→net {q_sn} chunks (backlog)")
 
     if alerts:
         parts.append(" · " + " · ".join(alerts))

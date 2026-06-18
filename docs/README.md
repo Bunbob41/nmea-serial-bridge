@@ -3,8 +3,9 @@
 | Document | Purpose |
 | -------- | ------- |
 | **[GETTING_STARTED.md](GETTING_STARTED.md)** | First install, 15-minute bench walkthrough, window map |
-| **[OPERATOR_GUIDE.md](OPERATOR_GUIDE.md)** | Full operator manual — bench, boat, tabs, HUD, troubleshooting |
+| **[OPERATOR_GUIDE.md](OPERATOR_GUIDE.md)** | Full operator manual — bench, boat, **Cube/MAVLink**, tabs, HUD, troubleshooting |
 | **[NORBIT_DCT.md](NORBIT_DCT.md)** | NORBIT DCT + Applanix + INS UDP → COM workflow |
+| **[ROADMAP.md](ROADMAP.md)** | Deferred epics (bookmark) — e.g. mavlink GPS injector |
 | **[../README.md](../README.md)** | Project overview, dev setup, feature list |
 | **[../CHANGELOG.md](../CHANGELOG.md)** | Release notes |
 

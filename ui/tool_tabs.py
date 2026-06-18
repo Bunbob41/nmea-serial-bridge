@@ -18,14 +18,12 @@ _DEFAULT_DIAG_CARD_ORDER = [
     "local_backup",
     "file_log",
     "screen_log",
-    "traffic_quality",
 ]
 
 _DEFAULT_DIAG_CARD_HEIGHTS: dict[str, int] = {
     "local_backup": 120,
     "file_log": 200,
     "screen_log": 64,
-    "traffic_quality": 120,
     "automated_checks": 280,
 }
 
@@ -33,7 +31,6 @@ _DIAG_CARD_EXPANDED_CAP: dict[str, int] = {
     "local_backup": 180,
     "file_log": 360,
     "screen_log": 120,
-    "traffic_quality": 200,
     "automated_checks": 520,
 }
 
@@ -46,6 +43,9 @@ PHONE_API_TOKEN_HELP = (
     "Generate creates a new random secret. You may paste your own long private string instead, "
     "or use Copy link / Paste link / QR to hand the same token to your phone."
 )
+
+# Stack Server & Network | Phone Pairing cards vertically below this content width (px).
+PHONE_CARDS_STACK_BELOW_W = 880
 
 
 def _diag_collapsed_strip_height(toggle: QtWidgets.QToolButton, margins: QtCore.QMargins) -> int:
@@ -429,9 +429,10 @@ then open the UDP / TCP tabs for mode-specific detail.</em></p>
       or your PC LAN IP; <b>Listen port</b> to match the INS/GNSS output (often <code>10110</code>).</li>
   <li>Press <b>▶ Start</b> in the header bar (shortcut <code>Ctrl+B</code>).
       The status banner turns green and shows <b>Running.</b></li>
-  <li>Switch to the <b>Log</b> tab — sentences should stream in.
-      No data? Check firewall, cable/VLAN, and that the sender is targeting this PC and port.</li>
-  <li>Check the <b>Telemetry</b> tab for Serial and Network chip values confirming data flow.</li>
+  <li>Switch to the <b>Activity</b> tab — sentences should stream in with direction labels.
+      Status messages (start/stop, drops) appear as <b>EVENT</b> lines.</li>
+  <li>Open <b>HUD</b> from the survey bar (or <code>Ctrl+Shift+S</code>) for live Hz,
+      drops, and GNSS fix while Running.</li>
 </ol>
 <h3>Where things live</h3>
 <ul>
@@ -442,7 +443,7 @@ then open the UDP / TCP tabs for mode-specific detail.</em></p>
       <b>Save</b> or <b>Save as…</b> (bridge must be stopped to load).</li>
   <li><b>NMEA mode:</b> Settings tab → NMEA — Passthrough (recommended), Strict, or Raw binary.</li>
   <li><b>Phone / browser dashboard:</b> Settings tab → Phone (token, port, QR).</li>
-  <li><b>Connection Hub:</b> Hub tab — auto-discovers GNSS serial ports and UDP contexts; click a
+  <li><b>Connection Hub:</b> Tools → Hub — auto-discovers GNSS serial ports and UDP contexts; click a
       card to populate the Control tab fields automatically.</li>
   <li><b>Tray:</b> closing the window while running hides to the tray; use tray <b>Exit</b>
       to quit completely.</li>
@@ -465,7 +466,8 @@ Trimble/INS Ethernet NMEA. <b>UDP remote</b> (Advanced): send to one fixed host:
   <li>Optional: <b>Fan-out — send serial data to all UDP peers</b> — COM→network is copied to
       every sender that has talked to this port (UDP listen only).</li>
   <li>Press <b>▶ Start.</b> The header banner should turn green.
-      Check the <b>Telemetry</b> tab — the Network chip confirms the listen socket is open.</li>
+      The header status banner should show <b>Running</b>; use the <b>Activity</b>
+      tab to confirm sentences are flowing.</li>
   <li>To reuse later: Settings → Presets → <b>Save as…</b> (load when stopped).</li>
 </ol>
 <h3>UDP remote (fixed peer — bench or one chart PC)</h3>
@@ -493,7 +495,7 @@ this app connects as the client).</em></p>
   <li><b>TCP client</b> group → <b>Host</b> (server IP) and <b>Port.</b></li>
   <li>Optional: <b>TCP reconnect delay</b> (seconds between retries if the server drops).</li>
   <li>Press <b>▶ Start</b> — the app actively opens the TCP connection.
-      Watch the Network chip in the Telemetry tab for confirmation.</li>
+      Watch the header status banner and <b>Activity</b> tab for confirmation.</li>
   <li>Save the setup: Settings → Presets → <b>Save as…</b> when it works.</li>
 </ol>
 <p class="note">TCP client requires Advanced network to be checked in Control → Network path.</p>
@@ -527,7 +529,7 @@ _GUIDE_CHECKLIST = """
 <hr/>
 <ul>
   <li><b>COM:</b> correct port (hit Refresh), not held by PuTTY/Tera Term/another app —
-      use <b>Unlock COM</b> in the Hub tab if shown. Baud matches the receiver exactly.</li>
+      use <b>Unlock COM</b> in Tools → Hub if shown. Baud matches the receiver exactly.</li>
   <li><b>UDP listen:</b> Listen host / Listen port in the Control tab match how the
       sender is configured; ping the INS from Settings → Terminal if needed.</li>
   <li><b>UDP remote / TCP:</b> Advanced network checked in Control → Network path;
@@ -540,16 +542,15 @@ _GUIDE_CHECKLIST = """
       <b>Passthrough</b> for normal GNSS receivers;
       <b>Strict + sentence filter</b> to drop malformed lines;
       <b>Raw binary</b> only for RTCM or non-NMEA byte streams.</li>
-  <li><b>While running:</b> the header status banner turns green; the <b>Telemetry</b>
-      tab shows Serial and Network chips with live Hz and byte counts.
-      Drops and rejects are called out in plain language.</li>
+  <li><b>While running:</b> the header status banner turns green; open <b>HUD</b>
+      for live Hz, byte counts, drops, and rejects in plain language.</li>
 </ul>
 <p class="note">Still stuck? Open <b>Getting started…</b> above or run
 Settings → Diagnostics → <b>Bench checklist</b> with the bridge stopped.</p>
 """
 
 
-_PHONE_FORM_LABEL_MIN_WIDTH = 148
+_PHONE_FORM_LABEL_MIN_WIDTH = 120
 _PHONE_INLINE_BTN_PX = 32
 _PHONE_FIELD_ACTION_GAP = 8
 
@@ -567,7 +568,41 @@ def _configure_phone_form(form: QtWidgets.QFormLayout) -> None:
     form.setFieldGrowthPolicy(
         QtWidgets.QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow
     )
-    form.setRowWrapPolicy(QtWidgets.QFormLayout.RowWrapPolicy.DontWrapRows)
+    form.setRowWrapPolicy(QtWidgets.QFormLayout.RowWrapPolicy.WrapLongRows)
+
+
+def apply_phone_dashboard_responsive(
+    parent: QtWidgets.QWidget,
+    width: int | None = None,
+) -> None:
+    """Stack Phone dashboard cards vertically when the window is narrower than ~720px."""
+    grid = getattr(parent, "_phone_cards_grid", None)
+    server = getattr(parent, "_phone_dashboard_server_card", None)
+    phone = getattr(parent, "_phone_dashboard_phone_card", None)
+    if grid is None or server is None or phone is None:
+        return
+    win_w = width if width is not None else parent.width()
+    stack_vertical = win_w < PHONE_CARDS_STACK_BELOW_W
+    if stack_vertical == getattr(parent, "_phone_cards_vertical", False):
+        return
+
+    grid.removeWidget(server)
+    grid.removeWidget(phone)
+    if stack_vertical:
+        grid.addWidget(server, 0, 0)
+        grid.addWidget(phone, 1, 0)
+        grid.setColumnStretch(0, 1)
+        grid.setColumnStretch(1, 0)
+        grid.setRowStretch(0, 0)
+        grid.setRowStretch(1, 0)
+    else:
+        grid.addWidget(server, 0, 0)
+        grid.addWidget(phone, 0, 1)
+        grid.setColumnStretch(0, 1)
+        grid.setColumnStretch(1, 1)
+        grid.setRowStretch(0, 0)
+        grid.setRowStretch(1, 0)
+    parent._phone_cards_vertical = stack_vertical
 
 
 def _phone_form_label(text: str, tooltip: str = "") -> QtWidgets.QLabel:
@@ -768,8 +803,12 @@ def build_phone_dashboard_tab(parent: QtWidgets.QWidget) -> QtWidgets.QWidget:
     lay.setContentsMargins(12, 12, 12, 12)
     lay.setSpacing(12)
 
-    cards_row = QtWidgets.QHBoxLayout()
-    cards_row.setSpacing(12)
+    cards_host = QtWidgets.QWidget()
+    cards_host.setObjectName("phoneDashboardCardsHost")
+    cards_grid = QtWidgets.QGridLayout(cards_host)
+    cards_grid.setContentsMargins(0, 0, 0, 0)
+    cards_grid.setHorizontalSpacing(12)
+    cards_grid.setVerticalSpacing(12)
 
     server_card, server_lay = _phone_dashboard_card("Server & Network")
     server_form_host = QtWidgets.QWidget()
@@ -821,7 +860,7 @@ def build_phone_dashboard_tab(parent: QtWidgets.QWidget) -> QtWidgets.QWidget:
         "Use Windows firewall and the remote control token. Localhost-only is safer on bench PCs."
     )
 
-    parent.btn_web_open_dashboard = QtWidgets.QPushButton("Open local dashboard")
+    parent.btn_web_open_dashboard = QtWidgets.QPushButton("Open dashboard")
     parent.btn_web_open_dashboard.setObjectName("webPrimaryBtn")
     parent.btn_web_open_dashboard.setToolTip(
         "Open http://127.0.0.1:PORT/ in your default browser on this PC."
@@ -829,7 +868,7 @@ def build_phone_dashboard_tab(parent: QtWidgets.QWidget) -> QtWidgets.QWidget:
     if hasattr(parent, "_on_web_open_dashboard"):
         parent.btn_web_open_dashboard.clicked.connect(parent._on_web_open_dashboard)
     parent.btn_web_open_dashboard.setSizePolicy(
-        QtWidgets.QSizePolicy.Policy.Maximum,
+        QtWidgets.QSizePolicy.Policy.Expanding,
         QtWidgets.QSizePolicy.Policy.Fixed,
     )
 
@@ -972,7 +1011,7 @@ def build_phone_dashboard_tab(parent: QtWidgets.QWidget) -> QtWidgets.QWidget:
 
     parent.lbl_web_token_qr = QtWidgets.QLabel()
     parent.lbl_web_token_qr.setObjectName("webTokenQr")
-    parent.lbl_web_token_qr.setFixedSize(200, 200)
+    parent.lbl_web_token_qr.setFixedSize(168, 168)
     parent.lbl_web_token_qr.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
     parent.lbl_web_token_qr.setFrameShape(QtWidgets.QFrame.Shape.NoFrame)
     parent.lbl_web_token_qr.setVisible(parent.chk_web_show_qr.isChecked())
@@ -1005,11 +1044,16 @@ def build_phone_dashboard_tab(parent: QtWidgets.QWidget) -> QtWidgets.QWidget:
     phone_form.addRow("", qr_field)
     phone_lay.addWidget(phone_form_host, 1)
 
-    server_card.setMinimumWidth(320)
-    phone_card.setMinimumWidth(320)
-    cards_row.addWidget(server_card, 1)
-    cards_row.addWidget(phone_card, 1)
-    lay.addLayout(cards_row, 0)
+    parent._phone_cards_host = cards_host
+    parent._phone_cards_grid = cards_grid
+    parent._phone_dashboard_server_card = server_card
+    parent._phone_dashboard_phone_card = phone_card
+    parent._phone_cards_vertical = False
+    cards_grid.addWidget(server_card, 0, 0)
+    cards_grid.addWidget(phone_card, 0, 1)
+    cards_grid.setColumnStretch(0, 1)
+    cards_grid.setColumnStretch(1, 1)
+    lay.addWidget(cards_host, 0)
     _wire_web_control_widgets(parent)
     if hasattr(parent, "_sync_web_port_spin_locked"):
         parent._sync_web_port_spin_locked()
@@ -1027,32 +1071,33 @@ def build_phone_dashboard_tab(parent: QtWidgets.QWidget) -> QtWidgets.QWidget:
     scroll.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAsNeeded)
     scroll.setVerticalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAsNeeded)
     scroll.setWidget(inner)
+    QtCore.QTimer.singleShot(0, lambda: apply_phone_dashboard_responsive(parent))
     return scroll
 
 
-def build_guide_tab(parent: QtWidgets.QWidget) -> QtWidgets.QWidget:
+def build_guide_tab(parent: QtWidgets.QWidget, *, embedded: bool = False) -> QtWidgets.QWidget:
     """Connection workflow reference (UDP/TCP/checklists) — no web controls here."""
     inner = QtWidgets.QWidget()
     lay = QtWidgets.QVBoxLayout(inner)
-    lay.setContentsMargins(10, 10, 10, 10)
+    margins = 0 if embedded else 10
+    lay.setContentsMargins(margins, margins, margins, margins)
     lay.setSpacing(8)
 
-    header = QtWidgets.QLabel("Serial Link — connection help")
-    header.setObjectName("tabHint")
-    lay.addWidget(header)
+    if not embedded:
+        header = QtWidgets.QLabel("Serial Link — connection help")
+        header.setObjectName("tabHint")
+        lay.addWidget(header)
 
-    intro = QtWidgets.QLabel(
-        "Step-by-step UDP/TCP workflows for Serial Link. "
-        "Open \u2018Start here\u2019 if you are stuck; use the doc buttons for the full offline walkthrough."
-    )
-    intro.setWordWrap(True)
-    intro.setObjectName("tabNote")
-    lay.addWidget(intro)
+        intro = QtWidgets.QLabel(
+            "Step-by-step UDP/TCP workflows for Serial Link. "
+            "Open \u2018Start here\u2019 if you are stuck; use the doc buttons for the full offline walkthrough."
+        )
+        intro.setWordWrap(True)
+        intro.setObjectName("tabNote")
+        lay.addWidget(intro)
 
-    repo_root = Path(__file__).resolve().parent.parent
     doc_note = QtWidgets.QLabel(
-        "Connection steps are on the tabs below. Manual buttons open formatted docs "
-        "inside Serial Link (offline)."
+        "Use the tabs below for quick steps, or open the full offline manuals."
     )
     doc_note.setObjectName("tabNote")
     doc_note.setWordWrap(True)
@@ -1076,11 +1121,14 @@ def build_guide_tab(parent: QtWidgets.QWidget) -> QtWidgets.QWidget:
     lay.addLayout(doc_row)
 
     phone_ptr = QtWidgets.QLabel(
-        "Phone dashboard, Web API, token, and QR: open Settings \u2192 Phone (not this Guide tab)."
+        "Phone dashboard, Web API, token, and QR: open Tools \u2192 Phone."
     )
     phone_ptr.setWordWrap(True)
     phone_ptr.setObjectName("tabNote")
-    lay.addWidget(phone_ptr)
+    if embedded:
+        phone_ptr.hide()
+    else:
+        lay.addWidget(phone_ptr)
 
     tabs = QtWidgets.QTabWidget()
     tabs.setObjectName("guideTabWidget")
@@ -1103,6 +1151,9 @@ def build_guide_tab(parent: QtWidgets.QWidget) -> QtWidgets.QWidget:
 
     lay.addWidget(tabs, 1)
 
+    if embedded:
+        return inner
+
     scroll = QtWidgets.QScrollArea()
     scroll.setObjectName("guideTabScroll")
     scroll.setWidgetResizable(True)
@@ -1113,21 +1164,23 @@ def build_guide_tab(parent: QtWidgets.QWidget) -> QtWidgets.QWidget:
     return scroll
 
 
-def build_send_tab(parent: QtWidgets.QWidget) -> QtWidgets.QWidget:
+def build_send_tab(parent: QtWidgets.QWidget, *, embedded: bool = False) -> QtWidgets.QWidget:
     """Manual NMEA inject (Tools → Inject)."""
     host = QtWidgets.QWidget()
+    margins = 0 if embedded else 14
     lay = QtWidgets.QVBoxLayout(host)
-    lay.setContentsMargins(14, 14, 14, 14)
+    lay.setContentsMargins(margins, margins, margins, margins)
     lay.setSpacing(10)
 
-    hint = QtWidgets.QLabel(
-        "Inject test NMEA while the bridge is Running (Tools → Inject). "
-        "Use Send → serial for bench (COM7 → com0com → watch COM12). "
-        "For a local shell, use Tools → Terminal. Gray placeholder text is not sent."
-    )
-    hint.setWordWrap(True)
-    hint.setObjectName("tabHint")
-    lay.addWidget(hint)
+    if not embedded:
+        hint = QtWidgets.QLabel(
+            "Inject test NMEA while the bridge is Running (Tools → Inject). "
+            "Use Send → serial for bench (COM7 → com0com → watch COM12). "
+            "For a local shell, use Tools → Terminal. Gray placeholder text is not sent."
+        )
+        hint.setWordWrap(True)
+        hint.setObjectName("tabHint")
+        lay.addWidget(hint)
 
     parent.send_edit = QtWidgets.QPlainTextEdit()
     parent.send_edit.setObjectName("sendEdit")
@@ -1154,232 +1207,38 @@ def build_send_tab(parent: QtWidgets.QWidget) -> QtWidgets.QWidget:
     row.addStretch(1)
     lay.addLayout(row)
 
-    note = QtWidgets.QLabel(
-        "If nothing moves: confirm the status bar shows COM open and the network line matches your mode. "
-        "While running, the right end shows sentence rates (↓ ↑ Hz), plain-language transport health "
-        "(no fake 0/0 pairs), and session totals — enable verbose log to see each line."
-    )
-    note.setWordWrap(True)
-    note.setObjectName("tabNote")
-    lay.addWidget(note)
+    if not embedded:
+        note = QtWidgets.QLabel(
+            "If nothing moves: confirm the status bar shows COM open and the network line matches your mode. "
+            "While running, the right end shows sentence rates (↓ ↑ Hz), plain-language transport health "
+            "(no fake 0/0 pairs), and session totals — enable verbose log to see each line."
+        )
+        note.setWordWrap(True)
+        note.setObjectName("tabNote")
+        lay.addWidget(note)
 
+    if embedded:
+        return host
     return _scrollable(host)
 
 
-def build_diagnostics_tab(
+
+def _mount_automated_checks_ui(
     parent: QtWidgets.QWidget,
+    lay: QtWidgets.QVBoxLayout,
     *,
-    skip_hub: bool = False,
-) -> QtWidgets.QWidget:
-    """File log + on-screen log options.
-
-    Args:
-        skip_hub: When True, the ConnectionHubWidget section is omitted.
-            Use this in layouts (e.g. Modern) that already provide a dedicated
-            Hub tab so the widget is not created twice.
-    """
-    host = QtWidgets.QWidget()
-    lay = QtWidgets.QVBoxLayout(host)
-    lay.setContentsMargins(14, 14, 14, 14)
-    lay.setSpacing(12)
-
-    card_states = {}
-    if hasattr(parent, "_load_diag_card_states"):
-        try:
-            loaded = parent._load_diag_card_states()
-            if isinstance(loaded, dict):
-                card_states = loaded
-        except Exception:
-            card_states = {}
-
-    def _card_open(key: str, default: bool) -> bool:
-        return bool(card_states.get(key, default))
-
-    def _persist_card(key: str, on: bool) -> None:
-        if not on:
-            _capture_diag_card_size(parent, key)
-        if hasattr(parent, "_save_diag_card_state"):
-            try:
-                parent._save_diag_card_state(key, on)
-            except Exception:
-                pass
-        QtCore.QTimer.singleShot(0, lambda: _apply_diag_splitter_sizes(parent))
-
-    hint = QtWidgets.QLabel(
-        "Optional rotating file log for survey records. "
-        "The main live log (Log tab in Standard, or above the strip in Field) is separate — "
-        "use On-screen log below to clear it."
-    )
-    hint.setWordWrap(True)
-    hint.setObjectName("tabHint")
-    hint_row = QtWidgets.QHBoxLayout()
-    hint_row.addWidget(hint, 1)
-    parent.btn_diag_reorder_cards = QtWidgets.QPushButton("Reorder cards…")
-    parent.btn_diag_reorder_cards.setToolTip(
-        "Drag diagnostics cards into your preferred order."
-    )
-    parent.btn_diag_reorder_cards.clicked.connect(parent._open_diag_card_order_manager)
-    hint_row.addWidget(parent.btn_diag_reorder_cards, 0)
-    lay.addLayout(hint_row)
-
-    if not skip_hub:
-        from ui.connect_panels import mount_connection_hub_on_diagnostics
-
-        mount_connection_hub_on_diagnostics(parent, lay)
-
-    splitter = QtWidgets.QSplitter(QtCore.Qt.Orientation.Vertical)
-    splitter.setObjectName("diagCardsSplitter")
-    splitter.setChildrenCollapsible(False)
-    lay.addWidget(splitter, 1)
-    parent._diag_cards_splitter = splitter
-    splitter.splitterMoved.connect(lambda *_args: _persist_diag_splitter_sizes(parent))
-
-    card_widgets: dict[str, QtWidgets.QWidget] = {}
-
-    def _register_card(key: str) -> None:
-        idx = splitter.count() - 1
-        widget = splitter.widget(idx) if idx >= 0 else None
-        if widget is not None:
-            widget.setProperty("diagCardKey", key)
-            card_widgets[key] = widget
-
-    lv = _add_collapsible_card(
-        splitter,
-        "Local black-box backup",
-        start_open=_card_open("local_backup", True),
-        on_toggled=lambda on: _persist_card("local_backup", on),
-    )
-    _register_card("local_backup")
-    parent.chk_local_backup = QtWidgets.QCheckBox(
-        "Save raw COM data to local .raw file while bridge runs"
-    )
-    parent.chk_local_backup.setToolTip(
-        "Writes every physical COM read to logs/backup_YYYYMMDD_HHMM.raw with immediate disk flush. "
-        "Continues even if UDP/TCP/Tailscale fails — independent of the rotating NMEA file log."
-    )
-    lv.addWidget(parent.chk_local_backup)
-    backup_note = QtWidgets.QLabel(
-        "Files live under logs/ beside the app. One new file per Start. "
-        "Disk-full or permission errors disable backup for that session without stopping the bridge."
-    )
-    backup_note.setWordWrap(True)
-    backup_note.setObjectName("tabNote")
-    lv.addWidget(backup_note)
-    if hasattr(parent, "_restore_local_backup_prefs_ui"):
-        parent.chk_local_backup.toggled.connect(parent._save_local_backup_pref)
-
-    fv = _add_collapsible_card(
-        splitter,
-        "Rotating file log",
-        start_open=_card_open("file_log", False),
-        on_toggled=lambda on: _persist_card("file_log", on),
-    )
-    _register_card("file_log")
-    parent.chk_file_log = QtWidgets.QCheckBox("Write NMEA traffic to file while bridge runs")
-    parent.chk_file_log.setToolTip(
-        "Appends each bridged line to the path below. Separate from the on-screen Log tab."
-    )
-    fv.addWidget(parent.chk_file_log)
-    path_row = QtWidgets.QHBoxLayout()
-    parent.file_log_path = QtWidgets.QLineEdit(str(Path.home() / "bridge_survey.log"))
-    parent.file_log_path.setPlaceholderText("Path to .log file")
-    parent.file_log_path.setToolTip("Active log file. When it fills up, it is renamed .log.1, .log.2, …")
-    parent.btn_browse = QtWidgets.QPushButton("Browse…")
-    path_row.addWidget(parent.file_log_path, 1)
-    path_row.addWidget(parent.btn_browse)
-    fv.addLayout(path_row)
-    size_row = QtWidgets.QHBoxLayout()
-    size_row.addWidget(QtWidgets.QLabel("Roll at:"))
-    parent.cmb_file_log_mb = QtWidgets.QComboBox()
-    for mb in (10, 25, 50, 100):
-        parent.cmb_file_log_mb.addItem(f"{mb} MB", mb)
-    parent.cmb_file_log_mb.setToolTip(
-        "Start a new log file when the active file reaches this size."
-    )
-    size_row.addWidget(parent.cmb_file_log_mb, 1)
-    size_row.addWidget(QtWidgets.QLabel("Keep old files:"))
-    parent.cmb_file_log_backups = QtWidgets.QComboBox()
-    parent.cmb_file_log_backups.addItem("None — one file only", 0)
-    for n in (3, 5, 10):
-        parent.cmb_file_log_backups.addItem(str(n), n)
-    parent.cmb_file_log_backups.setToolTip(
-        "None: when the log fills, the same file is cleared and reused (~one file on disk). "
-        "Otherwise keep that many rotated copies (e.g. .log.1, .log.2); oldest are deleted. "
-        "On-disk only — not a cloud backup."
-    )
-    size_row.addWidget(parent.cmb_file_log_backups, 0)
-    fv.addLayout(size_row)
-    parent.lbl_file_log_retention = QtWidgets.QLabel(file_log_retention_hint(10, 5))
-    parent.lbl_file_log_retention.setWordWrap(True)
-    parent.lbl_file_log_retention.setObjectName("tabNote")
-    fv.addWidget(parent.lbl_file_log_retention)
-    if hasattr(parent, "_refresh_file_log_retention_hint"):
-        parent.cmb_file_log_mb.currentIndexChanged.connect(parent._refresh_file_log_retention_hint)
-        parent.cmb_file_log_backups.currentIndexChanged.connect(parent._refresh_file_log_retention_hint)
-    file_note = QtWidgets.QLabel(
-        "Line format: PC time | GPS UTC | direction | NMEA sentence. "
-        "Tune roll size and kept old files for how much history stays on this PC (e.g. POSPAC export)."
-    )
-    file_note.setWordWrap(True)
-    file_note.setObjectName("tabNote")
-    fv.addWidget(file_note)
-
-    sv = _add_collapsible_card(
-        splitter,
-        "On-screen log",
-        start_open=_card_open("screen_log", False),
-        on_toggled=lambda on: _persist_card("screen_log", on),
-    )
-    _register_card("screen_log")
-    parent.btn_clear_ui = QtWidgets.QPushButton("Clear live log panel")
-    parent.btn_clear_ui.setToolTip("Clears the main log view — does not delete the file above.")
-    sv.addWidget(parent.btn_clear_ui)
-
-    qv = _add_collapsible_card(
-        splitter,
-        "Traffic & data quality (honest counters)",
-        start_open=_card_open("traffic_quality", False),
-        on_toggled=lambda on: _persist_card("traffic_quality", on),
-    )
-    _register_card("traffic_quality")
-    qa = QtWidgets.QLabel(
-        "Quick health read while Running:\n\n"
-        "• ↓ / ↑ Hz — Current sentence rate net→COM and COM→net.\n"
-        "• transport OK / warn — Queue pressure, drops, or rejects.\n"
-        "• session totals — Lifetime counts this run.\n"
-        "• GNSS chip — fix quality, sats, HDOP, stale detection.\n\n"
-        "This card is a fast operator legend (not a protocol deep dive).\n"
-        "For connection workflows and troubleshooting, open Tools → Guide."
-    )
-    qa.setWordWrap(True)
-    qa.setObjectName("tabNote")
-    qa.setTextInteractionFlags(QtCore.Qt.TextInteractionFlag.TextSelectableByMouse)
-    qa.setMaximumWidth(560)
-    qa_wrap = QtWidgets.QWidget()
-    qa_wrap_lay = QtWidgets.QVBoxLayout(qa_wrap)
-    qa_wrap_lay.setContentsMargins(0, 0, 0, 0)
-    qa_wrap_lay.addWidget(qa)
-    qa_wrap_lay.addStretch(1)
-    qv.addWidget(
-        qa_wrap,
-        0,
-        QtCore.Qt.AlignmentFlag.AlignTop | QtCore.Qt.AlignmentFlag.AlignLeft,
-    )
-
-    bv = _add_collapsible_card(
-        splitter,
-        "Automated checks (runs on this PC)",
-        start_open=_card_open("automated_checks", False),
-        on_toggled=lambda on: _persist_card("automated_checks", on),
-    )
-    _register_card("automated_checks")
-    intro = QtWidgets.QLabel(
-        "Runs the same Python helpers as the command line. Output streams below; the window stays responsive. "
-        "Start the bridge first for the UDP burst if you want to see traffic on the wire."
-    )
-    intro.setWordWrap(True)
-    intro.setObjectName("tabNote")
-    bv.addWidget(intro)
+    expand_output: bool = False,
+    embedded: bool = False,
+) -> None:
+    """Automated bench/dev checks — shared by Field diagnostics card and Modern Checks page."""
+    if not embedded:
+        intro = QtWidgets.QLabel(
+            "Runs the same Python helpers as the command line. Output fills the panel below. "
+            "Start the bridge first for live wire tests."
+        )
+        intro.setWordWrap(True)
+        intro.setObjectName("tabNote")
+        lay.addWidget(intro)
 
     btn_row1 = QtWidgets.QHBoxLayout()
     parent.btn_bench_pair_setup = QtWidgets.QPushButton("Bench pair setup…")
@@ -1412,7 +1271,7 @@ def build_diagnostics_tab(
     ):
         btn_row1.addWidget(b)
     btn_row1.addStretch(1)
-    bv.addLayout(btn_row1)
+    lay.addLayout(btn_row1)
 
     btn_row2 = QtWidgets.QHBoxLayout()
     parent.btn_diag_network_bench = QtWidgets.QPushButton("Network bench (auto)")
@@ -1431,7 +1290,7 @@ def build_diagnostics_tab(
     parent.btn_diag_udp.setObjectName("btnDiagUdpBurst")
     parent.btn_diag_udp.setToolTip(
         "Runs nmea_static_sample.py toward the bench preset UDP target. "
-        "Bridge should be Running (UDP listen) to see lines in the log."
+        "Bridge should be Running (UDP listen) to see lines in Activity."
     )
     parent.btn_diag_tcp_stress = QtWidgets.QPushButton("TCP stress (LA->Sac)")
     parent.btn_diag_tcp_demo = QtWidgets.QPushButton("TCP demo (~4 min)")
@@ -1457,7 +1316,7 @@ def build_diagnostics_tab(
     btn_row2.addWidget(parent.btn_diag_stop)
     btn_row2.addWidget(parent.btn_diag_clear)
     btn_row2.addStretch(1)
-    bv.addLayout(btn_row2)
+    lay.addLayout(btn_row2)
 
     cap_row = QtWidgets.QHBoxLayout()
     cap_row.addWidget(QtWidgets.QLabel("Capacity probe"))
@@ -1488,31 +1347,42 @@ def build_diagnostics_tab(
     cap_row.addWidget(parent.chk_diag_capacity_strict)
     cap_row.addWidget(parent.btn_diag_capacity)
     cap_row.addStretch(1)
-    bv.addLayout(cap_row)
+    lay.addLayout(cap_row)
 
-    parent.chk_diag_mirror_log = QtWidgets.QCheckBox("Mirror output lines to the main live log")
-    parent.chk_diag_mirror_log.setToolTip("When checked, each non-empty output line is also appended to the big log panel.")
-    bv.addWidget(parent.chk_diag_mirror_log)
+    parent.chk_diag_mirror_log = QtWidgets.QCheckBox("Mirror output lines to Activity")
+    parent.chk_diag_mirror_log.setToolTip(
+        "When checked, each non-empty output line is also appended to the Activity panel."
+    )
+    lay.addWidget(parent.chk_diag_mirror_log)
 
     parent.diag_status_label = QtWidgets.QLabel("Idle — pick a check above.")
     parent.diag_status_label.setWordWrap(True)
     parent.diag_status_label.setObjectName("tabHint")
-    bv.addWidget(parent.diag_status_label)
+    lay.addWidget(parent.diag_status_label)
 
     parent.diag_output = QtWidgets.QPlainTextEdit()
     parent.diag_output.setReadOnly(True)
     parent.diag_output.setObjectName("diagOutput")
-    parent.diag_output.setMinimumHeight(72)
-    parent.diag_output.setMaximumHeight(120)
-    parent.diag_output.setSizePolicy(
-        QtWidgets.QSizePolicy.Policy.Expanding,
-        QtWidgets.QSizePolicy.Policy.Fixed,
-    )
     parent.diag_output.setMaximumBlockCount(12_000)
     from ui.fonts import monospace_ui_font
 
     parent.diag_output.setFont(monospace_ui_font())
-    bv.addWidget(parent.diag_output)
+    if expand_output:
+        parent.diag_output.setMinimumHeight(200)
+        parent.diag_output.setMaximumHeight(_WIDGET_SIZE_MAX)
+        parent.diag_output.setSizePolicy(
+            QtWidgets.QSizePolicy.Policy.Expanding,
+            QtWidgets.QSizePolicy.Policy.Expanding,
+        )
+        lay.addWidget(parent.diag_output, 1)
+    else:
+        parent.diag_output.setMinimumHeight(72)
+        parent.diag_output.setMaximumHeight(120)
+        parent.diag_output.setSizePolicy(
+            QtWidgets.QSizePolicy.Policy.Expanding,
+            QtWidgets.QSizePolicy.Policy.Fixed,
+        )
+        lay.addWidget(parent.diag_output)
 
     parent._diag_run_buttons = [
         parent.btn_diag_verify,
@@ -1536,10 +1406,510 @@ def build_diagnostics_tab(
     parent.btn_diag_capacity.clicked.connect(parent._diag_run_capacity_probe)
     parent.btn_diag_stop.clicked.connect(parent._diag_stop)
     parent.btn_diag_clear.clicked.connect(parent.diag_output.clear)
-    parent._diag_card_widgets = card_widgets
-    parent._diag_cards_layout = lay
-    if hasattr(parent, "_apply_diag_card_order"):
-        parent._apply_diag_card_order()
+
+
+def _modern_tools_section_title(text: str) -> QtWidgets.QLabel:
+    lbl = QtWidgets.QLabel(text)
+    lbl.setObjectName("modernToolsSectionTitle")
+    return lbl
+
+
+def _modern_flat_page(
+    object_name: str,
+    headline: str,
+    *,
+    subtitle: str = "",
+    icon: str = "",
+) -> tuple[QtWidgets.QWidget, QtWidgets.QVBoxLayout]:
+    host = QtWidgets.QWidget()
+    host.setObjectName(object_name)
+    outer = QtWidgets.QVBoxLayout(host)
+    outer.setContentsMargins(0, 0, 0, 0)
+    outer.setSpacing(0)
+
+    header = QtWidgets.QFrame()
+    header.setObjectName("modernToolsPageHeader")
+    h_lay = QtWidgets.QVBoxLayout(header)
+    h_lay.setContentsMargins(20, 18, 20, 14)
+    h_lay.setSpacing(6)
+
+    title_row = QtWidgets.QHBoxLayout()
+    title_row.setSpacing(10)
+    if icon:
+        icon_lbl = QtWidgets.QLabel(icon)
+        icon_lbl.setObjectName("modernToolsPageIcon")
+        title_row.addWidget(icon_lbl, 0, QtCore.Qt.AlignmentFlag.AlignTop)
+    title = QtWidgets.QLabel(headline)
+    title.setObjectName("modernToolsPageTitle")
+    title_row.addWidget(title, 1)
+    h_lay.addLayout(title_row)
+
+    if subtitle:
+        hint = QtWidgets.QLabel(subtitle)
+        hint.setWordWrap(True)
+        hint.setObjectName("modernToolsPageSubtitle")
+        h_lay.addWidget(hint)
+
+    outer.addWidget(header)
+
+    card = QtWidgets.QFrame()
+    card.setObjectName("modernToolsContentCard")
+    lay = QtWidgets.QVBoxLayout(card)
+    lay.setContentsMargins(18, 16, 18, 18)
+    lay.setSpacing(12)
+    outer.addWidget(card, 1)
+    return host, lay
+
+
+def _modern_tools_inline_section(title: str) -> QtWidgets.QLabel:
+    lbl = QtWidgets.QLabel(title)
+    lbl.setObjectName("modernToolsInlineSection")
+    return lbl
+
+
+def _modern_tools_section_sep() -> QtWidgets.QFrame:
+    sep = QtWidgets.QFrame()
+    sep.setObjectName("modernToolsSectionSep")
+    sep.setFrameShape(QtWidgets.QFrame.Shape.HLine)
+    sep.setFrameShadow(QtWidgets.QFrame.Shadow.Plain)
+    return sep
+
+
+def _modern_live_status_label() -> QtWidgets.QLabel:
+    from ui.modern_live_status import create_modern_live_status_label
+
+    return create_modern_live_status_label()
+
+
+def _mount_black_box_ui(parent: QtWidgets.QWidget, lay: QtWidgets.QVBoxLayout) -> None:
+    parent.lbl_black_box_live_status = _modern_live_status_label()
+    lay.addWidget(parent.lbl_black_box_live_status)
+    parent.chk_local_backup = QtWidgets.QCheckBox(
+        "Save raw COM data to local .raw file while bridge runs"
+    )
+    parent.chk_local_backup.setToolTip(
+        "Writes raw COM traffic (network→COM and COM→network) to backup_*.raw with immediate disk flush. "
+        "Continues even if UDP/TCP fails — independent of the rotating NMEA file log."
+    )
+    lay.addWidget(parent.chk_local_backup)
+    from ui.local_backup_settings import mount_local_backup_location_row
+
+    mount_local_backup_location_row(parent, lay, show_session_file=False)
+    backup_note = QtWidgets.QLabel(
+        "One new backup_*.raw file per Start (inside the folder above). Survey UDP→COM traffic is "
+        "included. Permission or disk-full errors disable backup for that session without stopping the bridge."
+    )
+    backup_note.setWordWrap(True)
+    backup_note.setObjectName("tabNote")
+    lay.addWidget(backup_note)
+    if hasattr(parent, "_restore_local_backup_prefs_ui"):
+        parent.chk_local_backup.toggled.connect(parent._save_local_backup_pref)
+    if hasattr(parent, "_refresh_tools_page_status"):
+        parent.chk_local_backup.toggled.connect(lambda *_: parent._refresh_tools_page_status())
+
+
+def _mount_file_log_ui(parent: QtWidgets.QWidget, lay: QtWidgets.QVBoxLayout) -> None:
+    parent.lbl_file_log_live_status = _modern_live_status_label()
+    lay.addWidget(parent.lbl_file_log_live_status)
+    parent.chk_file_log = QtWidgets.QCheckBox("Write NMEA traffic to file while bridge runs")
+    parent.chk_file_log.setToolTip(
+        "Appends each bridged line to the path below. Separate from the Activity panel."
+    )
+    lay.addWidget(parent.chk_file_log)
+    path_row = QtWidgets.QHBoxLayout()
+    parent.file_log_path = QtWidgets.QLineEdit(str(Path.home() / "bridge_survey.log"))
+    parent.file_log_path.setPlaceholderText("Path to .log file")
+    parent.file_log_path.setToolTip(
+        "Active log file. When it fills up, it is renamed .log.1, .log.2, …"
+    )
+    parent.btn_browse = QtWidgets.QPushButton("Browse…")
+    path_row.addWidget(parent.file_log_path, 1)
+    path_row.addWidget(parent.btn_browse)
+    lay.addLayout(path_row)
+    size_row = QtWidgets.QHBoxLayout()
+    size_row.addWidget(QtWidgets.QLabel("Roll at:"))
+    parent.cmb_file_log_mb = QtWidgets.QComboBox()
+    for mb in (10, 25, 50, 100):
+        parent.cmb_file_log_mb.addItem(f"{mb} MB", mb)
+    parent.cmb_file_log_mb.setToolTip("Start a new log file when the active file reaches this size.")
+    size_row.addWidget(parent.cmb_file_log_mb, 1)
+    size_row.addWidget(QtWidgets.QLabel("Keep old files:"))
+    parent.cmb_file_log_backups = QtWidgets.QComboBox()
+    parent.cmb_file_log_backups.addItem("None — one file only", 0)
+    for n in (3, 5, 10):
+        parent.cmb_file_log_backups.addItem(str(n), n)
+    parent.cmb_file_log_backups.setToolTip(
+        "None: when the log fills, the same file is cleared and reused (~one file on disk). "
+        "Otherwise keep that many rotated copies (e.g. .log.1, .log.2); oldest are deleted."
+    )
+    size_row.addWidget(parent.cmb_file_log_backups, 0)
+    lay.addLayout(size_row)
+    parent.lbl_file_log_retention = QtWidgets.QLabel(file_log_retention_hint(10, 5))
+    parent.lbl_file_log_retention.setWordWrap(True)
+    parent.lbl_file_log_retention.setObjectName("tabNote")
+    lay.addWidget(parent.lbl_file_log_retention)
+    if hasattr(parent, "_refresh_file_log_retention_hint"):
+        parent.cmb_file_log_mb.currentIndexChanged.connect(parent._refresh_file_log_retention_hint)
+        parent.cmb_file_log_backups.currentIndexChanged.connect(parent._refresh_file_log_retention_hint)
+    if hasattr(parent, "_refresh_tools_page_status"):
+        parent.chk_file_log.toggled.connect(lambda *_: parent._refresh_tools_page_status())
+        parent.file_log_path.textChanged.connect(lambda *_: parent._refresh_tools_page_status())
+
+
+def _mount_activity_clear_ui(parent: QtWidgets.QWidget, lay: QtWidgets.QVBoxLayout) -> None:
+    from ui.controls import create_log_panel
+
+    lay.addWidget(create_log_panel(parent, show_toggle=False, show_header=True), 1)
+
+
+def build_modern_black_box_page(parent: QtWidgets.QWidget) -> QtWidgets.QWidget:
+    host, lay = _modern_flat_page(
+        "modernBlackBoxPage",
+        "Black box",
+        subtitle="Crash-safe raw COM capture — one .raw file per bridge session.",
+        icon="💾",
+    )
+    _mount_black_box_ui(parent, lay)
+    lay.addStretch(1)
+    return host
+
+
+def build_modern_file_log_page(parent: QtWidgets.QWidget) -> QtWidgets.QWidget:
+    host, lay = _modern_flat_page(
+        "modernFileLogPage",
+        "File log",
+        subtitle="Rotating NMEA log on disk — separate from the on-screen Activity panel.",
+        icon="📄",
+    )
+    _mount_file_log_ui(parent, lay)
+    note = QtWidgets.QLabel("Line format: PC time | GPS UTC | direction | NMEA sentence.")
+    note.setWordWrap(True)
+    note.setObjectName("tabNote")
+    lay.addWidget(note)
+    lay.addStretch(1)
+    return host
+
+
+def build_modern_activity_page(parent: QtWidgets.QWidget) -> QtWidgets.QWidget:
+    from ui.tools_pages import build_modern_activity_body
+
+    host, lay = _modern_flat_page(
+        "modernActivityToolsPage",
+        "Activity",
+        subtitle="On-screen wire-tap housekeeping — does not affect disk logs.",
+        icon="📋",
+    )
+    lay.addWidget(build_modern_activity_body(parent), 1)
+    return host
+
+
+def build_modern_presets_page(parent: QtWidgets.QWidget) -> QtWidgets.QWidget:
+    from ui.tools_pages import build_modern_presets_body
+
+    host, lay = _modern_flat_page(
+        "modernPresetsPage",
+        "Presets",
+        subtitle="Named COM, network, and NMEA setups — Load before Start, Save after changes.",
+        icon="⚙",
+    )
+    lay.addWidget(build_modern_presets_body(parent), 1)
+    return host
+
+
+def build_modern_nmea_page(parent: QtWidgets.QWidget) -> QtWidgets.QWidget:
+    from ui.nmea_settings import build_modern_nmea_settings
+
+    host, lay = _modern_flat_page(
+        "modernNmeaPage",
+        "NMEA",
+        subtitle="How the bridge treats incoming data on the next Start — passthrough, filtered, or raw.",
+        icon="📡",
+    )
+    lay.addWidget(build_modern_nmea_settings(parent), 1)
+    return host
+
+
+def build_modern_hub_page(parent: QtWidgets.QWidget) -> QtWidgets.QWidget:
+    """Modern Tools → Hub: full-height Connection Hub (COM + UDP discovery cards)."""
+    from ui.connection_hub import ConnectionHubWidget
+
+    host, lay = _modern_flat_page(
+        "modernHubTab",
+        "Hub",
+        subtitle=(
+            "Discover COM ports and network paths — click a tile to fill Control before Start. "
+            "Blue border = hub pick for Start."
+        ),
+        icon="🛰",
+    )
+    hub = ConnectionHubWidget(standalone=True, show_page_header=False)
+    hub.setSizePolicy(
+        QtWidgets.QSizePolicy.Policy.Expanding,
+        QtWidgets.QSizePolicy.Policy.Expanding,
+    )
+    hub.attach_bridge_window(parent)
+    parent.connection_hub = hub
+    lay.addWidget(hub, 1)
+    scroll = getattr(hub, "_card_scroll", None)
+    if scroll is not None:
+        scroll.setMinimumHeight(0)
+        scroll.setMaximumHeight(16777215)
+        scroll.setSizePolicy(
+            QtWidgets.QSizePolicy.Policy.Expanding,
+            QtWidgets.QSizePolicy.Policy.Expanding,
+        )
+    return host
+
+
+def build_modern_phone_page(parent: QtWidgets.QWidget) -> QtWidgets.QWidget:
+    host, lay = _modern_flat_page(
+        "modernPhonePage",
+        "Phone",
+        subtitle="Web dashboard, token, and QR for remote Start/Stop from a phone.",
+        icon="📱",
+    )
+    scroll = build_phone_dashboard_tab(parent)
+    lay.addWidget(scroll, 1)
+    return host
+
+
+def build_modern_automated_checks_page(parent: QtWidgets.QWidget) -> QtWidgets.QWidget:
+    """Modern Tools → Checks: full-height automated checks (no nested scroll/card)."""
+    host, lay = _modern_flat_page(
+        "modernChecksPage",
+        "Checks",
+        subtitle="Bench and developer scripts — not required for normal survey work.",
+        icon="🧪",
+    )
+    banner = QtWidgets.QFrame()
+    banner.setObjectName("modernToolsBenchBanner")
+    bl = QtWidgets.QHBoxLayout(banner)
+    bl.setContentsMargins(12, 10, 12, 10)
+    bl.addWidget(
+        QtWidgets.QLabel("Bench & developer tools only — skip for normal survey runs.")
+    )
+    lay.addWidget(banner)
+    _mount_automated_checks_ui(parent, lay, expand_output=True, embedded=True)
+    return host
+
+
+def build_modern_tools_nav_groups() -> list[tuple[str, list[tuple[str, str, str]]]]:
+    """Modern sidebar groups: Control | Setup | Logging | Bench."""
+    return [
+        (
+            "Control",
+            [
+                ("control", "Control", "🎛"),
+            ],
+        ),
+        (
+            "Setup",
+            [
+                ("presets", "Presets", "⚙"),
+                ("hub", "Hub", "🛰"),
+                ("nmea", "NMEA", "📡"),
+                ("phone", "Phone", "📱"),
+            ],
+        ),
+        (
+            "Logging",
+            [
+                ("activity", "Activity", "📋"),
+                ("black_box", "Black box", "💾"),
+                ("file_log", "File log", "📄"),
+            ],
+        ),
+        (
+            "Bench",
+            [
+                ("guide", "Guide", "📖"),
+                ("inject", "Inject", "💉"),
+                ("terminal", "Terminal", "⌨"),
+                ("checks", "Checks", "🧪"),
+            ],
+        ),
+    ]
+
+
+def build_modern_tools_nav() -> list[tuple[str, str, str]]:
+    """Modern Tools sidebar: flat (section_id, label, icon) in display order."""
+    out: list[tuple[str, str, str]] = []
+    for _group, items in build_modern_tools_nav_groups():
+        out.extend(items)
+    return out
+
+
+def build_modern_inject_page(parent: QtWidgets.QWidget) -> QtWidgets.QWidget:
+    host, lay = _modern_flat_page(
+        "modernInjectPage",
+        "Inject",
+        subtitle="Send test NMEA or raw bytes out the COM port while the bridge runs.",
+        icon="💉",
+    )
+    lay.addWidget(build_send_tab(parent, embedded=True), 1)
+    return host
+
+
+def build_modern_terminal_page(parent: QtWidgets.QWidget) -> QtWidgets.QWidget:
+    from ui.system_terminal import build_system_terminal_tab
+
+    host, lay = _modern_flat_page(
+        "modernTerminalPage",
+        "Terminal",
+        subtitle="Local shell for bench scripts and ping — separate from bridge inject.",
+        icon="⌨",
+    )
+    lay.addWidget(build_system_terminal_tab(parent, embedded=True), 1)
+    return host
+
+
+def build_modern_guide_page(parent: QtWidgets.QWidget) -> QtWidgets.QWidget:
+    from ui.operator_guide import build_operator_guide_panel
+
+    host, lay = _modern_flat_page(
+        "modernGuidePage",
+        "Guide",
+        subtitle="Learn the workflow in plain language — pick a path, follow the steps, jump to the right tab.",
+        icon="📖",
+    )
+    lay.addWidget(build_operator_guide_panel(parent), 1)
+    return host
+
+
+def build_diagnostics_tab(
+    parent: QtWidgets.QWidget,
+    *,
+    skip_hub: bool = False,
+    card_keys: frozenset[str] | None = None,
+) -> QtWidgets.QWidget:
+    """File log + on-screen log options.
+
+    Args:
+            skip_hub: When True, the ConnectionHubWidget section is omitted.
+            Use this in layouts (e.g. Modern) that already provide Hub under
+            Tools so the widget is not created twice.
+        card_keys: When set, only build these collapsible cards (Modern Tools split).
+    """
+    full_panel = card_keys is None
+
+    def _want(key: str) -> bool:
+        return full_panel or key in card_keys  # type: ignore[operator]
+    host = QtWidgets.QWidget()
+    lay = QtWidgets.QVBoxLayout(host)
+    lay.setContentsMargins(14, 14, 14, 14)
+    lay.setSpacing(12)
+
+    card_states = {}
+    if hasattr(parent, "_load_diag_card_states"):
+        try:
+            loaded = parent._load_diag_card_states()
+            if isinstance(loaded, dict):
+                card_states = loaded
+        except Exception:
+            card_states = {}
+
+    def _card_open(key: str, default: bool) -> bool:
+        return bool(card_states.get(key, default))
+
+    def _persist_card(key: str, on: bool) -> None:
+        if not on:
+            _capture_diag_card_size(parent, key)
+        if hasattr(parent, "_save_diag_card_state"):
+            try:
+                parent._save_diag_card_state(key, on)
+            except Exception:
+                pass
+        QtCore.QTimer.singleShot(0, lambda: _apply_diag_splitter_sizes(parent))
+
+    if full_panel:
+        hint = QtWidgets.QLabel(
+            "Optional rotating file log for survey records. "
+            "The main live log (Log tab in Standard, Activity in Modern, or above the strip in Field) "
+            "is separate — use On-screen log below to clear it."
+        )
+        hint.setWordWrap(True)
+        hint.setObjectName("tabHint")
+        hint_row = QtWidgets.QHBoxLayout()
+        hint_row.addWidget(hint, 1)
+        parent.btn_diag_reorder_cards = QtWidgets.QPushButton("Reorder cards…")
+        parent.btn_diag_reorder_cards.setToolTip(
+            "Drag diagnostics cards into your preferred order."
+        )
+        parent.btn_diag_reorder_cards.clicked.connect(parent._open_diag_card_order_manager)
+        hint_row.addWidget(parent.btn_diag_reorder_cards, 0)
+        lay.addLayout(hint_row)
+
+    if full_panel and not skip_hub:
+        from ui.connect_panels import mount_connection_hub_on_diagnostics
+
+        mount_connection_hub_on_diagnostics(parent, lay)
+
+    splitter = QtWidgets.QSplitter(QtCore.Qt.Orientation.Vertical)
+    splitter.setObjectName("diagCardsSplitter")
+    splitter.setChildrenCollapsible(False)
+    lay.addWidget(splitter, 1)
+    parent._diag_cards_splitter = splitter
+    splitter.splitterMoved.connect(lambda *_args: _persist_diag_splitter_sizes(parent))
+
+    card_widgets: dict[str, QtWidgets.QWidget] = {}
+
+    def _register_card(key: str) -> None:
+        idx = splitter.count() - 1
+        widget = splitter.widget(idx) if idx >= 0 else None
+        if widget is not None:
+            widget.setProperty("diagCardKey", key)
+            card_widgets[key] = widget
+
+    if _want("local_backup"):
+        lv = _add_collapsible_card(
+            splitter,
+            "Local black-box backup",
+            start_open=_card_open("local_backup", True),
+            on_toggled=lambda on: _persist_card("local_backup", on),
+        )
+        _register_card("local_backup")
+        _mount_black_box_ui(parent, lv)
+
+    if _want("file_log"):
+        fv = _add_collapsible_card(
+            splitter,
+            "Rotating file log",
+            start_open=_card_open("file_log", False),
+            on_toggled=lambda on: _persist_card("file_log", on),
+        )
+        _register_card("file_log")
+        _mount_file_log_ui(parent, fv)
+
+    if _want("screen_log"):
+        sv = _add_collapsible_card(
+            splitter,
+            "On-screen log",
+            start_open=_card_open("screen_log", False),
+            on_toggled=lambda on: _persist_card("screen_log", on),
+        )
+        _register_card("screen_log")
+        _mount_activity_clear_ui(parent, sv)
+
+    if _want("automated_checks"):
+        bv = _add_collapsible_card(
+            splitter,
+            "Automated checks (runs on this PC)",
+            start_open=_card_open("automated_checks", False),
+            on_toggled=lambda on: _persist_card("automated_checks", on),
+        )
+        _register_card("automated_checks")
+        _mount_automated_checks_ui(parent, bv, expand_output=False)
+
+    merged_cards = dict(getattr(parent, "_diag_card_widgets", {}) or {})
+    merged_cards.update(card_widgets)
+    parent._diag_card_widgets = merged_cards
+    if full_panel:
+        parent._diag_cards_splitter = splitter
+        parent._diag_cards_layout = lay
+        if hasattr(parent, "_apply_diag_card_order"):
+            parent._apply_diag_card_order()
+        else:
+            _apply_diag_splitter_sizes(parent)
     else:
         _apply_diag_splitter_sizes(parent)
 

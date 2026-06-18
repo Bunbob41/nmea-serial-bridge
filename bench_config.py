@@ -38,6 +38,7 @@ _PRESET_KEYS = (
     "notes",
     "nmea_mode",
     "nmea_types",
+    "udp_fanout",
 )
 _VALID_NMEA_MODES = frozenset({"passthrough", "strict", "raw"})
 _LEGACY_DESK = ("desk", "bench")
@@ -45,6 +46,8 @@ _LEGACY_BOAT = ("boat", "production")
 _BUILTIN_DESK = "Desk test"
 _BUILTIN_BOAT = "Boat / INS"
 _BUILTIN_NORBIT = "NORBIT DCT"
+_BUILTIN_CUBE = "Cube MAVLink"
+_BUILTIN_CUBE_GPS = "Cube GPS UART"
 _NAME_RE = re.compile(r"^[\w][\w \-./()]{0,47}$")
 _PRESET_ORDER_KEY = "preset_order"
 
@@ -129,6 +132,7 @@ def _normalize_desk(data: dict[str, Any]) -> dict[str, Any]:
         "baud": int(data.get("baud", 115200)),
         "udp_host": str(data.get("udp_host", "0.0.0.0")).strip() or "0.0.0.0",
         "udp_port": int(data.get("udp_port", 10110)),
+        "udp_fanout": bool(data["udp_fanout"]) if "udp_fanout" in data else True,
     }
     base.update(_normalize_nmea_fields(data))
     return base
@@ -189,7 +193,54 @@ def _builtin_presets() -> dict[str, dict[str, Any]]:
             ),
         }
     )
-    return {_BUILTIN_DESK: desk, _BUILTIN_BOAT: boat, _BUILTIN_NORBIT: norbit}
+    cube_block = merged.get("cube_mavlink")
+    if not isinstance(cube_block, dict):
+        cube_block = {}
+    cube = _normalize_desk(
+        {
+            **desk,
+            **{k: cube_block[k] for k in _PRESET_KEYS if k in cube_block},
+            "com": str(cube_block.get("com", "COM9")).strip() or "COM9",
+            "baud": int(cube_block.get("baud", 115200)),
+            "udp_port": int(cube_block.get("udp_port", 14550)),
+            "nmea_mode": "raw",
+            "notes": str(cube_block.get("notes") or "").strip()
+            or (
+                "Cube Orange MAVLink: Raw binary, UDP listen 14550. "
+                "Mission Planner → UDP Client 127.0.0.1:14550. See docs/OPERATOR_GUIDE.md §5.6."
+            ),
+        }
+    )
+    cube_gps_block = merged.get("cube_gps_uart")
+    if not isinstance(cube_gps_block, dict):
+        cube_gps_block = {}
+    cube_gps = _normalize_desk(
+        {
+            **desk,
+            **{k: cube_gps_block[k] for k in _PRESET_KEYS if k in cube_gps_block},
+            "com": str(cube_gps_block.get("com", "COM10")).strip() or "COM10",
+            "baud": int(cube_gps_block.get("baud", 38400)),
+            "udp_port": int(cube_gps_block.get("udp_port", 10110)),
+            "nmea_mode": "passthrough",
+            "udp_fanout": bool(cube_gps_block.get("udp_fanout", False)),
+            "notes": str(cube_gps_block.get("notes") or "").strip()
+            or (
+                "GPS injection via dedicated Cube UART (Telem2/Serial4). "
+                "ArduPilot params: SERIALx_PROTOCOL=5, SERIALx_BAUD=38, GPS_TYPE2=5. "
+                "NMEA sim sends UDP → bridge forwards NMEA over UART → ArduPilot treats "
+                "it as a secondary GPS source. "
+                "Run a second Serial Link instance for MAVLink relay on the USB port."
+            ),
+        }
+    )
+
+    return {
+        _BUILTIN_DESK: desk,
+        _BUILTIN_BOAT: boat,
+        _BUILTIN_NORBIT: norbit,
+        _BUILTIN_CUBE: cube,
+        _BUILTIN_CUBE_GPS: cube_gps,
+    }
 
 
 def _migrate_legacy_into_presets(raw: dict[str, Any], presets: dict[str, dict[str, Any]]) -> None:

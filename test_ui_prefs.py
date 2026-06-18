@@ -182,9 +182,20 @@ class TestUiPrefs(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "ui_prefs.json"
             with patch.object(ui_prefs, "CONFIG_PATH", path):
-                ui_prefs.save_local_backup_prefs(enabled=False)
+                ui_prefs.save_local_backup_prefs(
+                    enabled=False,
+                    base_dir=str(Path(tmp) / "survey"),
+                    session_folders=False,
+                )
                 loaded = ui_prefs.load_local_backup_prefs()
-                self.assertEqual(loaded, {"enabled": False})
+                self.assertEqual(
+                    loaded,
+                    {
+                        "enabled": False,
+                        "base_dir": str(Path(tmp) / "survey"),
+                        "session_folders": False,
+                    },
+                )
 
     def test_web_ui_defaults_enabled(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -197,10 +208,16 @@ class TestUiPrefs(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "ui_prefs.json"
             with patch.object(ui_prefs, "CONFIG_PATH", path):
+                grid = (
+                    '[{"id":"com-setup","x":0,"y":0,"w":6,"h":4},'
+                    '{"id":"status","x":6,"y":0,"w":6,"h":5},'
+                    '{"id":"map","x":0,"y":5,"w":6,"h":4},'
+                    '{"id":"log","x":0,"y":13,"w":12,"h":6}]'
+                )
                 ui_prefs.save_web_dashboard_layout(
                     layout_mode="gridstack",
                     local_storage={
-                        "nmea-gridstack-layout-v2": '[{"id":"log"}]',
+                        "nmea-gridstack-layout-v2": grid,
                         "nmea-bridge-web-token": "must-strip",
                     },
                 )

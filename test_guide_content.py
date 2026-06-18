@@ -19,8 +19,8 @@ class TestGuideContent(unittest.TestCase):
         )
         self.assertIn("Advanced network (TCP / UDP remote / all modes)", blob)
         self.assertIn("Listen host", blob)
-        self.assertIn("Start bridge", blob)
-        self.assertIn("Tools → Phone", blob)
+        self.assertIn("▶ Start", blob)
+        self.assertIn("Settings tab → Phone", blob)
 
     def test_guide_does_not_reference_removed_product_demo(self) -> None:
         blob = " ".join((tt._GUIDE_START, tt._GUIDE_CHECKLIST))

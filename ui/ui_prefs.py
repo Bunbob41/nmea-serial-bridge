@@ -622,10 +622,19 @@ def load_modern_layout_prefs() -> dict[str, Any]:
     raw = data.get("modern_layout")
     out: dict[str, Any] = {
         "slot_assignments": dict(_MODERN_SLOT_DEFAULTS),
+        "sidebar_collapsed": False,
+        "control_map_collapsed": True,
+        "tools_nav_mode": "sidebar",
         **{k: list(v) for k, v in _MODERN_SPLIT_DEFAULTS.items()},
     }
     if not isinstance(raw, dict):
         return out
+    if "sidebar_collapsed" in raw:
+        out["sidebar_collapsed"] = bool(raw.get("sidebar_collapsed"))
+    if "control_map_collapsed" in raw:
+        out["control_map_collapsed"] = bool(raw.get("control_map_collapsed"))
+    mode = str(raw.get("tools_nav_mode") or "sidebar").strip().lower()
+    out["tools_nav_mode"] = "top_chips" if mode == "top_chips" else "sidebar"
     for key, default in _MODERN_SPLIT_DEFAULTS.items():
         val = raw.get(key)
         if isinstance(val, list) and len(val) >= len(default):
@@ -658,6 +667,9 @@ def save_modern_layout_prefs(
     left_vsplit: list[int] | None = None,
     right_vsplit: list[int] | None = None,
     slot_assignments: dict[str, str] | None = None,
+    sidebar_collapsed: bool | None = None,
+    control_map_collapsed: bool | None = None,
+    tools_nav_mode: str | None = None,
 ) -> None:
     data = _read_json()
     prev = data.get("modern_layout")
@@ -670,22 +682,71 @@ def save_modern_layout_prefs(
         payload["right_vsplit"] = [max(80, int(x)) for x in right_vsplit[:2]]
     if slot_assignments is not None:
         payload["slot_assignments"] = {str(k): str(v) for k, v in slot_assignments.items()}
+    if sidebar_collapsed is not None:
+        payload["sidebar_collapsed"] = bool(sidebar_collapsed)
+    if control_map_collapsed is not None:
+        payload["control_map_collapsed"] = bool(control_map_collapsed)
+    if tools_nav_mode is not None:
+        mode = str(tools_nav_mode).strip().lower()
+        payload["tools_nav_mode"] = "top_chips" if mode == "top_chips" else "sidebar"
     data["modern_layout"] = payload
     _write_json(data)
 
 
-def load_local_backup_prefs() -> dict[str, bool]:
+def load_local_backup_prefs() -> dict[str, bool | str]:
     """Black-box raw COM backup (independent of rotating NMEA file log)."""
     data = _read_json()
     raw = data.get("local_backup")
     if not isinstance(raw, dict):
-        return {"enabled": True}
-    return {"enabled": bool(raw.get("enabled", True))}
+        return {"enabled": True, "base_dir": "", "session_folders": True}
+    return {
+        "enabled": bool(raw.get("enabled", True)),
+        "base_dir": str(raw.get("base_dir") or "").strip(),
+        "session_folders": bool(raw.get("session_folders", True)),
+    }
 
 
-def save_local_backup_prefs(*, enabled: bool) -> None:
+def effective_local_backup_base_dir() -> Path:
+    """Resolved backup root — custom path or default logs/ beside the app."""
+    prefs = load_local_backup_prefs()
+    custom = str(prefs.get("base_dir") or "").strip()
+    if custom:
+        return Path(custom).expanduser()
+    from core.local_logger import default_local_backup_dir
+
+    return default_local_backup_dir()
+
+
+def prepare_local_backup_dir_for_session() -> Path:
+    """Directory used when the bridge opens the next .raw backup file."""
+    from core.local_logger import allocate_session_folder
+
+    prefs = load_local_backup_prefs()
+    base = effective_local_backup_base_dir()
+    if bool(prefs.get("session_folders", True)):
+        return allocate_session_folder(base)
+    base.mkdir(parents=True, exist_ok=True)
+    return base
+
+
+def save_local_backup_prefs(
+    *,
+    enabled: bool | None = None,
+    base_dir: str | None = None,
+    session_folders: bool | None = None,
+) -> None:
     data = _read_json()
-    data["local_backup"] = {"enabled": bool(enabled)}
+    current = load_local_backup_prefs()
+    payload = {
+        "enabled": bool(enabled if enabled is not None else current["enabled"]),
+        "base_dir": str(base_dir if base_dir is not None else current["base_dir"]).strip(),
+        "session_folders": bool(
+            session_folders
+            if session_folders is not None
+            else current["session_folders"]
+        ),
+    }
+    data["local_backup"] = payload
     _write_json(data)
 
 

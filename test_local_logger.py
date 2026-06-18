@@ -7,7 +7,13 @@ import threading
 import unittest
 from pathlib import Path
 
-from core.local_logger import LocalSerialBackup, _allocate_session_path, default_local_backup_dir
+from core.local_logger import (
+    LocalSerialBackup,
+    _allocate_session_path,
+    allocate_session_folder,
+    default_local_backup_dir,
+    format_session_folder_name,
+)
 
 
 class TestLocalSerialBackup(unittest.TestCase):
@@ -69,6 +75,27 @@ class TestLocalSerialBackup(unittest.TestCase):
     def test_default_dir_is_under_project_or_exe_parent(self) -> None:
         d = default_local_backup_dir()
         self.assertEqual(d.name, "logs")
+
+    def test_session_folder_name_format(self) -> None:
+        from datetime import datetime
+
+        name = format_session_folder_name(now=datetime(2026, 6, 16, 19, 58, 0))
+        self.assertEqual(name, "2026-06-16_19-58")
+
+    def test_allocate_session_folder_creates_unique_dirs(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            first = allocate_session_folder(
+                base, now=__import__("datetime").datetime(2026, 6, 16, 19, 58, 0)
+            )
+            second = allocate_session_folder(
+                base, now=__import__("datetime").datetime(2026, 6, 16, 19, 58, 0)
+            )
+            self.assertTrue(first.is_dir())
+            self.assertTrue(second.is_dir())
+            self.assertNotEqual(first, second)
+            self.assertEqual(first.name, "2026-06-16_19-58")
+            self.assertEqual(second.name, "2026-06-16_19-58_02")
 
 
 if __name__ == "__main__":

@@ -58,6 +58,7 @@ EXPANDED_FIT_SLACK_PX = 12
 CHIP_TEXT_PAD = 12
 CHIP_MARGINS_EXPANDED = (8, 5, 4, 5)
 CHIP_MARGINS_COMPACT = (5, 4, 3, 4)
+CHIP_MARGINS_CLUSTER = (6, 4, 6, 4)
 _GRIP_WIDTH = 12
 _RESIZE_EDGE_WIDTH = 5
 _PROP_FULL = "topBarFullText"
@@ -65,6 +66,8 @@ _WIDGET_SIZE_MAX = 16777215
 _MIN_CHIP_FONT_PT = 8.0
 # Enforced in SurveyTopBar._apply_spring_layout — do not reintroduce content-sized gaps.
 TOPBAR_ALWAYS_FILL_TRACK = True
+TOPBAR_LAYOUT_SPRING = "spring"
+TOPBAR_LAYOUT_CLUSTER = "cluster"
 
 
 def text_body_width(fm: QtGui.QFontMetrics, text: str) -> int:
@@ -202,6 +205,7 @@ class TopBarChip(QtWidgets.QFrame):
         self._short = compact_display_for(key, full_label)
         self._compact_preferred = preferred_compact_for(key, full_label)
         self._compact = False
+        self._interactive_chrome = True
         self._inner_base_font = inner.font() if isinstance(inner, QtWidgets.QToolButton) else None
         self.setObjectName("topBarChip")
         if hasattr(self, "setClipChildren"):
@@ -231,6 +235,19 @@ class TopBarChip(QtWidgets.QFrame):
         self._resize_edge = TopBarResizeEdge(self, self)
         self._lay.addWidget(self._resize_edge, 0, QtCore.Qt.AlignmentFlag.AlignVCenter)
 
+    def set_interactive_chrome(self, visible: bool) -> None:
+        """Hide drag/resize chrome for compact header nav (Modern)."""
+        self._interactive_chrome = visible
+        self._grip.setVisible(visible)
+        self._resize_edge.setVisible(visible)
+        if visible:
+            self._lay.setContentsMargins(
+                *(CHIP_MARGINS_COMPACT if self._compact else CHIP_MARGINS_EXPANDED)
+            )
+        else:
+            self._lay.setContentsMargins(*CHIP_MARGINS_CLUSTER)
+        self.updateGeometry()
+
     def _body_width_expanded(self) -> int:
         if isinstance(self._inner, QtWidgets.QToolButton):
             full = str(self._inner.property(_PROP_FULL) or self._full_label)
@@ -243,12 +260,16 @@ class TopBarChip(QtWidgets.QFrame):
         return COMPACT_CHIP_WIDTH - _GRIP_WIDTH - 10
 
     def natural_total_width(self, *, compact: bool) -> int:
-        margins = CHIP_MARGINS_COMPACT if compact else CHIP_MARGINS_EXPANDED
+        margins = (
+            CHIP_MARGINS_CLUSTER
+            if not self._interactive_chrome
+            else (CHIP_MARGINS_COMPACT if compact else CHIP_MARGINS_EXPANDED)
+        )
         body = self._body_width_compact() if compact else self._body_width_expanded()
+        chrome = _GRIP_WIDTH + _RESIZE_EDGE_WIDTH if self._interactive_chrome else 0
         return (
             body
-            + _GRIP_WIDTH
-            + _RESIZE_EDGE_WIDTH
+            + chrome
             + margins[0]
             + margins[2]
             + self._lay.spacing()
@@ -259,8 +280,12 @@ class TopBarChip(QtWidgets.QFrame):
         return self.natural_total_width(compact=False)
 
     def body_slot_width(self, outer_w: int, *, compact: bool) -> int:
-        margins = CHIP_MARGINS_COMPACT if compact else CHIP_MARGINS_EXPANDED
-        chrome = _GRIP_WIDTH + _RESIZE_EDGE_WIDTH + margins[0] + margins[2] + self._lay.spacing() * 2
+        if not self._interactive_chrome:
+            margins = CHIP_MARGINS_CLUSTER
+            chrome = margins[0] + margins[2] + self._lay.spacing()
+        else:
+            margins = CHIP_MARGINS_COMPACT if compact else CHIP_MARGINS_EXPANDED
+            chrome = _GRIP_WIDTH + _RESIZE_EDGE_WIDTH + margins[0] + margins[2] + self._lay.spacing() * 2
         return max(outer_w - chrome, 12)
 
     def full_label_fits(self, outer_w: int) -> bool:
@@ -390,6 +415,8 @@ class SurveyTopBar(QtWidgets.QWidget):
         self._last_spring_sig: tuple[object, ...] = ()
         self._spring_layout_busy = False
         self._host_width_fitted = False
+        self._layout_mode = TOPBAR_LAYOUT_SPRING
+        self._cluster_stretch_index = -1
         self._spring_layout_timer = QtCore.QTimer(self)
         self._spring_layout_timer.setSingleShot(True)
         self._spring_layout_timer.timeout.connect(self._apply_spring_layout)
@@ -424,6 +451,32 @@ class SurveyTopBar(QtWidgets.QWidget):
             Callable[[list[str], set[str], dict[str, float]], None]
         ] = None
 
+    def set_layout_mode(self, mode: str) -> None:
+        if mode not in (TOPBAR_LAYOUT_SPRING, TOPBAR_LAYOUT_CLUSTER):
+            mode = TOPBAR_LAYOUT_SPRING
+        if self._layout_mode == mode:
+            return
+        self._spring_layout_timer.stop()
+        self._layout_mode = mode
+        self._last_spring_sig = ()
+        self.rebuild()
+
+    def set_interactive_chrome(self, visible: bool) -> None:
+        for chip in self._chips.values():
+            chip.set_interactive_chrome(visible)
+
+    def embed_track_in(self, host: QtWidgets.QWidget, lay: QtWidgets.QHBoxLayout) -> None:
+        """Reparent the chip track into a header slot (Modern merged top bar)."""
+        self._track.setParent(host)
+        self._track.setSizePolicy(
+            QtWidgets.QSizePolicy.Policy.Maximum,
+            QtWidgets.QSizePolicy.Policy.Fixed,
+        )
+        self._track.setMinimumHeight(28)
+        lay.addWidget(self._track, 0)
+        self.setFixedHeight(0)
+        self.hide()
+
     def set_persist_callback(
         self, cb: Callable[[list[str], set[str], dict[str, float]], None]
     ) -> None:
@@ -451,6 +504,10 @@ class SurveyTopBar(QtWidgets.QWidget):
 
     def _schedule_spring_layout(self, attempt: int = 0) -> None:
         """Coalesce layout work — avoids resize→layout→resize storms (memory/CPU freeze)."""
+        if self._layout_mode == TOPBAR_LAYOUT_CLUSTER:
+            self._spring_layout_timer.stop()
+            self._apply_cluster_layout()
+            return
         if self._effective_avail_width() < 120 and attempt < 8:
             QtCore.QTimer.singleShot(
                 50, lambda a=attempt + 1: self._schedule_spring_layout(a)
@@ -630,6 +687,8 @@ class SurveyTopBar(QtWidgets.QWidget):
 
     def _apply_spring_layout(self) -> None:
         """Rule: visible tiles always share the full top-bar width (no empty track)."""
+        if self._layout_mode == TOPBAR_LAYOUT_CLUSTER:
+            return
         if self._spring_layout_busy:
             return
         keys = self._visible_keys()
@@ -669,6 +728,22 @@ class SurveyTopBar(QtWidgets.QWidget):
         finally:
             self._spring_layout_busy = False
 
+    def _apply_cluster_layout(self) -> None:
+        """Content-sized chips grouped on the left; trailing stretch absorbs slack."""
+        keys = self._visible_keys()
+        if not keys:
+            return
+        self._track.setSizePolicy(
+            QtWidgets.QSizePolicy.Policy.Maximum,
+            QtWidgets.QSizePolicy.Policy.Fixed,
+        )
+        for key in keys:
+            chip = self._chips[key]
+            chip.set_compact(False)
+            chip.set_spring_width(chip.natural_total_width(compact=False))
+        self._compact_mode = False
+        self._update_bar_height(cluster=True)
+
     def _apply_spring_layout_body(
         self,
         keys: list[str],
@@ -704,6 +779,7 @@ class SurveyTopBar(QtWidgets.QWidget):
             w = item.widget()
             if w is not None and w is not self._drop_line:
                 w.setParent(self._track)
+        self._cluster_stretch_index = -1
         order = [k for k in self._order if k in self._chips]
         for k in self._chips:
             if k not in order:
@@ -725,6 +801,9 @@ class SurveyTopBar(QtWidgets.QWidget):
             chip = self._chips[k]
             chip.show()
             self._track_lay.addWidget(chip, 0)
+        if self._layout_mode == TOPBAR_LAYOUT_CLUSTER:
+            self._track_lay.addStretch(1)
+            self._cluster_stretch_index = self._track_lay.count() - 1
         self._last_visible_sig = ()
         self._schedule_spring_layout()
         self._track.updateGeometry()
@@ -750,12 +829,14 @@ class SurveyTopBar(QtWidgets.QWidget):
             out.append((key, w.geometry()))
         return out
 
-    def _update_bar_height(self) -> None:
+    def _update_bar_height(self, *, cluster: bool = False) -> None:
         h = 0
         for chip in self._chips.values():
             if chip.isVisible():
                 h = max(h, chip.sizeHint().height())
-        self.setFixedHeight(max(h + 12, 40))
+        pad = 8 if cluster else 12
+        floor = 30 if cluster else 40
+        self.setFixedHeight(max(h + pad, floor))
 
     def _emit_persist(self) -> None:
         self.order_changed.emit(list(self._order))

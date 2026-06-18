@@ -27,8 +27,8 @@ SHELL_RING_RGB = (148, 163, 184)  # #94a3b8
 CANVAS_SIZE = 512
 ARTWORK_SCALE_DETAIL = 0.92
 # Shell: scale ink (not loose bbox) to fill the tile — thin D-sub lines vanish otherwise
-SHELL_INK_FILL = 0.82
-SHELL_DILATE_PX = 10
+SHELL_INK_FILL = 0.88
+SHELL_DILATE_PX = 14
 CORNER_RADIUS_RATIO = 0.18
 WHITE_KEY_TOLERANCE = 28
 INK_ALPHA_MIN = 160
@@ -108,10 +108,10 @@ def _remap_art_for_shell(art) -> object:
             lum = _luminance(r, g, b)
             if lum >= 200:
                 px[x, y] = (255, 255, 255, 255)
-            elif lum >= 90:
-                px[x, y] = (235, 242, 255, 255)
+            elif lum >= 70:
+                px[x, y] = (245, 248, 255, 255)
             else:
-                px[x, y] = (190, 205, 235, 255)
+                px[x, y] = (255, 255, 255, 255)
     return out
 
 
@@ -209,7 +209,7 @@ def _compose_icon(source, *, shell: bool = False) -> object:
         scale = min(target / cw, target / ch)
         nw = max(1, int(cw * scale))
         nh = max(1, int(ch * scale))
-        resample = Image.Resampling.NEAREST if shell and max(nw, nh) < 96 else Image.Resampling.LANCZOS
+        resample = Image.Resampling.NEAREST if shell else Image.Resampling.LANCZOS
         art = cropped.resize((nw, nh), resample)
         ox = (size - nw) // 2
         oy = (size - nh) // 2
@@ -243,7 +243,8 @@ def _ico_layers(detail, shell) -> tuple[list, list[tuple[int, int]]]:
     layers: list = []
     for dim in sizes:
         master = shell if dim[0] <= SHELL_MAX_PX else detail
-        layers.append(master.resize(dim, Image.Resampling.LANCZOS))
+        resample = Image.Resampling.NEAREST if dim[0] <= SHELL_MAX_PX else Image.Resampling.LANCZOS
+        layers.append(master.resize(dim, resample))
     return layers, sizes
 
 
@@ -264,7 +265,10 @@ def _save_ico(path: Path, layers: list, sizes: list[tuple[int, int]]) -> None:
 def main() -> int:
     src_path = _input_path()
     if not src_path.is_file():
-        print(f"[make_app_icon] missing {SOURCE} or {PNG}")
+        print(
+            f"[make_app_icon] missing {SOURCE} — add your connector art on a white/transparent matte "
+            f"(see assets/README.md)"
+        )
         return 1
     from PIL import Image
 

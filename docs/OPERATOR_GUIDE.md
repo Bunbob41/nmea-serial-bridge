@@ -7,9 +7,11 @@ Step-by-step guide for survey / bench use. Screenshots are optional; a **shot li
 
 **Display comfort:** default theme is **Field Slate** (neutral gray, high-contrast text). Gold is used for accents and primary actions only, not for paragraph text on bright panels. Change theme via **View → Theme** if you prefer Maroon & Gold or others.
 
-**What this app does:** forwards data between **UDP (or advanced TCP)** and a **COM port**. Default path is **NMEA 0183 text** (Trimble R10, simulators, Hypack). Optional **Raw binary** mode forwards **RTCM** and other non-NMEA bytes without parsing.
+**What this app does:** forwards data between **UDP (or advanced TCP)** and a **COM port**. Default path is **NMEA 0183 text** (Trimble R10, simulators, Hypack). Optional **Raw binary** mode forwards **RTCM**, **MAVLink**, and other non-NMEA bytes without parsing.
 
 Typical use: INS or GNSS on Ethernet → bridge → designated device COM input.
+
+**Cube / MAVLink / Mission Planner:** expose an autopilot COM port to ground-station software over the network — see **§5.6** and **§6.5** (multi-consumer survey stack).
 
 **NORBIT DCT + GUI:** multibeam positioning over serial is the same pattern — see **[NORBIT_DCT.md](NORBIT_DCT.md)** and preset **NORBIT DCT** in the app.
 
@@ -71,6 +73,12 @@ The app remembers your layout under:
 Older names **Minimal** / **Log-first** map to **Field** in the launcher (or still launch legacy layouts via CLI).
 
 **Recommendation:** **Standard** for first setup and editing presets; **Field** for daily survey ops and presentations.
+
+### Modern UI (default in recent builds)
+
+The **Modern** layout uses a top **Control** tab with a page banner, **Serial link** and **Network path** cards side-by-side, a green **preset summary** strip when a named preset is loaded, and a collapsible **Position track**. Before **Start**, load a setup from **Presets** or pick a tile on **Hub** — the summary strip on Control confirms what is active.
+
+**Tools navigation:** **View → Tools navigation → Sidebar** (left list) or **Top chips** (horizontal tabs). Same sections either way; pick whichever fits your monitor width.
 
 ---
 
@@ -185,6 +193,62 @@ You do **not** need a second bridge app. Use **one** Running bridge and two UDP 
 
 See also [`specs/001-baseline-spec/quickstart.md`](../specs/001-baseline-spec/quickstart.md).
 
+### 5.6 Cube Orange / MAVLink + Mission Planner (UDP Client)
+
+Use this when a **Cube** (or other ArduPilot autopilot) is on USB serial and you want **Mission Planner**, **QGroundControl**, or another MAVLink GCS on the **same PC or LAN** — with **full COM-level access** (parameters, missions, calibration) through the bridge.
+
+Serial Link is a **transparent byte pipe** in **Raw binary** mode: MAVLink frames pass unchanged in both directions.
+
+#### Roles (who listens vs who connects)
+
+| Program | Role | Port |
+| ------- | ---- | ---- |
+| **Serial Link** | **UDP listen** on this PC (owns the COM port) | e.g. **14550** |
+| **Mission Planner** | **UDP Client** → sends to Serial Link | Remote **127.0.0.1:14550** (do **not** bind 14550 locally) |
+| **Cube** | USB serial telemetry | COMx @ **115200** (match `SERIAL0_BAUD` / TELEM port) |
+
+Only **one** program may **listen** on a given UDP port. If both Serial Link and Mission Planner try to bind **14550**, one of them fails with *address already in use*.
+
+#### One-time setup
+
+1. Identify the **MAVLink COM port** in Device Manager (Cube USB often exposes **multiple** COM ports — pick the one that streams telemetry when the autopilot is powered; not the bootloader/SLCAN port unless you intend that).
+2. In Serial Link **Control**: **COM**, **115200**, **NMEA → Raw binary**, **Listen port 14550**, **Fan-out** on (recommended if you may add a logger or second GCS later).
+3. **Tools → Presets → Save as…** → e.g. `Cube MAVLink` (stored in `path_presets.json`). Edit **COM** to match Device Manager (your Cube UART — often not the default COM9).
+
+Shipped built-in **Cube MAVLink** is a starting point — click **Load** (single-click in the list only fills survey notes, not COM/baud).
+
+#### Each session (order matters)
+
+| Step | Action | Success check |
+| ---- | ------ | --------------- |
+| 1 | Quit Mission Planner (or any app using **14550**) | `Get-NetUDPEndpoint -LocalPort 14550` shows nothing, or only Serial Link after Start |
+| 2 | Serial Link → load **Cube MAVLink** preset → **Start** | Banner **Running**; log `UDP listen on ('0.0.0.0', 14550)` + serial open |
+| 3 | **Activity** tab | **COM→NET [RAW …]** with `fd` bytes (MAVLink) when Cube is powered |
+| 4 | Mission Planner → **right-click Connect** → **UDP Client** (`udpcl://…`) | Remote host **127.0.0.1**, remote port **14550** |
+| 5 | Connect | HUD shows voltage, GPS, modes; parameters download without *disposed object* errors |
+| 6 | **Do not** open the same COM in MP | Serial Link owns COM — MP uses **network only** |
+
+**Do not** use the top-right plain **UDP** button in Mission Planner for this workflow — that **listens** on 14550 and conflicts with Serial Link. Use **UDP Client** only.
+
+#### TCP note (Mission Planner)
+
+Some MP builds also offer **TCP** to the bridge. Serial Link **Advanced → TCP server** can mirror the COM stream, but **UDP Client to the listen port** is the tested path for full bidirectional MAVLink. TCP may show telemetry without completing parameter download if the client mode is receive-only — prefer **UDP Client** for full GCS access.
+
+#### Troubleshooting (MAVLink)
+
+| Symptom | Likely cause | Fix |
+| ------- | ------------ | --- |
+| UDP *already in use* on Start | Mission Planner (or another tool) bound **14550** | Quit MP; Start Serial Link first |
+| MP *already in use* / bind error | Serial Link already on **14550**; MP used plain **UDP** | Use **UDP Client** to `127.0.0.1:14550` |
+| MP *Cannot access disposed object* | Link dropped during parameter fetch (no stable MAVLink) | Fix COM/baud/Raw mode; confirm **COM→NET** in Activity before connecting MP |
+| Activity shows **NET→COM** only | Cube not replying on serial | Wrong COM, wrong baud, or autopilot not powered |
+| Activity shows **COM→NET** only | MP not registered as UDP peer | Connect MP **after** Serial Link is Running; use UDP Client |
+| Garbled / no lock in MP | NMEA Passthrough or Strict on binary MAVLink | **NMEA → Raw binary** |
+
+#### What you get
+
+With a stable link you have **the same class of access as a direct USB cable** to the autopilot: parameters, firmware tools, mission upload, sensors — because the bridge does not interpret MAVLink, it only moves bytes between COM and UDP.
+
 ---
 
 ## 6. Boat / field workflow (INS on Ethernet → device COM)
@@ -243,6 +307,68 @@ Use this when traffic is flaky, Hz drops, or the status bar / HUD shows **transp
 | **Automated bench** | `python bench_network_automation.py` — **headless** when the bench UDP port is free (zero net→serial drops + TCP reconnect on :41099); **live** burst when the bridge is already listening. Fan-out: `python bench_fanout_automation.py`. **Diagnostics → Network bench (auto)** / **Fan-out bench (auto)**; `verify_all.py`. |
 
 For in-app wording aligned with Connect, use **Connect → ?** (network guide popout) and **Tools → Guide**.
+
+### 6.5 Survey stack: Hypack, sonar, autopilot, mesh (theory)
+
+Serial Link is one **COM ↔ IP** bridge session. It does not replace survey software, autopilot firmware, or mesh radios — it **joins** them. Below is what becomes possible once COM-level MAVLink (§5.6) or NMEA (§6) is on the network.
+
+#### Architecture pattern
+
+```
+[ Sensor / autopilot / INS ] ──serial──► [ Serial Link COM ]
+                                              │
+                    ┌─────────────────────────┼─────────────────────────┐
+                    ▼                         ▼                         ▼
+              UDP listen :14550         UDP fan-out peers          Extra TCP :10111
+              (Mission Planner          (logger, QGC, custom       (optional mirror
+               UDP Client)                script on same PC)         for TCP-only tools)
+                    │
+                    └── over LAN / Wi‑Fi / Tailscale / mesh VPN IP ──► remote laptop
+```
+
+**Fan-out (default on):** every UDP sender that has contacted the bridge this session receives **COM→network** copies. **NET→COM** still merges all inbound UDP into one serial stream (fine for one autopilot; avoid two unrelated senders unless you know they share the link).
+
+#### What this unlocks
+
+| Scenario | How Serial Link fits | Notes |
+| -------- | -------------------- | ----- |
+| **Mission Planner / QGC on laptop** | Cube on vessel PC COM → bridge → MP **UDP Client** on survey laptop via LAN or **Tailscale** | Target the **survey PC’s IP:14550**, not `127.0.0.1`, from remote machines. Open Windows firewall for inbound UDP on that port. |
+| **Hypack / acquisition PC** | INS **NMEA** UDP → bridge → **COM** into Hypack or acquisition card | Classic survey path (§6). Passthrough NMEA; match baud and sentence rate. |
+| **Sonar / depth (NMEA)** | SonarMite / SDDPT / ASCII depth on serial or via mux | **Passthrough** or **Raw** depending on format; bridge does not merge depth with GPS — your survey software does. |
+| **One COM, many listeners** | **Fan-out** + optional **Extra TCP output** | e.g. MP + Python logger + web dashboard tap on same Cube stream without a second USB cable. |
+| **Mesh / PTP / MikroTik / Starlink + Tailscale** | Mesh provides **IP reachability**; bridge still **listens** on the survey PC | No special mesh mode — configure senders to the PC’s **mesh/VPN IP** and the same listen port. Watch jitter on HUD **Into COM** Hz. |
+| **Bench com0com** | Prove fan-out and MAVLink before the boat | com0com pair + MP UDP Client to localhost (§5.6). |
+| **Second serial device** | One GUI instance = **one** bridge session | For a second COM (e.g. GNSS + Cube simultaneously), use a **second PC**, **`bridge_headless.py`**, or run one stream at a time. |
+
+#### Combined field picture (example)
+
+On a **single survey PC** you might run:
+
+1. **Bridge A (NMEA):** Trimble/INS UDP → COM → Hypack positioning input.  
+2. **Bridge B (MAVLink):** Cube COM → UDP **14550** → Mission Planner for USV autopilot monitoring.
+
+That requires **two COM ports and two bridge processes** (GUI + headless, or two machines). One Serial Link session cannot split two COM devices.
+
+On **one autopilot COM** with fan-out, you can simultaneously:
+
+- Mission Planner (UDP Client) for control/monitoring  
+- A custom Python script logging MAVLink  
+- Optional TCP mirror for a tool that only speaks TCP  
+
+#### Limits (important)
+
+- **Not a MAVLink router** — no multi-vehicle routing, no command filtering, no mission planner logic.  
+- **Not kernel virtual COM** — physical USB or com0com only.  
+- **One primary network mode per session** (UDP listen + optional TCP sink mirror).  
+- **NET→COM aggregation** — multiple UDP talkers on one bridge can collide on serial; typical ops use **one GCS** or disciplined senders.  
+- **Latency** — adds a small hop vs direct USB; fine for monitoring and mission ops; validate if your autopilot loop is timing-critical.
+
+#### Next steps for your fleet
+
+1. Save working **Cube MAVLink** and boat NMEA presets (§5.3).  
+2. Document **mesh/VPN IP + port** on the vessel checklist.  
+3. Use **Survey HUD** and Activity **COM→NET / NET→COM** to prove each link before leaving the dock.  
+4. See **§5.5** for fan-out proof with two UDP clients on the bench.
 
 ---
 
@@ -389,6 +515,8 @@ If **drops** or **rejects** climb under load, serial consumer may be slow or fil
 | Strict mode rejects everything | Bad checksums from source               | Switch NMEA to **Passthrough** for test                    |
 | Serial: reconnecting…          | COM dropped; auto-reconnect on          | Replug USB; or disable auto-reconnect and **Stop**/**Start** |
 | Binary stream garbled on COM   | Used Passthrough on binary stream       | **NMEA → Raw binary**; enable binary output on receiver    |
+| MAVLink / MP bind error        | Both MP and Serial Link on **14550**    | Start Serial Link first; MP **UDP Client** → `127.0.0.1:14550` |
+| MP *disposed object* on connect | MAVLink link dropped mid-param-fetch   | Confirm Activity **COM→NET**; Raw mode; correct Cube COM |
 | TCP Transport Warn on long run | Client not reading TCP replies          | Use stress tool with RX drain or stop client                |
 | Checklist shows old port       | Rare if preset not saved                | **Presets → Save** again; rerun checklist                  |
 

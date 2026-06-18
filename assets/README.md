@@ -2,7 +2,7 @@
 
 | File | Purpose |
 |------|---------|
-| `app-icon-source.png` | **Edit this** — RJ-45 + DB-9 art on a **white or transparent** matte (optional; falls back to `app-icon.png`). |
+| `app-icon-source.png` | **Edit this** — DE-9 connector art on a **white or transparent** matte (your provided logo). Required; the build fails if it is missing. |
 | `app-icon.png` | Shipped PNG (dark squircle background, generated). |
 | `app-icon.ico` | Windows exe / shortcut icon (generated). |
 

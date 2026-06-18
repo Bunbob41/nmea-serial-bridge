@@ -1,44 +1,73 @@
-"""Modern UI — tab-per-panel with persistent Global Header Strip.
+"""Modern UI — persistent header + collapsible Tools sidebar + main content pane.
 
 Layout stack (top to bottom):
-  ┌─ Survey bar (38 px)         — nav chips inserted by mixin ─────────────┐
-  ├─ Global Header Strip (40 px) — Start/Stop · Status · COM — always on  ─┤
-  ├─ Command Tab Bar (32 px)     — Log | Control | Hub | Settings | Telem  ─┤
-  │  Content area (fills)                                                   │
-  └─ Footer strip (24 px)        — backup status · version ────────────────┘
+  ┌─ Global Header — Start/Stop · status · pills · View/HUD/Layout ─────────┐
+  ├─ Body: [Tools sidebar | main content stack]                              │
+  └─ Footer strip — version ─────────────────────────────────────────────────┘
 
-New in this revision:
-  • Persistent Global Header Strip — run controls and status are always
-    visible regardless of which tab is active.
-  • Smart-Peek — bridge start auto-navigates to the Log tab.
-  • _QuickViewPopup — hover over the "Telemetry" or "Hub" tab header to see
-    a 3-line non-modal status preview without leaving the current tab.
+Smart-Peek: bridge start auto-navigates to Logging → Activity.
 """
 from __future__ import annotations
 
 from PySide6 import QtCore, QtGui, QtWidgets
 
 from ui.connect_panels import configure_connect_status_banner
-from ui.connection_hub import ConnectionHubWidget
 from ui.controls import (
     create_connection_controls,
-    create_guide_tab,
-    create_log_panel,
-    create_nmea_controls,
-    create_phone_dashboard_tab,
-    create_presets_tab,
-    create_send_controls,
-    create_system_terminal_tab,
     refresh_status_bar_labels,
 )
-from ui.bridge_terminal import create_bridge_terminal_tab
+from ui.bridge_terminal import create_modern_activity_tab
 from ui.mixin import BridgeLogicMixin
 from ui.mission_review import create_mission_review_tab, hide_mission_review_tab
 from ui.modern_styles import modern_stylesheet
 from ui.network_help import create_network_help_button
 from ui.theme_choice import THEME_SLATE
-from ui.ui_prefs import CONFIG_PATH
+from ui.tool_tabs import build_modern_tools_nav, build_modern_tools_nav_groups
+from ui.ui_prefs import (
+    CONFIG_PATH,
+    load_hidden_tabs,
+    load_modern_layout_prefs,
+    save_hidden_tabs,
+    save_modern_layout_prefs,
+    save_tab_order,
+)
 from version import __version__
+
+MODERN_SIDEBAR_EXPANDED_W = 196
+MODERN_SIDEBAR_COLLAPSED_W = 52
+# Side-by-side Serial/Network on Control tab down to window minimum (640px).
+# Vertical stack only below this threshold — narrower than the allowed min width;
+# kept for unit tests and future min-size experiments (see test_modern_control_forms_stack_narrow).
+CONTROL_FORMS_STACK_BELOW_W = 520
+MODERN_CHIP_RAIL_H = 48
+MODERN_CHIP_BTN_H = 32
+
+MODERN_TOOLS_TAB_HINTS: dict[str, str] = {
+    "Control": "COM, baud, UDP/TCP listen, and connection presets",
+    "Presets": "Named COM/UDP path presets",
+    "Hub": "Connection hub — scan, fan-out, and quick picks",
+    "NMEA": "Passthrough, strict, or raw binary",
+    "Phone": "Web API, token, and QR dashboard",
+    "Black box": "Raw session capture (.raw)",
+    "File log": "Rotating bridge text log",
+    "Activity": "Live wire-tap traffic, filters, pause, and save",
+    "Inject": "Send test NMEA or raw bytes while Running",
+    "Terminal": "Local shell for bench scripts",
+    "Checks": "Automated bench checks",
+    "Guide": "Operator workflows and scenario chips",
+}
+
+_MODERN_LEGACY_SECTION: dict[str, str] = {
+    "Connect": "control",
+    "Log": "activity",
+    "Wire": "activity",
+    "Tools": "presets",
+    "Hub": "hub",
+    "Settings": "presets",
+    "Mission Review": "mission_review",
+    "Activity": "activity",
+    "Control": "control",
+}
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -52,93 +81,21 @@ def _vsep() -> QtWidgets.QFrame:
     return s
 
 
-def _make_telem_chip(title: str, value: QtWidgets.QLabel) -> QtWidgets.QFrame:
-    card = QtWidgets.QFrame()
-    card.setObjectName("modernTelemetryCard")
-    row = QtWidgets.QHBoxLayout(card)
-    row.setContentsMargins(15, 8, 15, 8)
-    row.setSpacing(12)
-    heading = QtWidgets.QLabel(title.upper())
-    heading.setObjectName("modernTelemetryTitle")
-    heading.setSizePolicy(
-        QtWidgets.QSizePolicy.Policy.Fixed,
-        QtWidgets.QSizePolicy.Policy.Preferred,
-    )
-    value.setObjectName("modernTelemetryValue")
-    value.setWordWrap(False)
-    row.addWidget(heading)
-    row.addWidget(value, 1)
-    return card
+class _ModernStatusBannerClickFilter(QtCore.QObject):
+    """Left-click on the header status strip opens Control."""
 
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Quick-View Popup
-# ─────────────────────────────────────────────────────────────────────────────
-
-class _QuickViewPopup(QtWidgets.QFrame):
-    """Non-modal hover preview for Telemetry / Hub tab headers.
-
-    Positioned just below the hovered tab chip; shows three key metrics.
-    Mouse-transparent so it doesn't interfere with tab interaction.
-    """
-
-    def __init__(self, parent: QtWidgets.QWidget) -> None:
+    def __init__(self, opener: object, parent: QtCore.QObject | None = None) -> None:
         super().__init__(parent)
-        self.setObjectName("quickViewPopup")
-        self.setAttribute(QtCore.Qt.WidgetAttribute.WA_TransparentForMouseEvents)
-        self.hide()
+        self._opener = opener
 
-        lay = QtWidgets.QVBoxLayout(self)
-        lay.setContentsMargins(14, 10, 14, 10)
-        lay.setSpacing(6)
-
-        self._title_lbl = QtWidgets.QLabel()
-        self._title_lbl.setObjectName("quickViewTitle")
-        lay.addWidget(self._title_lbl)
-
-        self._key_lbls: list[QtWidgets.QLabel] = []
-        self._val_lbls: list[QtWidgets.QLabel] = []
-        for _ in range(3):
-            row_w = QtWidgets.QWidget()
-            row_w.setObjectName("quickViewRow")
-            row = QtWidgets.QHBoxLayout(row_w)
-            row.setContentsMargins(0, 0, 0, 0)
-            row.setSpacing(12)
-            k = QtWidgets.QLabel()
-            k.setObjectName("quickViewKey")
-            v = QtWidgets.QLabel()
-            v.setObjectName("quickViewVal")
-            row.addWidget(k)
-            row.addWidget(v, 1)
-            lay.addWidget(row_w)
-            self._key_lbls.append(k)
-            self._val_lbls.append(v)
-
-    def populate(self, title: str, items: list[tuple[str, str]]) -> None:
-        self._title_lbl.setText(title.upper())
-        for i, (k, v) in enumerate(zip(self._key_lbls, self._val_lbls)):
-            if i < len(items):
-                k.setText(items[i][0])
-                v.setText(items[i][1])
-                k.setVisible(True)
-                v.setVisible(True)
-            else:
-                k.setVisible(False)
-                v.setVisible(False)
-
-    def position_below_tab(
-        self,
-        tab_bar: QtWidgets.QTabBar,
-        tab_index: int,
-        main_win: QtWidgets.QWidget,
-    ) -> None:
-        rect = tab_bar.tabRect(tab_index)
-        global_bl = tab_bar.mapToGlobal(QtCore.QPoint(rect.left(), rect.bottom()))
-        local = main_win.mapFromGlobal(global_bl)
-        self.adjustSize()
-        x = max(0, min(local.x(), main_win.width() - self.width()))
-        self.move(x, local.y() + 4)
-        self.raise_()
+    def eventFilter(self, obj: QtCore.QObject, event: QtCore.QEvent) -> bool:
+        if event.type() == QtCore.QEvent.Type.MouseButtonRelease:
+            me = event
+            if isinstance(me, QtGui.QMouseEvent) and me.button() == QtCore.Qt.MouseButton.LeftButton:
+                if callable(self._opener):
+                    self._opener()
+                return True
+        return False
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -156,11 +113,12 @@ class BridgeWindowModern(BridgeLogicMixin, QtWidgets.QWidget):
         self._theme_id = THEME_SLATE
         self.setWindowTitle(f"Serial Link  v{__version__}")
         self.resize(1280, 800)
-        self.setMinimumSize(860, 540)
+        self.setMinimumSize(640, 420)
 
         self._init_bridge_state()
         create_connection_controls(self)
         self._apply_modern_stylesheet()
+        self._topbar_embed_in_header = True
 
         # ── Persistent chrome widgets ─────────────────────────────────────
         # Status banner — compact inline horizontal
@@ -168,17 +126,29 @@ class BridgeWindowModern(BridgeLogicMixin, QtWidgets.QWidget):
         self.status_banner.setObjectName("modernStatusBanner")
         self.status_banner.setProperty("state", "stopped")
         bl = QtWidgets.QHBoxLayout(self.status_banner)
-        bl.setContentsMargins(10, 0, 10, 0)
+        bl.setContentsMargins(8, 0, 8, 0)
         bl.setSpacing(0)
         self.status_banner_text = QtWidgets.QLabel("Stopped")
         self.status_banner_text.setObjectName("modernStatusBannerText")
         self.status_banner_text.setWordWrap(False)
+        # Elide text instead of stretching beyond available width
+        self.status_banner_text.setSizePolicy(
+            QtWidgets.QSizePolicy.Policy.Ignored,
+            QtWidgets.QSizePolicy.Policy.Fixed,
+        )
         bl.addWidget(self.status_banner_text)
         configure_connect_status_banner(self.status_banner, self.status_banner_text)
+        self.status_banner.setMaximumHeight(30)
+        self.status_banner.setSizePolicy(
+            QtWidgets.QSizePolicy.Policy.Expanding,
+            QtWidgets.QSizePolicy.Policy.Fixed,
+        )
+        self._wire_modern_status_banner_nav()
 
         self.intent_hint = QtWidgets.QLabel()
-        self.intent_hint.setObjectName("modernIntentHint")
-        self.intent_hint.setWordWrap(True)
+        self.intent_hint.setObjectName("modernToolsLiveStatus")
+        self.intent_hint.setWordWrap(False)
+        self._compact_intent_hint = True
 
         self.start_btn.setObjectName("modernStartBtn")
         self.start_btn.setText("▶  Start")
@@ -187,15 +157,28 @@ class BridgeWindowModern(BridgeLogicMixin, QtWidgets.QWidget):
         self.stop_btn.setText("■  Stop")
         self.stop_btn.setFixedHeight(28)
 
-        # Telemetry labels
-        self.status_serial  = QtWidgets.QLabel("Serial: stopped")
+        # Status labels — updated by mixin; not shown as a dedicated tab.
+        self.status_serial = QtWidgets.QLabel("Serial: stopped")
         self.status_network = QtWidgets.QLabel("Network: stopped")
-        self.status_nmea    = QtWidgets.QLabel("NMEA: passthrough")
+        self.status_nmea = QtWidgets.QLabel("NMEA: passthrough")
         self.status_nmea.setToolTip("NMEA mode for the current session.")
-        self.status_gnss    = QtWidgets.QLabel("GNSS: —")
+        self.status_gnss = QtWidgets.QLabel("GNSS: —")
         self.status_gnss.setToolTip("Live GGA fix while Running.")
-        self.lbl_stats      = QtWidgets.QLabel("Stopped")
+        self.lbl_stats = QtWidgets.QLabel("Stopped")
         self.lbl_stats.setObjectName("lblStats")
+
+        self.com_lock_chip.setObjectName("modernStatusPill")
+        self.lbl_backup_status.setObjectName("modernStatusPill")
+        self.lbl_backup_status.setProperty("pillKind", "backup")
+        self.lbl_backpressure_chip = QtWidgets.QLabel("")
+        self.lbl_backpressure_chip.setObjectName("modernStatusPill")
+        self.lbl_backpressure_chip.setProperty("pillKind", "backpressure")
+        self.lbl_backpressure_chip.setProperty("alertKind", "warn")
+        self.lbl_backpressure_chip.hide()
+        self.lbl_connection_health = QtWidgets.QLabel("")
+        self.lbl_connection_health.setObjectName("modernStatusPill")
+        self.lbl_connection_health.setProperty("pillKind", "health")
+        self.lbl_connection_health.setProperty("healthKind", "idle")
 
         # Hidden statusBar — mixin compat only
         self.statusBar = QtWidgets.QStatusBar()
@@ -203,404 +186,862 @@ class BridgeWindowModern(BridgeLogicMixin, QtWidgets.QWidget):
         self.statusBar.setMaximumHeight(0)
         self.statusBar.setVisible(False)
 
-        # ── Global Header Strip (persistent, above tab bar) ───────────────
+        # ── Global Header Strip (persistent) ──────────────────────────────
         global_hdr = self._build_global_header()
 
-        # ── Tab contents ──────────────────────────────────────────────────
-        log_tab      = create_log_panel(self, show_header=True)
-        control_tab  = self._build_control_tab()
-        wire_tab     = create_bridge_terminal_tab(self)
-        # Settings (Diagnostics) must be built BEFORE hub_tab so that when
-        # _build_hub_tab assigns self.connection_hub, it wins over the one
-        # that mount_connection_hub_on_diagnostics would otherwise create.
-        settings_tab = self._build_settings_tab()
-        hub_tab      = self._build_hub_tab()
-        telem_tab    = self._build_telem_tab()
-
-        # ── Command tab widget ────────────────────────────────────────────
-        self._modern_main_tabs = QtWidgets.QTabWidget()
-        self._modern_main_tabs.setObjectName("modernMainTabs")
-        self._modern_main_tabs.setDocumentMode(True)
-        self._modern_main_tabs.setMovable(True)
-
-        self._modern_main_tabs.addTab(log_tab,      "Log")
-        self._modern_main_tabs.addTab(control_tab,  "Control")
-        self._modern_main_tabs.addTab(wire_tab,     "Wire")
-        self._modern_main_tabs.addTab(hub_tab,      "Hub")
-        self._modern_main_tabs.addTab(settings_tab, "Settings")
-        self._modern_main_tabs.addTab(telem_tab,    "Telemetry")
-
-        mission_panel = create_mission_review_tab(self)
-        self._mission_review_tab_index = self._modern_main_tabs.addTab(
-            mission_panel, "Mission Review"
+        # ── Sidebar + main content (no top-level Activity/Control/Tools tabs) ─
+        workspace = self._build_modern_workspace(
+            activity_panel=create_modern_activity_tab(self),
+            control_panel=self._build_control_tab(),
+            mission_panel=create_mission_review_tab(self),
         )
-        self._modern_main_tabs.setTabVisible(self._mission_review_tab_index, False)
 
-        self._restore_active_tab()
-        self._modern_main_tabs.currentChanged.connect(self._save_active_tab)
+        self._build_modern_tools_chip_rail_shell()
+        self._setup_modern_ui_editor_catalogs()
+        self._restore_active_section()
 
-        # ── Footer (24 px: backup status + version) ───────────────────────
         footer = self._build_status_footer()
 
-        # ── Shell layout ──────────────────────────────────────────────────
-        # Order after _finalize_ui(): [survey_bar, global_hdr, tabs, footer]
         shell = QtWidgets.QVBoxLayout(self)
         shell.setContentsMargins(0, 0, 0, 0)
         shell.setSpacing(0)
         shell.addWidget(global_hdr, 0)
-        shell.addWidget(self._modern_main_tabs, 1)
+        shell.addWidget(self._modern_tools_chip_rail, 0)
+        shell.addWidget(workspace, 1)
         shell.addWidget(footer, 0)
 
         self._finalize_ui()
 
-        # ── Tighten chip spacing; reset any skewed chip weights ───────────
-        self._modernize_survey_bar()
+        nav_mode = str(load_modern_layout_prefs().get("tools_nav_mode", "sidebar"))
+        self._apply_modern_tools_nav_mode(nav_mode, persist=False)
+        self._wire_modern_tools_nav_mode_menu()
 
-        # ── Quick-View hover on Telemetry / Hub tab headers ───────────────
-        self._install_quick_view_hover()
-
-        # ── Hub: one-shot auto-scan on first visit ────────────────────────
         self._hub_auto_refreshed = False
-        self._modern_main_tabs.currentChanged.connect(self._on_modern_tab_changed)
+        self._tools_stack.currentChanged.connect(self._on_modern_section_changed)
 
     # ── Global Header Strip ────────────────────────────────────────────────
 
     def _build_global_header(self) -> QtWidgets.QFrame:
-        """Persistent strip: Start/Stop · status · version · COM chip."""
+        """Persistent strip: Start/Stop · status banner · critical alert · layout nav.
+
+        Intentionally minimal — hz, backup, COM-lock info live in the footer stats
+        line and sidebar panels to avoid header congestion.
+        """
         hdr = QtWidgets.QFrame()
         hdr.setObjectName("modernGlobalHeader")
         row = QtWidgets.QHBoxLayout(hdr)
         row.setContentsMargins(10, 4, 10, 4)
-        row.setSpacing(8)
+        row.setSpacing(6)
 
         row.addWidget(self.start_btn)
         row.addWidget(self.stop_btn)
         row.addWidget(_vsep())
+
+        # Status banner — Expanding so it fills all available centre space
+        self.status_banner.setSizePolicy(
+            QtWidgets.QSizePolicy.Policy.Expanding,
+            QtWidgets.QSizePolicy.Policy.Fixed,
+        )
         row.addWidget(self.status_banner, 1)
+
+        # Backpressure chip — only visible when packets are being dropped (critical)
+        row.addWidget(self.lbl_backpressure_chip, 0)
+
+        # Phone / dashboard shortcut — only visible when Web API is enabled
+        self._btn_header_phone_qr = QtWidgets.QToolButton()
+        self._btn_header_phone_qr.setObjectName("modernHeaderQrBtn")
+        self._btn_header_phone_qr.setText("📱")
+        self._btn_header_phone_qr.setToolTip(
+            "Open local dashboard in your browser (Web API on this PC)."
+        )
+        self._btn_header_phone_qr.setFixedSize(28, 28)
+        self._btn_header_phone_qr.clicked.connect(self._on_web_open_dashboard)
+        self._btn_header_phone_qr.hide()
+        row.addWidget(self._btn_header_phone_qr, 0)
+
         row.addWidget(_vsep())
 
-        ver = QtWidgets.QLabel(f"v{__version__}  ·  modern")
-        ver.setObjectName("globalHeaderVersion")
-        row.addWidget(ver)
-        row.addWidget(_vsep())
+        # Layout-control cluster (View / HUD / Layout) from survey_top_bar
+        self._modern_header_nav = QtWidgets.QWidget()
+        self._modern_header_nav.setObjectName("modernHeaderNav")
+        self._modern_header_nav.setSizePolicy(
+            QtWidgets.QSizePolicy.Policy.Preferred,
+            QtWidgets.QSizePolicy.Policy.Fixed,
+        )
+        self._modern_header_nav.setMinimumWidth(0)
+        nav_lay = QtWidgets.QHBoxLayout(self._modern_header_nav)
+        nav_lay.setContentsMargins(0, 0, 0, 0)
+        nav_lay.setSpacing(4)
+        nav_lay.addStretch(1)
+        row.addWidget(self._modern_header_nav, 0)
 
-        row.addWidget(self.com_lock_chip)
+        hdr.setSizePolicy(
+            QtWidgets.QSizePolicy.Policy.Expanding,
+            QtWidgets.QSizePolicy.Policy.Fixed,
+        )
+        hdr.setMinimumHeight(40)
+        self._modern_global_header = hdr
+
+        # ── Keep stripped widgets alive for mixin state tracking ──────────
+        # They are NOT in the header layout but mixin.py still reads/writes them.
+        # hz chip
+        self.lbl_hz_chip = QtWidgets.QLabel("")
+        self.lbl_hz_chip.setObjectName("modernStatusPill")
+        self.lbl_hz_chip.setProperty("pillKind", "hz")
+        self.lbl_hz_chip.setParent(self)
+        self.lbl_hz_chip.hide()
+        # connection health label lives on the window, not in header row
+        if hasattr(self, "lbl_connection_health"):
+            self.lbl_connection_health.setParent(self)
+            self.lbl_connection_health.hide()
+        # COM lock chip stays on the window for mixin lock-state logic
+        if hasattr(self, "com_lock_chip"):
+            self.com_lock_chip.setParent(self)
+            self.com_lock_chip.hide()
+        # Backup label stays on the window for mixin backup-state logic
+        if hasattr(self, "lbl_backup_status"):
+            self.lbl_backup_status.setParent(self)
+            self.lbl_backup_status.hide()
+
+        # Presets / Recent / Stats buttons — menus still work, buttons are hidden
+        self._btn_header_presets = QtWidgets.QToolButton()
+        self._btn_header_presets.setObjectName("modernHeaderChipBtn")
+        self._btn_header_presets.setText("Presets")
+        self._btn_header_presets.setToolTip(
+            "Click for Tools → Presets. Arrow ▾ to load a saved preset and Start."
+        )
+        self._btn_header_presets.setPopupMode(
+            QtWidgets.QToolButton.ToolButtonPopupMode.MenuButtonPopup
+        )
+        self._btn_header_presets.clicked.connect(
+            lambda: self._open_modern_tools_section("presets")
+        )
+        self._modern_presets_menu = QtWidgets.QMenu(self._btn_header_presets)
+        self._modern_presets_menu.triggered.connect(self._on_presets_quick_menu_triggered)
+        self._btn_header_presets.setMenu(self._modern_presets_menu)
+        self._btn_header_presets.setParent(self)
+        self._btn_header_presets.hide()
+
+        self._btn_header_recent = QtWidgets.QToolButton()
+        self._btn_header_recent.setObjectName("modernHeaderChipBtn")
+        self._btn_header_recent.setText("Recent")
+        self._btn_header_recent.setToolTip(
+            "Restore a recent COM + UDP + NMEA session (last 5). Stop the bridge first."
+        )
+        self._btn_header_recent.setPopupMode(
+            QtWidgets.QToolButton.ToolButtonPopupMode.InstantPopup
+        )
+        self._modern_recent_menu = QtWidgets.QMenu(self._btn_header_recent)
+        self._btn_header_recent.setMenu(self._modern_recent_menu)
+        self._btn_header_recent.setParent(self)
+        self._btn_header_recent.hide()
+
+        self._btn_header_stats = QtWidgets.QToolButton()
+        self._btn_header_stats.setObjectName("modernHeaderChipBtn")
+        self._btn_header_stats.setText("Stats")
+        self._btn_header_stats.setToolTip("Copy session counters or save as CSV")
+        self._btn_header_stats.setPopupMode(
+            QtWidgets.QToolButton.ToolButtonPopupMode.InstantPopup
+        )
+        self._modern_stats_menu = QtWidgets.QMenu(self._btn_header_stats)
+        self._btn_header_stats.setMenu(self._modern_stats_menu)
+        self._btn_header_stats.setParent(self)
+        self._btn_header_stats.hide()
+
         return hdr
 
-    # ── Survey bar tuning ─────────────────────────────────────────────────
+    def _embed_survey_bar_in_header(self, bar) -> None:
+        """P0/P1: cluster-sized View/HUD/Layout in the global header (no spring stretch)."""
+        try:
+            bar._hidden.update(
+                {
+                    "presets",
+                    "recent",
+                    "tools",
+                    "ui_editor",
+                    "copy_stats",
+                    "shortcuts",
+                    "randomize_theme",
+                    "standardize_theme",
+                }
+            )
+        except AttributeError:
+            pass
+        bar._chip_weights.clear()
+        bar.set_layout_mode("cluster")
+        bar.set_interactive_chrome(False)
+        bar._track_lay.setSpacing(4)
+        bar._track_lay.setContentsMargins(0, 0, 0, 0)
+        host = self._modern_header_nav
+        nav_lay = host.layout()
+        assert isinstance(nav_lay, QtWidgets.QHBoxLayout)
+        bar.embed_track_in(host, nav_lay)
+        bar.set_host_window(self)
+        bar.rebuild()
 
-    def _modernize_survey_bar(self) -> None:
-        """Reduce inter-chip gap, hide irrelevant chips, and reset skewed
-        chip weights so no label is truncated with an ellipsis."""
+    def _ensure_modern_launch_layout(self) -> None:
+        """First show: reserve header height and keep the window on-screen."""
+        hdr = getattr(self, "_modern_global_header", None)
+        if hdr is not None:
+            hdr.setSizePolicy(
+                QtWidgets.QSizePolicy.Policy.Expanding,
+                QtWidgets.QSizePolicy.Policy.Fixed,
+            )
+            row_h = max(
+                40,
+                hdr.sizeHint().height(),
+                self.start_btn.sizeHint().height() + 8,
+            )
+            hdr.setMinimumHeight(row_h)
+            hdr.updateGeometry()
+
+        nav = getattr(self, "_modern_header_nav", None)
+        if nav is not None:
+            nav.setMinimumHeight(28)
+
         bar = getattr(self, "_survey_top_bar", None)
-        if bar is None:
-            return
-        # Tighten gap between chips: SurveyTopBar hard-codes 8 px; use 4 px.
-        try:
-            bar._track_lay.setSpacing(4)
-        except AttributeError:
-            pass
-        # Modern has a fixed dark stylesheet — theme randomizer chips are noise.
-        try:
-            bar._hidden.add("randomize_theme")
-            bar._hidden.add("standardize_theme")
-        except AttributeError:
-            pass
-        # Reset chip weights to natural text widths so no chip is forced into
-        # compact/ellipsis mode.  Weights are proportional, so text-derived
-        # values keep wider labels wider than shorter ones.
-        try:
-            for key, chip in bar._chips.items():
-                natural = chip.natural_total_width(compact=False)
-                bar._chip_weights[key] = max(float(natural), 64.0)
-            bar.rebuild()
-            bar._emit_persist()
-        except AttributeError:
-            pass
+        if bar is not None:
+            bar.set_host_window(self)
+            bar._schedule_spring_layout()
+
+        screen = self.screen() or QtGui.QGuiApplication.primaryScreen()
+        if screen is not None:
+            avail = screen.availableGeometry()
+            if not getattr(self, "_modern_launch_geometry_set", False):
+                self._modern_launch_geometry_set = True
+                w = min(max(self.width(), int(self.minimumWidth())), avail.width())
+                h = min(max(self.height(), int(self.minimumHeight())), avail.height())
+                x = avail.x() + max(0, (avail.width() - w) // 2)
+                y = avail.y() + max(0, (avail.height() - h) // 16)
+                self.setGeometry(x, y, w, h)
+            else:
+                fg = self.frameGeometry()
+                x, y = fg.x(), fg.y()
+                if fg.top() < avail.top():
+                    y = avail.top()
+                if fg.left() < avail.left():
+                    x = avail.left()
+                if x != fg.x() or y != fg.y():
+                    self.move(x, y)
+
+        lay = self.layout()
+        if isinstance(lay, QtWidgets.QVBoxLayout):
+            lay.activate()
+        self.updateGeometry()
+        refresh_status_bar_labels(self)
 
     # ── Hub one-shot auto-discovery ───────────────────────────────────────
 
     def _on_modern_tab_changed(self, index: int) -> None:
-        """When the Hub tab is first opened, trigger a discovery scan."""
-        try:
-            if self._hub_auto_refreshed:
-                return
-            if self._modern_main_tabs.tabText(index).strip() == "Hub":
-                self._hub_auto_refreshed = True
-                QtCore.QTimer.singleShot(150, self._on_hub_refresh_discovery)
-        except Exception:
-            pass
+        """Reserved for tab-change hooks (Hub auto-scan runs from Tools nav)."""
+        _ = index
 
-    # ── Quick-View hover preview ───────────────────────────────────────────
-
-    def _install_quick_view_hover(self) -> None:
-        self._qv_popup = _QuickViewPopup(self)
-        self._qv_hovered_idx = -1
-
-        self._qv_show_timer = QtCore.QTimer(self)
-        self._qv_show_timer.setSingleShot(True)
-        self._qv_show_timer.setInterval(320)
-        self._qv_show_timer.timeout.connect(self._on_qv_show)
-
-        self._qv_hide_timer = QtCore.QTimer(self)
-        self._qv_hide_timer.setSingleShot(True)
-        self._qv_hide_timer.setInterval(180)
-        self._qv_hide_timer.timeout.connect(self._on_qv_hide)
-
-        tab_bar = self._modern_main_tabs.tabBar()
-        tab_bar.setMouseTracking(True)
-        tab_bar.installEventFilter(self)
-
-    def eventFilter(self, watched: QtCore.QObject, event: QtCore.QEvent) -> bool:
-        try:
-            tab_bar = self._modern_main_tabs.tabBar()
-            if watched is tab_bar:
-                etype = event.type()
-                if etype == QtCore.QEvent.Type.MouseMove:
-                    pos = event.pos()  # type: ignore[attr-defined]
-                    idx = tab_bar.tabAt(pos)
-                    preview_tabs = {"Telemetry", "Hub"}
-                    tab_name = (
-                        self._modern_main_tabs.tabText(idx) if idx >= 0 else ""
-                    )
-                    if tab_name in preview_tabs:
-                        if idx != self._qv_hovered_idx:
-                            self._qv_hovered_idx = idx
-                            self._qv_hide_timer.stop()
-                            self._qv_show_timer.start()
-                    else:
-                        if self._qv_hovered_idx >= 0:
-                            self._qv_hovered_idx = -1
-                            self._qv_show_timer.stop()
-                            self._qv_hide_timer.start()
-                elif etype in (
-                    QtCore.QEvent.Type.Leave,
-                    QtCore.QEvent.Type.MouseButtonPress,
-                ):
-                    self._qv_hovered_idx = -1
-                    self._qv_show_timer.stop()
-                    self._qv_hide_timer.start()
-        except Exception:
-            pass
-        return super().eventFilter(watched, event)
-
-    def _on_qv_show(self) -> None:
-        try:
-            idx = self._qv_hovered_idx
-            if idx < 0:
-                return
-            tab_name = self._modern_main_tabs.tabText(idx)
-            tab_bar  = self._modern_main_tabs.tabBar()
-            if tab_name == "Telemetry":
-                items = [
-                    ("SERIAL",  self.status_serial.text()),
-                    ("NETWORK", self.status_network.text()),
-                    ("SESSION", self.lbl_stats.text()),
-                ]
-            elif tab_name == "Hub":
-                items = [
-                    ("COM",    self.com_lock_chip.text()),
-                    ("PORT",   self.udp_port.text()),
-                    ("STATUS", self.status_banner_text.text()),
-                ]
-            else:
-                return
-            self._qv_popup.populate(tab_name, items)
-            self._qv_popup.position_below_tab(tab_bar, idx, self)
-            self._qv_popup.show()
-        except Exception:
-            pass
-
-    def _on_qv_hide(self) -> None:
-        try:
-            self._qv_popup.hide()
-            self._qv_hovered_idx = -1
-        except Exception:
-            pass
+    def _maybe_hub_auto_refresh(self) -> None:
+        if getattr(self, "_hub_auto_refreshed", False):
+            return
+        self._hub_auto_refreshed = True
+        QtCore.QTimer.singleShot(150, self._on_hub_refresh_discovery)
 
     # ── Tab content builders ──────────────────────────────────────────────
 
     def _build_control_tab(self) -> QtWidgets.QWidget:
-        outer = QtWidgets.QWidget()
-        outer.setObjectName("modernControlTab")
-        lay = QtWidgets.QVBoxLayout(outer)
-        lay.setContentsMargins(16, 14, 16, 14)
-        lay.setSpacing(14)
-        cols = QtWidgets.QHBoxLayout()
-        cols.setSpacing(16)
-        cols.addWidget(self._build_serial_group(), 1)
-        cols.addWidget(self._build_network_group(), 1)
-        lay.addLayout(cols)
-        lay.addWidget(self.intent_hint)
-        lay.addStretch(1)
+        from ui.control_map import build_control_map_panel
+        from ui.tool_tabs import _modern_flat_page
+        from ui.ui_prefs import load_modern_layout_prefs
+
+        outer, content_lay = _modern_flat_page(
+            "modernControlTab",
+            "Control",
+            subtitle=(
+                "COM port, baud, and network listen path — match Presets or pick a Hub tile before Start."
+            ),
+            icon="🎛",
+        )
+        content_lay.setSpacing(14)
+
+        self._control_serial_group = self._build_serial_group()
+        self._control_network_group = self._build_network_group()
+        self._control_forms_host = QtWidgets.QWidget()
+        self._control_forms_host.setObjectName("modernControlFormsHost")
+        self._control_forms_grid = QtWidgets.QGridLayout(self._control_forms_host)
+        self._control_forms_grid.setContentsMargins(0, 0, 0, 0)
+        self._control_forms_grid.setHorizontalSpacing(14)
+        self._control_forms_grid.setVerticalSpacing(14)
+        self._control_forms_grid.addWidget(self._control_serial_group, 0, 0)
+        self._control_forms_grid.addWidget(self._control_network_group, 0, 1)
+        self._control_forms_vertical = False
+        content_lay.addWidget(self._control_forms_host, 0)
+
+        preset_bar = QtWidgets.QFrame()
+        preset_bar.setObjectName("modernControlPresetBar")
+        preset_lay = QtWidgets.QHBoxLayout(preset_bar)
+        preset_lay.setContentsMargins(14, 10, 14, 10)
+        preset_lay.setSpacing(8)
+        preset_icon = QtWidgets.QLabel("📌")
+        preset_icon.setObjectName("modernControlPresetIcon")
+        preset_lay.addWidget(preset_icon, 0, QtCore.Qt.AlignmentFlag.AlignTop)
+        preset_lay.addWidget(self.intent_hint, 1)
+        self._control_preset_bar = preset_bar
+        content_lay.addWidget(preset_bar, 0)
+
+        map_card, self.control_position_map = build_control_map_panel(
+            self,
+            on_layout_change=self._sync_control_tab_map_layout,
+        )
+        content_lay.addWidget(map_card, 0, QtCore.Qt.AlignmentFlag.AlignTop)
+        content_lay.addStretch(1)
+
+        self._control_tab_lay = content_lay
+        self._control_map_card = map_card
+        collapsed = bool(load_modern_layout_prefs().get("control_map_collapsed", True))
+        self._sync_control_tab_map_layout(collapsed)
+
+        QtCore.QTimer.singleShot(0, self._apply_control_forms_responsive)
         return outer
 
-    def _build_hub_tab(self) -> QtWidgets.QWidget:
-        w = QtWidgets.QWidget()
-        w.setObjectName("modernHubTab")
-        lay = QtWidgets.QVBoxLayout(w)
+    def _apply_intent_hint_display(self) -> None:
+        super()._apply_intent_hint_display()
+        from ui.modern_live_status import apply_modern_live_status
+
+        hint = self.intent_hint
+        full = (hint.toolTip() or self._intent_hint_text() or "").strip()
+        visible = hint.isVisible() and bool(hint.text().strip())
+        if visible:
+            apply_modern_live_status(
+                hint,
+                hint.text(),
+                full,
+                summary_kind="ok",
+                status_kind="ok",
+            )
+        bar = getattr(self, "_control_preset_bar", None)
+        if bar is not None:
+            bar.setVisible(visible)
+
+    def _apply_control_forms_responsive(self, width: int | None = None) -> None:
+        """Stack Serial/Network vertically only when the window is narrower than min-size layout."""
+        grid = getattr(self, "_control_forms_grid", None)
+        serial = getattr(self, "_control_serial_group", None)
+        network = getattr(self, "_control_network_group", None)
+        if grid is None or serial is None or network is None:
+            return
+        win_w = width if width is not None else self.width()
+        stack_vertical = win_w < CONTROL_FORMS_STACK_BELOW_W
+        if stack_vertical == getattr(self, "_control_forms_vertical", False):
+            return
+
+        grid.removeWidget(serial)
+        grid.removeWidget(network)
+        if stack_vertical:
+            grid.addWidget(serial, 0, 0)
+            grid.addWidget(network, 1, 0)
+            grid.setColumnStretch(0, 1)
+            grid.setColumnStretch(1, 0)
+            grid.setRowStretch(0, 0)
+            grid.setRowStretch(1, 0)
+        else:
+            grid.addWidget(serial, 0, 0)
+            grid.addWidget(network, 0, 1)
+            grid.setColumnStretch(0, 1)
+            grid.setColumnStretch(1, 1)
+            grid.setRowStretch(0, 0)
+            grid.setRowStretch(1, 0)
+        self._control_forms_vertical = stack_vertical
+
+    def _sync_control_tab_map_layout(self, collapsed: bool) -> None:
+        """Keep Control tab top-aligned; only the expanded map absorbs height."""
+        lay = getattr(self, "_control_tab_lay", None)
+        card = getattr(self, "_control_map_card", None)
+        if lay is None or card is None:
+            return
+        card_idx = lay.indexOf(card)
+        tail_idx = lay.count() - 1
+        if card_idx < 0 or tail_idx <= card_idx:
+            return
+        tail_item = lay.itemAt(tail_idx)
+        if tail_item is None or tail_item.spacerItem() is None:
+            return
+        if collapsed:
+            lay.setStretch(card_idx, 0)
+            lay.setStretch(tail_idx, 1)
+        else:
+            lay.setStretch(card_idx, 1)
+            lay.setStretch(tail_idx, 0)
+
+    def _wrap_live_activity_page(self, panel: QtWidgets.QWidget) -> QtWidgets.QWidget:
+        host = QtWidgets.QWidget()
+        host.setObjectName("modernLiveActivityPage")
+        lay = QtWidgets.QVBoxLayout(host)
         lay.setContentsMargins(0, 0, 0, 0)
         lay.setSpacing(0)
-        hub = ConnectionHubWidget(standalone=True)
-        hub.setSizePolicy(
-            QtWidgets.QSizePolicy.Policy.Expanding,
-            QtWidgets.QSizePolicy.Policy.Expanding,
-        )
-        hub.attach_bridge_window(self)
-        self.connection_hub = hub
-        lay.addWidget(hub, 1)
-        # Release the fixed-height cap on the card scroll area so it grows to
-        # fill the full tab instead of leaving a dead void below the 2-row limit.
-        scroll = getattr(hub, "_card_scroll", None)
-        if scroll is not None:
-            scroll.setMinimumHeight(0)
-            scroll.setMaximumHeight(16777215)  # Qt QWIDGETSIZE_MAX
-            scroll.setSizePolicy(
-                QtWidgets.QSizePolicy.Policy.Expanding,
-                QtWidgets.QSizePolicy.Policy.Expanding,
-            )
-        return w
+        lay.addWidget(panel, 1)
+        return host
 
-    def _build_settings_tab(self) -> QtWidgets.QWidget:
-        from ui.tool_tabs import build_diagnostics_tab
+    def _build_modern_workspace(
+        self,
+        *,
+        activity_panel: QtWidgets.QWidget,
+        control_panel: QtWidgets.QWidget,
+        mission_panel: QtWidgets.QWidget,
+    ) -> QtWidgets.QWidget:
+        from ui.tool_tabs import (
+            build_modern_automated_checks_page,
+            build_modern_black_box_page,
+            build_modern_file_log_page,
+            build_modern_guide_page,
+            build_modern_hub_page,
+            build_modern_inject_page,
+            build_modern_nmea_page,
+            build_modern_phone_page,
+            build_modern_presets_page,
+            build_modern_terminal_page,
+            build_modern_tools_nav,
+            build_modern_tools_nav_groups,
+        )
+
+        live_activity = self._wrap_live_activity_page(activity_panel)
+        page_builders = {
+            "control": lambda: control_panel,
+            "hub": lambda: build_modern_hub_page(self),
+            "presets": lambda: build_modern_presets_page(self),
+            "nmea": lambda: build_modern_nmea_page(self),
+            "phone": lambda: build_modern_phone_page(self),
+            "black_box": lambda: build_modern_black_box_page(self),
+            "file_log": lambda: build_modern_file_log_page(self),
+            "activity": lambda: live_activity,
+            "inject": lambda: build_modern_inject_page(self),
+            "terminal": lambda: build_modern_terminal_page(self),
+            "checks": lambda: build_modern_automated_checks_page(self),
+            "guide": lambda: build_modern_guide_page(self),
+        }
 
         outer = QtWidgets.QWidget()
-        outer.setObjectName("modernSettingsPage")
+        outer.setObjectName("modernWorkspace")
         root = QtWidgets.QHBoxLayout(outer)
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(0)
 
-        # ── Left sidebar nav ──────────────────────────────────────────────
-        sidebar = QtWidgets.QWidget()
-        sidebar.setObjectName("modernSettingsSidebar")
-        sidebar.setFixedWidth(152)
-        sb_lay = QtWidgets.QVBoxLayout(sidebar)
+        nav_inner = QtWidgets.QWidget()
+        nav_inner.setObjectName("modernSettingsSidebarInner")
+        self._modern_tools_sidebar_inner = nav_inner
+        sb_lay = QtWidgets.QVBoxLayout(nav_inner)
         sb_lay.setContentsMargins(0, 8, 0, 8)
         sb_lay.setSpacing(2)
 
-        nav_header = QtWidgets.QLabel("SETTINGS")
-        nav_header.setObjectName("modernSettingsNavHeader")
-        sb_lay.addWidget(nav_header)
-        sb_lay.addSpacing(6)
+        # ── Sidebar top strip: "TOOLS" label + collapse button ────────
+        _top_row = QtWidgets.QWidget()
+        _top_row.setObjectName("modernSidebarTopStrip")
+        _top_lay = QtWidgets.QHBoxLayout(_top_row)
+        _top_lay.setContentsMargins(8, 0, 4, 0)
+        _top_lay.setSpacing(0)
+        self._modern_nav_header = QtWidgets.QLabel("TOOLS")
+        self._modern_nav_header.setObjectName("modernSettingsNavHeader")
+        _top_lay.addWidget(self._modern_nav_header, 1)
+        _collapse_btn_top = QtWidgets.QToolButton()
+        _collapse_btn_top.setObjectName("modernSidebarCollapseBtn")
+        _collapse_btn_top.setToolTip("Collapse sidebar to icons only")
+        _collapse_btn_top.setAutoRaise(True)
+        _collapse_btn_top.setFocusPolicy(QtCore.Qt.FocusPolicy.NoFocus)
+        _collapse_btn_top.clicked.connect(self._toggle_modern_sidebar_collapsed)
+        self._modern_sidebar_collapse_btn = _collapse_btn_top
+        _top_lay.addWidget(_collapse_btn_top)
+        sb_lay.addWidget(_top_row)
+        sb_lay.addSpacing(2)
 
-        # ── Right content stack ───────────────────────────────────────────
+        sidebar_scroll = QtWidgets.QScrollArea()
+        sidebar_scroll.setObjectName("modernSettingsSidebar")
+        sidebar_scroll.setWidgetResizable(True)
+        sidebar_scroll.setFrameShape(QtWidgets.QFrame.Shape.NoFrame)
+        sidebar_scroll.setHorizontalScrollBarPolicy(
+            QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+        )
+        self._modern_sidebar_scroll = sidebar_scroll
+
         stack = QtWidgets.QStackedWidget()
         stack.setObjectName("modernSettingsStack")
 
-        # (label, icon, content-widget)
-        sections = [
-            ("Presets",     "⚙",  create_presets_tab(self, include_advanced_net=False)),
-            ("Phone",       "📱",  create_phone_dashboard_tab(self)),
-            ("NMEA",        "📡",  create_nmea_controls(self)),
-            ("Diagnostics", "🔍",  build_diagnostics_tab(self, skip_hub=True)),
-            ("Inject",      "💉",  create_send_controls(self)),
-            ("Terminal",    "⌨",  create_system_terminal_tab(self)),
-            ("Guide",       "📖",  create_guide_tab(self)),
-        ]
-
+        nav_groups = build_modern_tools_nav_groups()
+        nav_flat = build_modern_tools_nav()
         nav_buttons: list[QtWidgets.QPushButton] = []
+        group_headers: list[QtWidgets.QLabel] = []
+        self._tools_section_index = {}
+        self._modern_sid_by_stack_index: dict[int, str] = {}
 
-        def _make_nav_btn(label: str, icon: str, idx: int) -> QtWidgets.QPushButton:
-            btn = QtWidgets.QPushButton(f"  {icon}  {label}")
-            btn.setObjectName("modernSettingsNavBtn")
-            btn.setCheckable(True)
-            btn.setProperty("navActive", False)
-            btn.setFocusPolicy(QtCore.Qt.FocusPolicy.NoFocus)
-            btn.clicked.connect(lambda _checked, i=idx: self._settings_nav_select(i, nav_buttons, stack))
-            return btn
+        nav_idx = 0
+        for group_idx, (group_label, items) in enumerate(nav_groups):
+            if group_idx > 0:
+                sb_lay.addSpacing(6)
+            grp_hdr = QtWidgets.QLabel(group_label.upper())
+            grp_hdr.setObjectName("modernSettingsNavGroup")
+            group_headers.append(grp_hdr)
+            sb_lay.addWidget(grp_hdr)
+            for sid, lbl, icon in items:
+                stack.addWidget(page_builders[sid]())
+                self._tools_section_index[sid] = nav_idx
+                self._modern_sid_by_stack_index[nav_idx] = sid
+                btn = self._modern_tools_nav_button(lbl, icon, nav_idx, nav_buttons, stack)
+                nav_buttons.append(btn)
+                sb_lay.addWidget(btn)
+                nav_idx += 1
 
-        for i, (lbl, icon, widget) in enumerate(sections):
-            stack.addWidget(widget)
-            btn = _make_nav_btn(lbl, icon, i)
-            nav_buttons.append(btn)
-            sb_lay.addWidget(btn)
+        stack.addWidget(mission_panel)
+        self._mission_review_stack_index = nav_idx
+        self._modern_sid_by_stack_index[nav_idx] = "mission_review"
 
         sb_lay.addStretch(1)
-        self._settings_nav_buttons = nav_buttons
+        sidebar_scroll.setWidget(nav_inner)
+        self._tools_nav_buttons = nav_buttons
+        self._modern_nav_group_headers = group_headers
 
-        # Separator line between sidebar and content
         sep = QtWidgets.QFrame()
         sep.setObjectName("modernSettingsSep")
         sep.setFrameShape(QtWidgets.QFrame.Shape.VLine)
+        self._modern_sidebar_sep = sep
 
-        root.addWidget(sidebar)
-        root.addWidget(sep)
+        root.addWidget(sidebar_scroll, 0)
+        root.addWidget(sep, 0)
         root.addWidget(stack, 1)
 
-        # Activate first entry
-        self._settings_nav_select(0, nav_buttons, stack)
-        self._settings_stack = stack
+        self._tools_stack = stack
+        self._modern_bench_presets = stack.widget(self._tools_section_index.get("presets", 0))
+
+        collapsed = bool(load_modern_layout_prefs().get("sidebar_collapsed", False))
+        self._apply_modern_sidebar_collapsed(collapsed, persist=False)
+
+        default_sid = "activity"
+        if default_sid in self._tools_section_index:
+            self._open_modern_section_by_sid(default_sid, save=False)
+        elif nav_buttons:
+            self._tools_nav_select(0)
+
+        if hasattr(self, "_refresh_tools_page_status"):
+            self._refresh_tools_page_status()
         return outer
 
-    def _settings_nav_select(
-        self,
-        index: int,
-        buttons: list,
-        stack: QtWidgets.QStackedWidget,
-    ) -> None:
-        try:
-            stack.setCurrentIndex(index)
-            for i, btn in enumerate(buttons):
-                active = i == index
-                btn.setChecked(active)
+    def _build_modern_tools_chip_rail_shell(self) -> None:
+        from ui.modern_tools_chips import ModernToolsChipScrollArea
+
+        frame = QtWidgets.QFrame()
+        frame.setObjectName("modernToolsChipRail")
+        frame.setFixedHeight(MODERN_CHIP_RAIL_H)
+        frame.setSizePolicy(
+            QtWidgets.QSizePolicy.Policy.Expanding,
+            QtWidgets.QSizePolicy.Policy.Fixed,
+        )
+        outer_lay = QtWidgets.QHBoxLayout(frame)
+        outer_lay.setContentsMargins(10, 8, 10, 8)
+        outer_lay.setSpacing(0)
+
+        scroll = ModernToolsChipScrollArea(frame)
+        scroll.setMinimumWidth(0)
+        scroll.setFixedHeight(MODERN_CHIP_BTN_H)
+        inner = QtWidgets.QWidget()
+        inner.setObjectName("modernToolsChipInner")
+        inner.setMinimumWidth(0)
+        inner.setSizePolicy(
+            QtWidgets.QSizePolicy.Policy.Minimum,
+            QtWidgets.QSizePolicy.Policy.Fixed,
+        )
+        inner.setFixedHeight(MODERN_CHIP_BTN_H)
+        row = QtWidgets.QHBoxLayout(inner)
+        row.setContentsMargins(0, 0, 0, 0)
+        row.setSpacing(6)
+        row.setAlignment(
+            QtCore.Qt.AlignmentFlag.AlignLeft | QtCore.Qt.AlignmentFlag.AlignVCenter
+        )
+        scroll.setWidget(inner)
+        outer_lay.addWidget(scroll, 1)
+
+        self._modern_tools_chip_rail = frame
+        self._modern_tools_chip_scroll = scroll
+        self._modern_tools_chip_inner = inner
+        self._tools_chip_buttons: list[QtWidgets.QPushButton] = []
+        frame.hide()
+
+    def _sync_modern_nav_highlight(self, index: int) -> None:
+        """Keep sidebar + chip nav visually in sync with the content stack."""
+        for attr in ("_tools_nav_buttons", "_tools_chip_buttons"):
+            for btn in getattr(self, attr, []):
+                try:
+                    nav_idx = int(btn.property("navIndex"))
+                except (TypeError, ValueError):
+                    continue
+                active = nav_idx == index
                 btn.setProperty("navActive", active)
+                if btn.objectName() == "modernSettingsNavBtn":
+                    btn.setChecked(active)
                 btn.style().unpolish(btn)
                 btn.style().polish(btn)
+
+    def _tools_nav_select(
+        self,
+        index: int,
+        buttons: list | None = None,
+        stack: QtWidgets.QStackedWidget | None = None,
+    ) -> None:
+        stack = stack or getattr(self, "_tools_stack", None)
+        if stack is None:
+            return
+        try:
+            stack.setCurrentIndex(index)
+            self._sync_modern_nav_highlight(index)
+            hub_idx = getattr(self, "_tools_section_index", {}).get("hub", -1)
+            if index == hub_idx:
+                self._maybe_hub_auto_refresh()
+            self._save_active_section()
         except Exception:
             pass
 
-    def _build_telem_tab(self) -> QtWidgets.QWidget:
-        outer = QtWidgets.QWidget()
-        outer.setObjectName("modernTelemTab")
-        lay = QtWidgets.QVBoxLayout(outer)
-        lay.setContentsMargins(24, 18, 24, 18)
-        lay.setSpacing(8)
-        title = QtWidgets.QLabel("Live Telemetry")
-        title.setObjectName("modernTabSectionTitle")
-        lay.addWidget(title)
-        for label, lbl in (
-            ("Serial",  self.status_serial),
-            ("Network", self.status_network),
-            ("NMEA",    self.status_nmea),
-            ("GNSS",    self.status_gnss),
-            ("Session", self.lbl_stats),
-        ):
-            lay.addWidget(_make_telem_chip(label, lbl))
-        lay.addStretch(1)
-        return outer
+    def _open_modern_section_by_sid(self, sid: str, *, save: bool = True) -> None:
+        key = sid.lower().strip().replace(" ", "_").replace("-", "_")
+        aliases = {
+            "hub": "hub",
+            "connection_hub": "hub",
+            "remote": "phone",
+            "bench": "checks",
+            "automated_checks": "checks",
+            "local_backup": "black_box",
+            "blackbox": "black_box",
+            "filelog": "file_log",
+            "screen_log": "file_log",
+            "clear_view": "activity",
+            "clear": "activity",
+            "activity_panel": "activity",
+            "logging": "activity",
+            "mission_review": "mission_review",
+        }
+        target = aliases.get(key, key)
+        stack = getattr(self, "_tools_stack", None)
+        buttons = getattr(self, "_tools_nav_buttons", None)
+        if stack is None:
+            return
+        if target == "mission_review":
+            idx = getattr(self, "_mission_review_stack_index", -1)
+            if idx >= 0:
+                stack.setCurrentIndex(idx)
+                if save:
+                    self._save_active_section()
+            return
+        section_idx = getattr(self, "_tools_section_index", {}).get(target)
+        if section_idx is None:
+            return
+        if buttons is not None:
+            self._tools_nav_select(section_idx)
+        else:
+            stack.setCurrentIndex(section_idx)
+            if save:
+                self._save_active_section()
+
+    def _open_modern_tools_section(self, section: str, *, focus: str | None = None) -> None:
+        """Jump to a sidebar section (Control, Activity, Hub, …)."""
+        if focus == "presets":
+            self._open_modern_section_by_sid("presets")
+            return
+        self._open_modern_section_by_sid(section)
+
+    def _toggle_modern_sidebar_collapsed(self) -> None:
+        collapsed = not bool(getattr(self, "_modern_sidebar_collapsed", False))
+        self._apply_modern_sidebar_collapsed(collapsed, persist=True)
+
+    def _apply_modern_tools_nav_mode(self, mode: str, *, persist: bool) -> None:
+        normalized = "top_chips" if str(mode).strip().lower() == "top_chips" else "sidebar"
+        self._modern_tools_nav_mode = normalized
+        top_chips = normalized == "top_chips"
+
+        sidebar = getattr(self, "_modern_sidebar_scroll", None)
+        sep = getattr(self, "_modern_sidebar_sep", None)
+        chip_rail = getattr(self, "_modern_tools_chip_rail", None)
+        if sidebar is not None:
+            sidebar.setVisible(not top_chips)
+        if sep is not None:
+            sep.setVisible(not top_chips)
+        if chip_rail is not None:
+            chip_rail.setVisible(top_chips)
+
+        if top_chips:
+            stack = getattr(self, "_tools_stack", None)
+            if stack is not None:
+                self._sync_modern_nav_highlight(stack.currentIndex())
+
+        if persist:
+            payload = load_modern_layout_prefs()
+            save_modern_layout_prefs(
+                hsplit=payload.get("hsplit"),
+                left_vsplit=payload.get("left_vsplit"),
+                right_vsplit=payload.get("right_vsplit"),
+                slot_assignments=payload.get("slot_assignments"),
+                sidebar_collapsed=payload.get("sidebar_collapsed"),
+                control_map_collapsed=payload.get("control_map_collapsed"),
+                tools_nav_mode=normalized,
+            )
+        self._refresh_modern_tools_nav_mode_menu()
+
+    def _wire_modern_tools_nav_mode_menu(self) -> None:
+        view_btn = getattr(self, "_topbar_widgets", {}).get("view")
+        menu = view_btn.menu() if view_btn is not None else None
+        if menu is None:
+            return
+        if getattr(self, "_modern_nav_mode_menu_wired", False):
+            return
+        self._modern_nav_mode_menu_wired = True
+
+        menu.addSeparator()
+        nav_header = menu.addAction("Tools navigation")
+        nav_header.setEnabled(False)
+        self._act_tools_nav_sidebar = QtGui.QAction("Sidebar", self)
+        self._act_tools_nav_sidebar.setCheckable(True)
+        self._act_tools_nav_sidebar.triggered.connect(
+            lambda: self._apply_modern_tools_nav_mode("sidebar", persist=True)
+        )
+        menu.addAction(self._act_tools_nav_sidebar)
+        self._act_tools_nav_top_chips = QtGui.QAction("Top chips", self)
+        self._act_tools_nav_top_chips.setCheckable(True)
+        self._act_tools_nav_top_chips.triggered.connect(
+            lambda: self._apply_modern_tools_nav_mode("top_chips", persist=True)
+        )
+        menu.addAction(self._act_tools_nav_top_chips)
+        group = QtGui.QActionGroup(self)
+        group.setExclusive(True)
+        group.addAction(self._act_tools_nav_sidebar)
+        group.addAction(self._act_tools_nav_top_chips)
+        menu.aboutToShow.connect(self._refresh_modern_tools_nav_mode_menu)
+
+    def _refresh_modern_tools_nav_mode_menu(self) -> None:
+        mode = getattr(self, "_modern_tools_nav_mode", "sidebar")
+        sidebar_act = getattr(self, "_act_tools_nav_sidebar", None)
+        chips_act = getattr(self, "_act_tools_nav_top_chips", None)
+        for act in (sidebar_act, chips_act):
+            if act is not None:
+                act.blockSignals(True)
+        try:
+            if sidebar_act is not None:
+                sidebar_act.setChecked(mode != "top_chips")
+            if chips_act is not None:
+                chips_act.setChecked(mode == "top_chips")
+        finally:
+            for act in (sidebar_act, chips_act):
+                if act is not None:
+                    act.blockSignals(False)
+
+    def _apply_modern_sidebar_collapsed(self, collapsed: bool, *, persist: bool) -> None:
+        self._modern_sidebar_collapsed = collapsed
+        scroll = getattr(self, "_modern_sidebar_scroll", None)
+        if scroll is not None:
+            scroll.setFixedWidth(
+                MODERN_SIDEBAR_COLLAPSED_W if collapsed else MODERN_SIDEBAR_EXPANDED_W
+            )
+        # "TOOLS" text label hides when collapsed; the top strip itself stays visible
+        header = getattr(self, "_modern_nav_header", None)
+        if header is not None:
+            header.setVisible(not collapsed)
+        for grp in getattr(self, "_modern_nav_group_headers", []):
+            grp.setVisible(not collapsed)
+        for btn in getattr(self, "_tools_nav_buttons", []):
+            icon = str(btn.property("navIcon") or "").strip()
+            label = str(btn.property("navLabel") or "").strip()
+            if collapsed:
+                btn.setText(icon or label[:1])
+                btn.setToolTip(label)
+            else:
+                btn.setText(f"  {icon}  {label}".strip() if icon else f"  {label}")
+                btn.setToolTip(label)
+        collapse_btn = getattr(self, "_modern_sidebar_collapse_btn", None)
+        if collapse_btn is not None:
+            collapse_btn.setText("›" if collapsed else "‹")
+            collapse_btn.setToolTip(
+                "Expand sidebar labels" if collapsed else "Collapse to icons only"
+            )
+        if persist:
+            payload = load_modern_layout_prefs()
+            save_modern_layout_prefs(
+                hsplit=payload.get("hsplit"),
+                left_vsplit=payload.get("left_vsplit"),
+                right_vsplit=payload.get("right_vsplit"),
+                slot_assignments=payload.get("slot_assignments"),
+                sidebar_collapsed=collapsed,
+            )
+
+    def _on_modern_section_changed(self, index: int) -> None:
+        self._sync_modern_nav_highlight(index)
+        self._save_active_section()
+        sid = getattr(self, "_modern_sid_by_stack_index", {}).get(index, "")
+        if sid == "hub":
+            self._maybe_hub_auto_refresh()
 
     # ── Sub-builders ──────────────────────────────────────────────────────
 
-    def _build_serial_group(self) -> QtWidgets.QGroupBox:
-        box = QtWidgets.QGroupBox("Serial link")
-        box.setObjectName("connectGroupBox")
-        fl = QtWidgets.QFormLayout(box)
+    def _modern_control_form_card(
+        self, title: str, *, icon: str = ""
+    ) -> tuple[QtWidgets.QFrame, QtWidgets.QVBoxLayout]:
+        card = QtWidgets.QFrame()
+        card.setObjectName("modernControlFormCard")
+        card.setSizePolicy(
+            QtWidgets.QSizePolicy.Policy.Expanding,
+            QtWidgets.QSizePolicy.Policy.Minimum,
+        )
+        lay = QtWidgets.QVBoxLayout(card)
+        lay.setContentsMargins(16, 14, 16, 14)
+        lay.setSpacing(10)
+        head = QtWidgets.QHBoxLayout()
+        head.setSpacing(8)
+        if icon:
+            ic = QtWidgets.QLabel(icon)
+            ic.setObjectName("modernControlSectionIcon")
+            head.addWidget(ic, 0, QtCore.Qt.AlignmentFlag.AlignTop)
+        ttl = QtWidgets.QLabel(title)
+        ttl.setObjectName("modernControlSectionTitle")
+        head.addWidget(ttl, 1)
+        lay.addLayout(head)
+        sep = QtWidgets.QFrame()
+        sep.setObjectName("modernControlSectionSep")
+        sep.setFrameShape(QtWidgets.QFrame.Shape.HLine)
+        sep.setFrameShadow(QtWidgets.QFrame.Shadow.Plain)
+        lay.addWidget(sep)
+        return card, lay
+
+    def _control_form_label(self, text: str) -> QtWidgets.QLabel:
+        lbl = QtWidgets.QLabel(text)
+        lbl.setObjectName("modernControlFormLabel")
+        return lbl
+
+    def _build_serial_group(self) -> QtWidgets.QFrame:
+        card, lay = self._modern_control_form_card("Serial link", icon="🔌")
+        fl = QtWidgets.QFormLayout()
         fl.setVerticalSpacing(10)
-        fl.setContentsMargins(8, 18, 8, 10)
+        fl.setHorizontalSpacing(12)
+        fl.setLabelAlignment(
+            QtCore.Qt.AlignmentFlag.AlignLeft | QtCore.Qt.AlignmentFlag.AlignVCenter
+        )
         com_row = QtWidgets.QHBoxLayout()
         com_row.setSpacing(8)
-        self.com_cb.setMinimumHeight(32)
+        self.com_cb.setMinimumHeight(34)
         com_row.addWidget(self.com_cb, 1)
         com_row.addWidget(self.refresh_btn)
         wrap = QtWidgets.QWidget()
         wrap.setLayout(com_row)
-        fl.addRow("COM port", wrap)
-        fl.addRow("Baud", self.baud_edit)
+        fl.addRow(self._control_form_label("COM port"), wrap)
+        self.baud_edit.setMinimumHeight(34)
+        fl.addRow(self._control_form_label("Baud"), self.baud_edit)
         fl.addRow("", self.chk_serial_auto_reconnect)
         fl.addRow("", self.chk_auto_discover)
-        return box
+        lay.addLayout(fl)
+        return card
 
-    def _build_network_group(self) -> QtWidgets.QGroupBox:
-        box = QtWidgets.QGroupBox("Network path")
-        box.setObjectName("connectGroupBox")
-        lay = QtWidgets.QVBoxLayout(box)
-        lay.setSpacing(10)
-        lay.setContentsMargins(8, 18, 8, 10)
+    def _build_network_group(self) -> QtWidgets.QFrame:
+        card, lay = self._modern_control_form_card("Network path", icon="📡")
+        body = QtWidgets.QVBoxLayout()
+        body.setSpacing(10)
         fl = QtWidgets.QFormLayout()
         fl.setVerticalSpacing(10)
-        fl.addRow("Listen host", self.udp_host)
-        fl.addRow("Listen port", self.udp_port)
-        lay.addLayout(fl)
+        fl.setHorizontalSpacing(12)
+        fl.setLabelAlignment(
+            QtCore.Qt.AlignmentFlag.AlignLeft | QtCore.Qt.AlignmentFlag.AlignVCenter
+        )
+        self.udp_host.setMinimumHeight(34)
+        self.udp_port.setMinimumHeight(34)
+        fl.addRow(self._control_form_label("Listen host"), self.udp_host)
+        fl.addRow(self._control_form_label("Listen port"), self.udp_port)
+        body.addLayout(fl)
         fan = QtWidgets.QHBoxLayout()
         fan.addWidget(self.chk_udp_fanout, 1)
         fan.addWidget(
@@ -608,68 +1049,423 @@ class BridgeWindowModern(BridgeLogicMixin, QtWidgets.QWidget):
             0,
             QtCore.Qt.AlignmentFlag.AlignRight | QtCore.Qt.AlignmentFlag.AlignVCenter,
         )
-        lay.addLayout(fan)
+        body.addLayout(fan)
         sink = QtWidgets.QHBoxLayout()
         sink.setSpacing(8)
         sink.addWidget(self.chk_tcp_sink_enable)
-        sink.addWidget(QtWidgets.QLabel("TCP mirror port"))
+        sink.addWidget(self._control_form_label("TCP mirror port"))
+        self.tcp_sink_port.setMinimumHeight(34)
         sink.addWidget(self.tcp_sink_port)
         sink.addStretch(1)
-        lay.addLayout(sink)
-        lay.addWidget(self.chk_advanced_net)
-        lay.addWidget(self._advanced_net)
-        return box
+        body.addLayout(sink)
+        body.addWidget(self.chk_advanced_net)
+        body.addWidget(self._advanced_net)
+        lay.addLayout(body)
+        return card
 
     def _build_status_footer(self) -> QtWidgets.QFrame:
         footer = QtWidgets.QFrame()
         footer.setObjectName("modernStatusFooter")
-        footer.setFixedHeight(24)
+        footer.setFixedHeight(22)
         row = QtWidgets.QHBoxLayout(footer)
         row.setContentsMargins(12, 0, 12, 0)
         row.setSpacing(10)
-        row.addWidget(self.lbl_backup_status, 0)
-        row.addWidget(_vsep())
         row.addStretch(1)
-        version_lbl = QtWidgets.QLabel(f"v{__version__}")
+        version_lbl = QtWidgets.QLabel(f"Serial Link v{__version__} · modern")
         version_lbl.setObjectName("modernFooterVersion")
         row.addWidget(version_lbl, 0)
         return footer
 
+    # ── UI editor (main tabs + Tools sidebar) ───────────────────────────────
+
+    def _modern_tools_nav_button(
+        self,
+        label: str,
+        icon: str,
+        idx: int,
+        buttons: list[QtWidgets.QPushButton],
+        stack: QtWidgets.QStackedWidget,
+    ) -> QtWidgets.QPushButton:
+        btn = QtWidgets.QPushButton(f"  {icon}  {label}")
+        btn.setObjectName("modernSettingsNavBtn")
+        btn.setProperty("navLabel", label)
+        btn.setProperty("navIcon", icon)
+        btn.setProperty("navIndex", idx)
+        btn.setCheckable(True)
+        btn.setProperty("navActive", False)
+        btn.setFocusPolicy(QtCore.Qt.FocusPolicy.NoFocus)
+        btn.clicked.connect(lambda _checked, i=idx: self._tools_nav_select(i))
+        return btn
+
+    def _modern_tools_chip_button(
+        self,
+        label: str,
+        icon: str,
+        idx: int,
+        stack: QtWidgets.QStackedWidget,
+    ) -> QtWidgets.QPushButton:
+        text = f"{icon}  {label}".strip() if icon else label
+        btn = QtWidgets.QPushButton(text)
+        btn.setObjectName("modernToolsNavChip")
+        btn.setProperty("navLabel", label)
+        btn.setProperty("navIcon", icon)
+        btn.setProperty("navIndex", idx)
+        btn.setProperty("navActive", False)
+        btn.setFocusPolicy(QtCore.Qt.FocusPolicy.NoFocus)
+        btn.setToolTip(label)
+        btn.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
+        btn.setFixedHeight(MODERN_CHIP_BTN_H)
+        btn.setAutoDefault(False)
+        btn.setDefault(False)
+        btn.clicked.connect(lambda _checked, i=idx: self._tools_nav_select(i))
+        return btn
+
+    def _rebuild_modern_tools_chip_rail(
+        self,
+        visible_names: list[str],
+        *,
+        sid_by_label: dict[str, str],
+        icon_by_label: dict[str, str],
+        stack: QtWidgets.QStackedWidget,
+    ) -> None:
+        from ui.modern_tools_chips import make_chip_group_separator
+
+        inner = getattr(self, "_modern_tools_chip_inner", None)
+        if inner is None:
+            return
+        lay = inner.layout()
+        if lay is None:
+            return
+        while lay.count():
+            item = lay.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                widget.deleteLater()
+
+        sid_to_group: dict[str, str] = {}
+        for group_label, items in build_modern_tools_nav_groups():
+            for sid, _lbl, _icon in items:
+                sid_to_group[sid] = group_label
+
+        chip_buttons: list[QtWidgets.QPushButton] = []
+        current_group: str | None = None
+        for idx, name in enumerate(visible_names):
+            sid = sid_by_label.get(name, "")
+            icon = icon_by_label.get(name, "")
+            grp = sid_to_group.get(sid, "")
+            if grp and grp != current_group:
+                if current_group is not None:
+                    lay.addWidget(make_chip_group_separator())
+                current_group = grp
+            btn = self._modern_tools_chip_button(name, icon, idx, stack)
+            chip_buttons.append(btn)
+            lay.addWidget(btn)
+        self._tools_chip_buttons = chip_buttons
+        inner.setFixedHeight(MODERN_CHIP_BTN_H)
+        inner.adjustSize()
+        scroll = getattr(self, "_modern_tools_chip_scroll", None)
+        if scroll is not None:
+            scroll.setWidget(inner)
+
+        cur = stack.currentIndex()
+        self._tools_nav_select(cur)
+
+    def _setup_modern_ui_editor_catalogs(self) -> None:
+        self._tab_catalog.pop("main_tabs", None)
+        self._tab_hidden.pop("main_tabs", None)
+
+        nav_flat = build_modern_tools_nav()
+        self._modern_tools_nav_flat = nav_flat
+        self._modern_tools_sid_by_label = {lbl: sid for sid, lbl, _icon in nav_flat}
+        self._modern_tools_icon_by_label = {lbl: icon for _sid, lbl, icon in nav_flat}
+
+        stack = self._tools_stack
+        tools_catalog: dict[str, tuple[QtWidgets.QWidget, str]] = {}
+        for sid, lbl, _icon in nav_flat:
+            idx = self._tools_section_index.get(sid, -1)
+            if idx < 0:
+                continue
+            tools_catalog[lbl] = (
+                stack.widget(idx),
+                MODERN_TOOLS_TAB_HINTS.get(lbl, ""),
+            )
+        self._tab_catalog["tools_tabs"] = tools_catalog
+        self._tab_hidden["tools_tabs"] = set(load_hidden_tabs("modern", "tools_tabs"))
+        self._rebuild_modern_tools_nav_from_state()
+
+    def _rebuild_modern_tools_nav_from_state(self, key: str = "tools_tabs") -> None:
+        nav_inner = getattr(self, "_modern_tools_sidebar_inner", None)
+        stack = getattr(self, "_tools_stack", None)
+        catalog = self._tab_catalog.get(key, {})
+        sid_by_label = getattr(self, "_modern_tools_sid_by_label", {})
+        icon_by_label = getattr(self, "_modern_tools_icon_by_label", {})
+        if nav_inner is None or stack is None or not catalog:
+            return
+
+        visible_names = self._visible_tools_tab_names(key)
+        cur_w = stack.currentWidget()
+        prev_sid = ""
+        for lbl, (widget, _tip) in catalog.items():
+            if widget is cur_w:
+                prev_sid = sid_by_label.get(lbl, "")
+                break
+
+        mr_widget: QtWidgets.QWidget | None = None
+        mr_idx = getattr(self, "_mission_review_stack_index", -1)
+        if 0 <= mr_idx < stack.count():
+            mr_widget = stack.widget(mr_idx)
+            stack.removeWidget(mr_widget)
+
+        widgets = [catalog[name][0] for name in visible_names if name in catalog]
+        while stack.count():
+            w = stack.widget(0)
+            stack.removeWidget(w)
+        for widget in widgets:
+            stack.addWidget(widget)
+        if mr_widget is not None:
+            stack.addWidget(mr_widget)
+            self._mission_review_stack_index = stack.count() - 1
+
+        sb_lay = nav_inner.layout()
+        if sb_lay is None:
+            return
+        while sb_lay.count():
+            item = sb_lay.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                widget.deleteLater()
+
+        # ── Rebuild: top strip with TOOLS label + collapse button ────────────
+        _top_row = QtWidgets.QWidget()
+        _top_row.setObjectName("modernSidebarTopStrip")
+        _top_lay = QtWidgets.QHBoxLayout(_top_row)
+        _top_lay.setContentsMargins(8, 0, 4, 0)
+        _top_lay.setSpacing(0)
+        self._modern_nav_header = QtWidgets.QLabel("TOOLS")
+        self._modern_nav_header.setObjectName("modernSettingsNavHeader")
+        _top_lay.addWidget(self._modern_nav_header, 1)
+        _collapse_btn = QtWidgets.QToolButton()
+        _collapse_btn.setObjectName("modernSidebarCollapseBtn")
+        _collapse_btn.setAutoRaise(True)
+        _collapse_btn.setFocusPolicy(QtCore.Qt.FocusPolicy.NoFocus)
+        _collapse_btn.clicked.connect(self._toggle_modern_sidebar_collapsed)
+        self._modern_sidebar_collapse_btn = _collapse_btn
+        _top_lay.addWidget(_collapse_btn)
+        sb_lay.addWidget(_top_row)
+        sb_lay.addSpacing(2)
+
+        sid_to_group: dict[str, str] = {}
+        for group_label, items in build_modern_tools_nav_groups():
+            for sid, _lbl, _icon in items:
+                sid_to_group[sid] = group_label
+
+        nav_buttons: list[QtWidgets.QPushButton] = []
+        group_headers: list[QtWidgets.QLabel] = []
+        self._tools_section_index = {}
+        self._modern_sid_by_stack_index = {}
+        current_group: str | None = None
+        for idx, name in enumerate(visible_names):
+            sid = sid_by_label.get(name, "")
+            icon = icon_by_label.get(name, "")
+            grp = sid_to_group.get(sid, "")
+            if grp and grp != current_group:
+                if current_group is not None:
+                    sb_lay.addSpacing(6)
+                grp_hdr = QtWidgets.QLabel(grp.upper())
+                grp_hdr.setObjectName("modernSettingsNavGroup")
+                group_headers.append(grp_hdr)
+                sb_lay.addWidget(grp_hdr)
+                current_group = grp
+            if sid:
+                self._tools_section_index[sid] = idx
+                self._modern_sid_by_stack_index[idx] = sid
+            btn = self._modern_tools_nav_button(name, icon, idx, nav_buttons, stack)
+            nav_buttons.append(btn)
+            sb_lay.addWidget(btn)
+
+        sb_lay.addStretch(1)
+        self._tools_nav_buttons = nav_buttons
+        self._modern_nav_group_headers = group_headers
+
+        if mr_widget is not None:
+            self._modern_sid_by_stack_index[self._mission_review_stack_index] = (
+                "mission_review"
+            )
+
+        collapsed = bool(getattr(self, "_modern_sidebar_collapsed", False))
+        self._apply_modern_sidebar_collapsed(collapsed, persist=False)
+
+        pick = 0
+        if prev_sid and prev_sid in self._tools_section_index:
+            pick = self._tools_section_index[prev_sid]
+        elif visible_names:
+            pick = 0
+        if nav_buttons:
+            self._tools_nav_select(pick)
+
+        self._rebuild_modern_tools_chip_rail(
+            visible_names,
+            sid_by_label=sid_by_label,
+            icon_by_label=icon_by_label,
+            stack=stack,
+        )
+
+        if "presets" in self._tools_section_index:
+            self._modern_bench_presets = stack.widget(self._tools_section_index["presets"])
+        if hasattr(self, "_refresh_tools_page_status"):
+            self._refresh_tools_page_status()
+
+    def _persist_modern_tools_nav_state(self, key: str = "tools_tabs") -> None:
+        buttons = getattr(self, "_tools_nav_buttons", None)
+        if not buttons:
+            return
+        order: list[str] = []
+        for btn in buttons:
+            label = btn.property("navLabel")
+            if isinstance(label, str) and label.strip():
+                order.append(label.strip())
+                continue
+            text = btn.text().strip()
+            parts = [p for p in text.split("  ") if p.strip()]
+            if parts:
+                order.append(parts[-1].strip())
+        if order:
+            save_tab_order(getattr(self, "_ui_mode", "modern"), key, order)
+        hidden = sorted(self._tab_hidden.get(key, set()))
+        save_hidden_tabs(getattr(self, "_ui_mode", "modern"), key, hidden)
+
     # ── Tab helpers ────────────────────────────────────────────────────────
 
+    _RETIRED_TAB_NAMES = frozenset({"Telemetry", "Log", "Wire", "Settings", "Hub", "Tools"})
+    _RETIRED_SECTION_SIDS = frozenset({"tools", "telemetry", "log", "wire", "settings"})
+
     def _tab_index_by_name(self, name: str) -> int:
-        for i in range(self._modern_main_tabs.count()):
-            if self._modern_main_tabs.tabText(i).strip() == name:
-                return i
+        """Legacy shim — routes tab names to sidebar sections."""
+        key = name.strip()
+        sid = _MODERN_LEGACY_SECTION.get(key, "")
+        if sid:
+            QtCore.QTimer.singleShot(0, lambda s=sid: self._open_modern_section_by_sid(s))
+            return 0
         return -1
 
-    def _save_active_tab(self, index: int) -> None:
+    def _save_active_section(self) -> None:
         try:
             import json
+
+            stack = getattr(self, "_tools_stack", None)
+            if stack is None:
+                return
+            idx = stack.currentIndex()
+            sid = getattr(self, "_modern_sid_by_stack_index", {}).get(idx, "activity")
             raw: dict = {}
             if CONFIG_PATH.is_file():
                 raw = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
             if not isinstance(raw, dict):
                 raw = {}
-            raw["modern_active_tab"] = index
+            raw["modern_active_section"] = sid
+            label = {
+                "activity": "Activity",
+                "control": "Control",
+                "mission_review": "Mission Review",
+            }.get(sid, sid)
+            raw["modern_active_tab_name"] = label
             CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
             CONFIG_PATH.write_text(json.dumps(raw, indent=2), encoding="utf-8")
         except (OSError, ValueError):
             pass
 
-    def _restore_active_tab(self) -> None:
+    def _restore_active_section(self) -> None:
         try:
             import json
+
             if not CONFIG_PATH.is_file():
                 return
             raw = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
-            idx = raw.get("modern_active_tab", 0)
-            if isinstance(idx, int) and 0 <= idx < self._modern_main_tabs.count():
-                self._modern_main_tabs.setCurrentIndex(idx)
+            sid = raw.get("modern_active_section")
+            if not isinstance(sid, str) or not sid.strip():
+                name = raw.get("modern_active_tab_name")
+                if isinstance(name, str) and name.strip():
+                    sid = _MODERN_LEGACY_SECTION.get(name.strip(), "activity")
+                else:
+                    sid = "activity"
+            if sid in self._RETIRED_SECTION_SIDS or sid in self._RETIRED_TAB_NAMES:
+                sid = "activity"
+            self._open_modern_section_by_sid(str(sid), save=False)
         except (OSError, ValueError):
             pass
 
+    def _save_active_tab(self, index: int) -> None:
+        self._save_active_section()
+
+    def _restore_active_tab(self) -> None:
+        self._restore_active_section()
+
     # ── Bridge lifecycle ───────────────────────────────────────────────────
+
+    def _set_status_banner(self, state: str, title: str, detail: str = "") -> None:
+        compact_title = title.strip()
+        if detail.strip():
+            compact_title = f"{compact_title}  ·  {detail.strip()}"
+        super()._set_status_banner(state, compact_title, "")
+        self._sync_modern_session_chrome()
+        self._sync_modern_start_stop_labels()
+
+    def _sync_modern_start_stop_labels(self) -> None:
+        if self._is_bridge_running():
+            self.start_btn.setText("Running…")
+        elif getattr(self, "_starting", False):
+            self.start_btn.setText("Starting…")
+        else:
+            self.start_btn.setText("▶  Start")
+        self.stop_btn.setText("■  Stop")
+
+    def _wire_modern_status_banner_nav(self) -> None:
+        banner = self.status_banner
+        label = self.status_banner_text
+        banner.setProperty("clickable", True)
+        banner.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
+        label.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
+        tip = "Open Control — COM port, baud, and network listen settings."
+        banner.setToolTip(tip)
+        label.setToolTip(tip)
+        opener = lambda: self._open_modern_section_by_sid("control")
+        filt = _ModernStatusBannerClickFilter(opener, banner)
+        banner.installEventFilter(filt)
+        label.installEventFilter(filt)
+        self._modern_status_banner_click_filter = filt
+
+    def _sync_modern_phone_qr_btn(self) -> None:
+        btn = getattr(self, "_btn_header_phone_qr", None)
+        if btn is None:
+            return
+        chk = getattr(self, "chk_web_enabled", None)
+        btn.setVisible(chk is not None and chk.isChecked())
+
+    def _sync_modern_session_chrome(self) -> None:
+        hdr = getattr(self, "_modern_global_header", None)
+        running = self._is_bridge_running()
+        if hdr is not None:
+            hdr.setProperty("sessionMode", "true" if running else "false")
+            hdr.style().unpolish(hdr)
+            hdr.style().polish(hdr)
+        self._sync_modern_phone_qr_btn()
+        backup = getattr(self, "lbl_backup_status", None)
+        com = getattr(self, "com_lock_chip", None)
+        bp = getattr(self, "lbl_backpressure_chip", None)
+        hz = getattr(self, "lbl_hz_chip", None)
+        # hz, backup, com_lock chips are orphaned (not in header layout) in Modern UI —
+        # their state is tracked for mixin logic but they stay hidden in the header.
+        # Only backpressure chip appears in the header (critical data-loss warning).
+        if not running:
+            if bp is not None:
+                bp.hide()
+            if hz is not None:
+                hz.hide()
+            return
+        if bp is not None and not bp.isHidden():
+            bp.show()
+        if hz is not None and not hz.isHidden():
+            hz.show()
 
     def _set_footer_running(self, running: bool) -> None:
         lbl = getattr(self, "lbl_stats", None)
@@ -678,20 +1474,21 @@ class BridgeWindowModern(BridgeLogicMixin, QtWidgets.QWidget):
             lbl.style().unpolish(lbl)
             lbl.style().polish(lbl)
 
-    def _on_bridge_started(self) -> None:
-        super()._on_bridge_started()
+    def _on_bridge_started(self, b) -> None:
+        super()._on_bridge_started(b)
         self._set_footer_running(True)
-        # Smart-Peek: navigate to Log tab so the operator sees data immediately
+        self._sync_modern_start_stop_labels()
+        # Smart-Peek: navigate to Activity tab so the operator sees data immediately
         try:
-            log_idx = self._tab_index_by_name("Log")
-            if log_idx >= 0:
-                self._modern_main_tabs.setCurrentIndex(log_idx)
+            self._open_modern_section_by_sid("activity")
         except Exception:
             pass
 
     def stop_bridge(self) -> None:
         super().stop_bridge()
         self._set_footer_running(False)
+        self._sync_modern_start_stop_labels()
+        self._sync_modern_session_chrome()
 
     # ── Theme lock ─────────────────────────────────────────────────────────
 
@@ -699,6 +1496,7 @@ class BridgeWindowModern(BridgeLogicMixin, QtWidgets.QWidget):
         self.setStyleSheet("")
         self.setStyleSheet(modern_stylesheet())
         from ui.styles import apply_global_contrast_guard
+
         apply_global_contrast_guard(QtWidgets.QApplication.instance())
 
     def _apply_theme(self, theme_id: str, *, persist: bool = True) -> None:
@@ -727,20 +1525,50 @@ class BridgeWindowModern(BridgeLogicMixin, QtWidgets.QWidget):
         )
         self._refresh_intent_hint()
         self._apply_modern_stylesheet()
+        self._sync_modern_start_stop_labels()
+        self._refresh_tools_page_status()
+
+    def _modern_tools_content_width(self) -> int:
+        """Approximate tools stack width (window minus sidebar or chip rail padding)."""
+        w = self.width()
+        if getattr(self, "_modern_tools_nav_mode", "sidebar") == "top_chips":
+            return max(320, w - 24)
+        if getattr(self, "_modern_sidebar_collapsed", False):
+            return max(320, w - MODERN_SIDEBAR_COLLAPSED_W)
+        return max(320, w - MODERN_SIDEBAR_EXPANDED_W)
 
     def resizeEvent(self, event: QtGui.QResizeEvent) -> None:
         super().resizeEvent(event)
         refresh_status_bar_labels(self)
+        self._apply_control_forms_responsive(event.size().width())
+        from ui.tool_tabs import apply_phone_dashboard_responsive
+
+        apply_phone_dashboard_responsive(self, self._modern_tools_content_width())
 
     def showEvent(self, event: QtGui.QShowEvent) -> None:
         super().showEvent(event)
         self._apply_modern_stylesheet()
-        from ui.connect_qr_overlay import schedule_qr_on_window_show
-        schedule_qr_on_window_show(self)
+        self._sync_modern_phone_qr_btn()
+        QtCore.QTimer.singleShot(0, self._ensure_modern_launch_layout)
+        QtCore.QTimer.singleShot(120, self._ensure_modern_launch_layout)
+
+    def changeEvent(self, event: QtCore.QEvent) -> None:
+        super().changeEvent(event)
+        if event.type() != QtCore.QEvent.Type.WindowStateChange:
+            return
+        if not self.windowState() & QtCore.Qt.WindowState.WindowMinimized:
+            return
+        if not self._is_bridge_running():
+            return
+        if getattr(self, "_tray_icon", None) is None:
+            return
+        try:
+            QtCore.QTimer.singleShot(0, self._hide_to_tray)
+        except Exception:
+            pass
 
     def _show_modern_pipeline_tab(self) -> None:
-        if getattr(self, "_modern_main_tabs", None) is not None:
-            self._modern_main_tabs.setCurrentIndex(0)
+        self._open_modern_section_by_sid("activity")
 
     def _hide_mission_review_tab(self) -> None:
         hide_mission_review_tab(self)
@@ -749,4 +1577,5 @@ class BridgeWindowModern(BridgeLogicMixin, QtWidgets.QWidget):
         self, record: object, summary: dict[str, object]
     ) -> None:
         from ui.mission_review import reveal_mission_review_tab
+
         reveal_mission_review_tab(self, record, summary)  # type: ignore[arg-type]

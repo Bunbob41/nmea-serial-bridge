@@ -5,6 +5,307 @@ High-level notes for **this fork / branch** (`2034-ui-journey-modernization` and
 
 ---
 
+## v1.34.2
+
+- **EXE icon — original IMG_1118 source** — Installed your provided DE-9 art as `assets/app-icon-source.png` and regenerated PNG/ICO.
+
+## v1.34.1
+
+- **EXE icon — restore provided DE-9 art** — Removed auto-generated DB-9/RJ-45 bootstrap; recovered your connector logo into `assets/app-icon-source.png` from git history (v1.17.47 composed icon); regenerated PNG/ICO. If you still have the original IMG_1118 file, drop it on `app-icon-source.png` for a cleaner matte.
+
+## v1.34.0
+
+- **EXE icon — readable branding (PKG-ICON-01)** — Restored `assets/app-icon-source.png` (bold DB-9 + RJ-45 on white matte); stronger shell-tier ICO layers for 16–48px taskbar/Explorer; `test_app_icon` 16px gate; wired into `verify_all.py`; frozen bundle checks `assets/app-icon.ico`; `release.ps1 -SkipTests` regenerates icon before PyInstaller.
+- **Pre-release audit inventory** — `docs/pre-release-audit-inventory.md` with ship gates for GitHub release (010 spec).
+- **Release pipeline** — Icon assets in `frozen_bundle_manifest.py`; version sync verified for v1.34.0.
+
+### Deferred
+
+- **ROADMAP-SCOPE-01** — MAVLink GPS injector and kernel virtual COM remain bookmarked in `docs/ROADMAP.md`, not shipped.
+
+## v1.33.1
+
+- **Phone tab — minimum width layout** — Server & Network and Phone Pairing cards stack vertically when content is narrow; form rows wrap; removed 320px card floor; shorter Open dashboard label and compact QR.
+
+## v1.33.0
+
+- **Control preset strip — Presets parity** — Loaded preset summary on Control uses the shared `modernToolsLiveStatus` green **ok** styling (same family as Presets “Loaded:”), via new `ui/modern_live_status.py` helper.
+- **Advanced network styling** — Expanded TCP/UDP mode panel inside the Modern Network card matches form field borders and typography.
+- **Visual hierarchy** — Preset strip icon 📌 (distinct from Activity 📋); Position track title aligned with section headers.
+- **Tests** — Chrome tests for Control page banner/preset bar and Hub banner without duplicate hub title.
+- **Stylesheet** — Removed duplicate `modernControlTab` QSS block; transparent preset bar frame.
+- **Docs** — OPERATOR_GUIDE Modern Control layout and View → Tools navigation note.
+
+## v1.32.7
+
+- **Control tab — minimum width layout** — Serial and Network cards stay side-by-side at the 640×420 window floor instead of stacking vertically.
+
+## v1.32.6
+
+- **Control tab — visual redesign** — Page banner (icon + title + subtitle), card-style Serial/Network forms with section headers, and a styled preset summary strip instead of floating plain text. Position track card matches the softer rounded layout.
+
+## v1.32.5
+
+- **Hub tab — page banner** — Hub now uses the same icon + title + subtitle header as Presets, NMEA, and other Modern tools pages (Refresh/Unlock toolbar kept below the banner).
+
+## v1.32.4
+
+- **Top chips — consistent active styling** — Nav chips no longer mix Qt “checked” border styling with the filled active pill; only the current section highlights. Nav highlight also re-syncs when the content stack changes.
+
+## v1.32.3
+
+- **Top chips — vertical clipping fix** — Chip rail height and button sizing aligned (32px chips in a 48px rail) so pill borders are no longer cut off at launch.
+
+## v1.32.2
+
+- **Top chips — scroll / minimum width** — Chip rail no longer forces window width or shows a grey scrollbar track; scroll with the mouse wheel over the chip row. Window minimum lowered to 640×420.
+- **Presets — preview before Load** — Selecting a preset in the list shows a **Preview** line (COM, baud, NMEA, UDP, fan-out, survey IPs) from the saved file, not the current Control UI. Hover for preset notes.
+
+## v1.32.1
+
+- **Control tab — responsive forms** — Serial link and Network path stack vertically when the window is narrower than 800px, so you can shrink width without squashing the two-column layout.
+- **Position track — collapsed by default** — New installs start with the map card collapsed (saved preference still respected). Expanded map minimum height reduced from 168px to 120px.
+
+## v1.32.0
+
+- **Modern UI — top tools chip rail** — Toggle Tools navigation between the left sidebar (default) and a horizontal icon chip row under the header. Compact icon-left pills with group separators; scroll horizontally when the window is narrow. Switch via **View → Tools navigation → Sidebar / Top chips**; preference persists across restarts. UI editor reorder/hide applies to both modes.
+
+## v1.31.9
+
+- **Control tab — compact top-aligned layout** — When the position track is collapsed, extra vertical space now goes to the bottom of the page instead of floating the preset line and map header in the middle. Forms, preset caption, and position track header stay packed at the top; the map only stretches when expanded.
+
+## v1.31.8
+
+- **Sidebar — collapse button moved to top** — The `‹/›` collapse toggle is now in the top-right corner of the sidebar next to the "TOOLS" label, not buried at the bottom. Much easier to find on first use.
+- **Activity terminal — wrap toggle** — `⏎` button added to the terminal toolbar. Click to toggle line-wrap mode so long NMEA/MAVLink lines fold instead of scrolling off-screen. State is per-session (default off for telemetry, enable for readable NMEA).
+
+## v1.31.7
+
+- **New preset: Cube GPS UART** — Built-in preset for NMEA GPS injection into ArduPilot via a dedicated UART (Telem2 / Serial4 etc.). NMEA passthrough mode, 38400 baud, fan-out off. Preset note includes the required ArduPilot params (`SERIALx_PROTOCOL=5`, `SERIALx_BAUD=38`, `GPS_TYPE2=5`). Designed to run alongside the Cube MAVLink instance for a full USV parallel setup: one instance relays MAVLink on the USB port, a second injects simulated or real NMEA GPS over a UART.
+- **Fix: `udp_fanout` now persists correctly in built-in presets** — `udp_fanout` was missing from `_PRESET_KEYS` so it was silently dropped when loading any built-in preset. Fixed by adding it to `_PRESET_KEYS` and `_normalize_desk`.
+
+## v1.31.6
+
+- **Bridge terminal — binary stream auto-detection** — The terminal now samples the first 32+ bytes of live traffic. If >25% are non-printable (catches MAVLink v1/v2, RTCM, any binary protocol), it immediately shows the Hex button, enables hex display, and logs `[Terminal] Binary stream detected — hex display enabled automatically.` This works regardless of what NMEA mode the bridge was started in, so loading an NMEA preset but pointing it at a Cube Orange / MAVLink device still auto-switches the terminal to hex. Detection resets on Clear and on each new bridge session.
+
+## v1.31.5
+
+- **Bridge terminal — auto hex on raw/binary mode** — Switching to Raw mode (or loading any raw-mode preset such as MAVLink / CubeOrange) now automatically enables hex display in the Activity terminal. No need to manually click the Hex button. Switching back to NMEA passthrough or strict turns hex off. The hex state also primes correctly when the mode selector is changed before the bridge is started.
+
+## v1.31.4
+
+- **Header — minimal strip** — Stripped the header down to: Start/Stop · status banner · backpressure warning (when active) · 📱 (when Web API on) · View/HUD/Layout. Hz pill, backup pill, COM-lock chip, Presets, Recent, and Stats shortcuts are removed from the header row. That info lives in the footer status line and the sidebar — the header no longer competes with itself for space at any window width.
+
+## v1.31.3
+
+- **Control layout — clean full-width stack** — Removed the 40/60 side-by-side split that left dead space on the left when the map was visible/collapsed. Forms (Serial | Network) → Preset hint → Position track now stack vertically, each full-width. No dead zones at any window size.
+- **Header responsive collapse** — When the window narrows below ~820 px, lower-priority header chips (Hz pill, Backup pill, Presets / Recent / Stats shortcut buttons) hide automatically; they reappear above ~860 px. This prevents the top-bar clipping visible on smaller windowed sessions.
+- **Minimum window size** — Reduced from 860 × 540 to 720 × 460, matching the tighter header footprint.
+- **Tighter chip padding** — Status pills and nav chip buttons trimmed from 10 px to 6–7 px side padding; status banner left-padding reduced; header row spacing tightened. Fits more content at smaller widths without truncation.
+
+## v1.31.2
+
+- **Control layout — Option C + B** — Forms stay top row (Serial | Network side-by-side). Bottom half splits: preset hint on the left, position track on the right (40/60). Map card has a **▼/▶ collapse toggle** that hides the plot to free vertical space on short/laptop windows; preference persists across restarts.
+
+## v1.31.1
+
+- **Control map — hybrid full map** — **Open full map** on Control opens the local Web dashboard with Position map enabled and prioritized (`?map=1`). Double-click the in-app track plot for the same shortcut.
+
+## v1.31.0
+
+- **Modern Control — position track** — Light Qt map in the Control tab empty space: live GGA/RMC dot, short track line, fix-quality colors, and **Clear track**. No map tiles (use the web dashboard for street/satellite). Hidden in raw binary mode.
+
+## v1.30.1
+
+- **Modern header shortcuts** — 📱 opens the local Web dashboard in your browser (when Web API is on). Click the Running/Stopped status strip to jump straight to **Control** (COM + network).
+
+## v1.30.0
+
+- **Modern layout — persistent Tools sidebar** — Removed top-level Activity / Control / Tools tabs. The Tools column stays on the left; main content fills the right. **Control** is its own sidebar group; **Activity** (live wire-tap) lives under **Logging**. Collapse control (‹/›) shrinks the sidebar to icons only; preference persists across restarts. UI editor now manages sidebar items only (no main tabs).
+
+## v1.29.5
+
+- **Modern layout defaults** — Shipped Tools sidebar order matches operator layout: Logging leads with Activity; Bench leads with Guide. `product_ui_defaults.json` seeds Modern main/tools tab order and header chip visibility for fresh installs.
+
+## v1.29.4
+
+- **Modern UI editor** — View → UI editor now lists **Activity / Control / Tools** main tabs and the full **Tools** sidebar (Hub, Presets, NMEA, Black box, …). Reorder and show/hide apply to the Modern layout; legacy Connect/Log/Hub main-tab prefs migrate cleanly.
+
+## v1.29.3
+
+- **Modern UI — Hub under Tools** — Connection Hub moved from the top tab bar to **Tools → Hub** (Setup group). Saved “Hub” tab preference opens Tools → Hub. One-shot discovery scan on first Hub visit unchanged.
+
+## v1.29.2
+
+- **Preset Load sticks on Control** — loading a preset (e.g. Cube MAVLink) no longer gets overwritten by the Hub blue tile on the next discovery refresh; preset apply marks manual override and syncs the hub tile to match. Removed erroneous Passthrough flash during preset COM apply (NMEA mode comes from preset only).
+
+## v1.29.1
+
+- **Cube MAVLink preset appears in list** — `bench_defaults.json` block is now registered as built-in **Cube MAVLink** (alongside Desk test, Boat / INS, NORBIT DCT). Existing `path_presets.json` files pick it up via `setdefault` on next launch.
+
+## v1.29.0
+
+- **Cube / MAVLink operator guide** — `docs/OPERATOR_GUIDE.md` §5.6 documents Cube Orange + Mission Planner over **UDP Client** (full COM-level GCS access via Raw binary). §6.5 covers survey-stack theory: fan-out, Hypack/sonar NMEA paths, mesh/VPN, and limits. Shipped **Cube MAVLink** preset in `bench_defaults.json`. Tools → Guide adds **Cube / MAVLink** scenario chip.
+
+## v1.28.10
+
+- **Listen port sticks on Control** — changing UDP listen port (e.g. 14550 for MAVLink) on Control no longer snaps back to 10110 when Start applies a serial hub tile or last-known-good preset; serial hub picks restore COM/baud only, not network fields you edited on Control.
+
+## v1.28.9
+
+- **Hub COM pick sticks** — background discovery no longer snaps the blue tile back to Control’s COM after you click a different port on Hub; hub tile wins unless you changed COM manually on Control (`manual override`).
+
+## v1.28.8
+
+- **Black box (local backup)** — now records **network→COM** writes, not just COM reads. Survey UDP/TCP→serial sessions populate `backup_*.raw` again; empty dated folders from NET-only traffic are fixed.
+
+## v1.28.7
+
+- **Hub ↔ Control COM sync** — clicking a serial hub tile always updates Control COM (even when last-known-good omits `com`); launch and discovery refresh align the blue tile with the Control preset; Start uses Control when hub and Control disagree.
+
+## v1.28.6
+
+- **Modern launch layout** — global header (Start/Stop + nav chips) no longer collapses or opens off-screen on first show; window centers on the available desktop and header height is reserved before the first paint.
+
+## v1.28.5
+
+- **Hub restored** — network/preset tile picks no longer get overwritten every 2 s by Control COM sync; hub clicks are authoritative again (Start respects blue tile). Control COM still updates the matching serial tile when you change it there.
+
+## v1.28.4
+
+- **Hub ↔ Control sync** — changing the COM dropdown on Control now moves the hub blue selection to match (and stays aligned after discovery refresh).
+
+## v1.28.3
+
+- **Hub discovery** — Refresh discovery probe results now stick (background polls were resetting tiles to gray Detected). Single-click probes that COM; double-click opens Control. Header shows counts like `3 COM free · 1 busy` after refresh.
+
+## v1.28.2
+
+- **Control COM picker** — while the bridge runs, changing COM on Control no longer snaps back to the active port every stats tick; hub selection clears when you pick a port manually so Start won’t force the old hub tile.
+
+## v1.28.1
+
+- **Hub tiles** — status chips are color-coded (gray = detected only, green = active/live, amber = busy/warn); “Available” renamed to **Detected**; hint explains click fills Control without Start.
+
+## v1.28.0
+
+- **Mission Review backup folders** — choose where `.raw` backups save (Browse), auto-create dated subfolders each Start (`YYYY-MM-DD_HH-MM`), or click **New dated folder…** to make one now. Same controls live under Tools → Black box. Preference persists for the next session.
+
+## v1.27.5
+
+- **Modern UI console** — removed unsupported `font-variant-numeric` from Qt stylesheets (was spamming “Unknown property” on launch).
+
+## v1.27.4
+
+- **Hz pill legibility** — removed Unicode ↓/↑ from the header rate pill (e.g. `↓8.0 ↑0.0` was misread as `18.0`); shows `GNSS 1.0 Hz · 8 msg/s` with plain `net`/`COM` labels in tooltips and status line.
+
+## v1.27.3
+
+- **GNSS fix Hz (header pill)** — pill shows **GGA/RMC update rate** (survey Hz), e.g. `GNSS 1.0 Hz` for a 1 Hz INS burst with many auxiliary sentences. Total sentence rate (e.g. 18 msg/s) moves to the tooltip and status line.
+
+## v1.27.2
+
+- **Ingress Hz (fix)** — msg/s now counts **all NMEA sentences received** on the wire (rolling 1 s), including strict-mode rejects. Disabling a sentence type no longer lowers the displayed GNSS rate — only forwarded totals and reject counters change.
+
+## v1.27.1
+
+- **Sentence-rate Hz (fix)** — header pill and status line now count **NMEA sentences per second** (rolling 1 s window), not UDP datagrams or serial read bursts. A 5 Hz GNSS stream bundled in one packet now reads ~5 msg/s, not ~1.
+
+## v1.27.0
+
+- **Presets quick-pick (Modern header)** — **Presets** button: click opens Tools → Presets; arrow menu loads a saved preset and Starts (same as the survey top bar).
+- **Running Hz chip (Modern header)** — while Running, a compact **↓wire ↑wire Hz** pill stays visible in the header (hover for full transport line); no need to open Activity for live rates.
+
+## v1.26.1
+
+- **Recent session apply fix** — menu clicks now pass the session entry correctly (`QAction.triggered` was overwriting it with a bool); applying a recent session also jumps to **Control** and refreshes page summaries.
+
+## v1.26.0
+
+- **Recent quick-pick (Modern header)** — **Recent** dropdown beside the status pills restores saved COM + UDP + NMEA sessions (same menu as the survey top bar, including Manage).
+- **Session stats export** — **Stats** header menu: **Copy stats to clipboard** or **Save stats as CSV** (Hz, drops/rejects, queues, GNSS, session totals).
+- **Serial auto-reconnect hardening** — reconnect follows USB hwid across COM re-enumeration on read/write errors and open timeouts; write failures tear down the serial session so the lifecycle loop can reopen cleanly.
+
+## v1.25.5
+
+- **Connection health chip (Modern header)** — compact pill shows **COM · network · NMEA · session** at a glance (green when healthy, amber/red on retry or errors); hover for full serial/network lines.
+
+## v1.25.4
+
+- **Backpressure chip (Modern header)** — while Running, drops/rejects/queue backlog show as a compact amber/red pill beside backup status (hidden when transport is healthy).
+- **COM preflight dialog** — Start blocked by a busy/missing COM port opens an actionable dialog (Open Control, Unlock COM, Run com_free) instead of a generic warning; COM lock chip uses clearer blocked styling.
+
+## v1.25.3
+
+- **NMEA ↔ Presets (Modern)** — Tools → NMEA shows whether settings match the loaded/selected preset, with **Load from preset** and **Save NMEA to «name»** actions.
+- **Strict start guard** — starting with Strict mode and no sentence types checked prompts checksum-only confirmation (Open NMEA / Start anyway / Cancel).
+
+## v1.25.2
+
+- **Tools polish (Presets + Logging)** — **Presets** drops the nested scroll area for a flat layout with a live summary (loaded preset, COM, NMEA, network). **File log** is disk-only again. **Activity** is its own Logging sidebar page with a prominent Clear button and live line count — no longer buried under File log.
+
+## v1.25.1
+
+- **Modern header polish** — fixed View/HUD/Layout stretching (spring timer no longer overrides cluster layout); status line is single-line and no longer clips; Start/Stop use compact labels; idle **Backup: 0 B** pill hidden; nav chips align right at content width.
+
+## v1.25.0
+
+- **Tools → NMEA redesign (Modern)** — three mode cards (Passthrough / Strict / Raw) with a live **Next Start** summary banner; Strict panel adds **Quick picks** (Survey GPS, Position only, All types, Checksum only) and shows sentence types only when Strict is selected; checking any type auto-selects Strict so you cannot forget the mode/type pairing.
+
+## v1.24.1
+
+- **Activity toolbar (Modern)** — direction filters are a single segmented control; Type appears only after sentence types are seen; Pause/Clear/Save are compact icon buttons on the right (Termius-style session chrome).
+- **Phone QR off Activity canvas** — floating `ConnectQrFloat` is suppressed in Modern UI; scan the code from **Tools → Phone**, or use the 📱 header button when Web API + LAN are enabled.
+- **Running session mode** — while the bridge runs, the header compacts (shorter bar, single-line status, COM/backup pills hidden unless they need attention).
+
+## v1.24.0
+
+- **Modern header chrome (P0/P1)** — merged the survey top bar into the global header: View/HUD/Layout are content-sized pills on the right (no full-width stretch, no drag grips). COM and backup status are compact pills beside the status line; version lives in the footer only.
+
+## v1.23.0
+
+- **Operator Guide redesign (Modern Tools → Guide)** — scenario picker (First time, UDP survey, TCP setup, Fix it), visual data-flow diagram, numbered step cards with **Open Control / Activity / Presets** shortcuts, plain-language troubleshooting cards, and full manuals kept at the bottom.
+
+## v1.22.2
+
+- **Modern Tools visual pass** — sidebar grouped into **Setup / Logging / Bench**; each page gets a large header band + content card (icon + 16pt title); **Clear view** folded into **File log** (9 sidebar items); live status chips use green/blue/gray color states; **Checks** shows an amber bench-only banner.
+
+## v1.22.1
+
+- **Modern Tools polish** — unified title + subtitle on every Tools page; **Activity** sidebar item renamed **Clear view**; live **Recording to…** status on Black box and File log while the bridge runs; stripped duplicate hints on Inject, Terminal, and Checks; Guide copy fixed (Tools → Phone) and double-scroll removed.
+
+## v1.22.0
+
+- **Modern Tools flat sidebar** — every tool is its own sidebar item (Presets, NMEA, Phone, Black box, File log, Activity, Inject, Terminal, Checks, Guide). Removed grouped **Logging**, **Remote**, and **More** buckets so nothing is hidden behind scroll or search.
+
+## v1.21.1
+
+- **Modern Tools usability pass** — replaced the crowded single **Bench** scroll with six focused Tools pages: **Logging**, **Remote**, **Presets**, **NMEA**, **Checks**, and **More** (inject, terminal, guide). **Checks** now owns the full panel height with an expandable output area instead of a tiny nested diagnostics card.
+
+## v1.21.0
+
+- **Modern UI bloat trim (Phase 3)** — **HUD** opens one metrics window only (removed auto-open trust dashboard and redundant View menu entries). **Tools** tab replaces Settings with focused pages: **Logging**, **Remote**, **Presets**, **NMEA**, **Checks** (full-height automated checks output), and **More** (inject, terminal, guide). **Tray**: minimize or close while running hides to tray; tray Stop is enabled only when the bridge is running; tooltip shows live COM/network status.
+
+## v1.20.0
+
+- **Modern UI bloat trim (Phase 2)** — merged the separate **Log** and **Wire** tabs into a single **Activity** tab: live wire-tap traffic (direction filters, NMEA highlighting, hex in raw mode, pause/save) plus bridge status lines shown as muted **EVENT** rows. Survey bar trimmed to essentials in Modern mode — **View**, **HUD**, and **Layout** only; Presets, Recent, Tools, UI editor, Copy stats, Shortcuts, and theme chips hidden (still reachable via View menu or Settings). Saved tab preference migrates from retired Log/Wire tabs.
+
+## v1.19.4
+
+- **Modern UI bloat trim (Phase 1)** — removed the **Telemetry** tab (duplicated header status labels with no added value), the **Quick-View** hover popup on tab headers, and the static **Traffic & data quality (honest counters)** Diagnostics card (legend text only, no live data). Guide copy now points operators to **HUD**, **Wire**, and the header status banner instead. Saved tab preference migrates away from the retired Telemetry tab.
+
+## v1.19.3
+
+- **BUGFIX — Wire tab layout and filters** — each sentence now renders on its own line (QPlainTextEdit requires a trailing newline per insert; without it all traffic ran together on one horizontal row). Direction and sentence-type filters now replay from a session history buffer, so selecting `COM→NET` hides prior `NET→COM` lines instead of leaving stale traffic visible.
+
+## v1.19.2
+
+- **BUGFIX — Wire tab empty while bridge running** — `BridgeTerminalPanel.feed()` no longer uses `QMetaObject.invokeMethod` with `Q_ARG(bytes, …)` (unreliable in PySide6 from the bridge thread). Traffic is now queued via a `Signal(str, object)` with `QueuedConnection`, matching the same cross-thread pattern as `BridgeAsyncThread.log_msg`.
+
+## v1.19.1
+
+- **BUGFIX — Modern UI bridge start crash** — `BridgeWindowModern._on_bridge_started()` now accepts the `SerialNetBridge` instance passed by `BridgeLogicMixin._on_worker_start_done`, fixing `TypeError: takes 1 positional argument but 2 were given` when clicking Start in Modern mode.
+
 ## v1.19.0 — Bridge Terminal (Wire-Tap Panel)
 
 - **[FEATURE] Wire tab — live bridge traffic viewer** — new `Wire` tab in the Modern UI cockpit (between `Control` and `Hub`) showing every assembled NMEA sentence or raw binary block flowing through the bridge in real time. Direction-labelled entries (`NET→COM` in blue, `COM→NET` in green, `REJECT` in amber) with `HH:MM:SS.mmm` wall-clock timestamps.

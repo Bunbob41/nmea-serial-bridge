@@ -387,7 +387,12 @@ def _key_to_escape(key: int, mods: QtCore.Qt.KeyboardModifier) -> str:
 class SystemTerminalWidget(QtWidgets.QWidget):
     """PTY-backed shell panel; falls back to launch external terminal on Windows without pywinpty."""
 
-    def __init__(self, parent: Optional[QtWidgets.QWidget] = None) -> None:
+    def __init__(
+        self,
+        parent: Optional[QtWidgets.QWidget] = None,
+        *,
+        show_hint: bool = True,
+    ) -> None:
         super().__init__(parent)
         self.setObjectName("systemTerminalHost")
         self.setSizePolicy(
@@ -407,16 +412,17 @@ class SystemTerminalWidget(QtWidgets.QWidget):
         self._flush_timer.timeout.connect(self._flush_pending_output)
 
         root = QtWidgets.QVBoxLayout(self)
-        root.setContentsMargins(14, 14, 14, 14)
+        root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(8)
 
-        hint = QtWidgets.QLabel(
-            "Local shell on this PC (PowerShell by default). "
-            "Use for bench scripts, COM tools, and ping — not the bridge inject path."
-        )
-        hint.setWordWrap(True)
-        hint.setObjectName("tabHint")
-        root.addWidget(hint)
+        if show_hint:
+            hint = QtWidgets.QLabel(
+                "Local shell on this PC (PowerShell by default). "
+                "Use for bench scripts, COM tools, and ping — not the bridge inject path."
+            )
+            hint.setWordWrap(True)
+            hint.setObjectName("tabHint")
+            root.addWidget(hint)
 
         shell_row = QtWidgets.QHBoxLayout()
         shell_row.setSpacing(8)
@@ -942,10 +948,10 @@ class SystemTerminalWidget(QtWidgets.QWidget):
         super().closeEvent(event)
 
 
-def build_system_terminal_tab(parent: QtWidgets.QWidget) -> QtWidgets.QWidget:
+def build_system_terminal_tab(parent: QtWidgets.QWidget, *, embedded: bool = False) -> QtWidgets.QWidget:
     """Tools → Terminal page (fills stack/drawer; no outer scroll wrapper)."""
     _ = parent
-    tab = SystemTerminalWidget()
+    tab = SystemTerminalWidget(show_hint=not embedded)
     tab.setSizePolicy(
         QtWidgets.QSizePolicy.Policy.Expanding,
         QtWidgets.QSizePolicy.Policy.Expanding,

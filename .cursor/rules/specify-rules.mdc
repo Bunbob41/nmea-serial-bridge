@@ -5,12 +5,13 @@ alwaysApply: true
 <!-- SPECKIT START -->
 For additional context about technologies to be used, project structure,
 shell commands, and other important information, read
-`specs/008-ui-journey-modernization/plan.md` and
-`specs/008-ui-journey-modernization/quickstart.md` (active).
+`specs/010-pre-release-audit/plan.md` and
+`specs/010-pre-release-audit/quickstart.md` (active).
 Non-negotiable project gates live in `.specify/memory/constitution.md`.
-Active feature: UI & Workflow Journey Modernization (`specs/008-ui-journey-modernization/`, FR-101–401) — shipped **v1.10.0**.
-Product Demo isolation contract: `specs/008-ui-journey-modernization/contracts/demo-state-isolation.md`.
-Prior shipped: Web Config Desktop UX (`specs/007-web-config-desktop-ux/`, v1.9.x).
+Active feature: Pre-Release Full App Audit (`specs/010-pre-release-audit/`, FR-401–416) — target **v1.34.0**.
+Contracts: `specs/010-pre-release-audit/contracts/app-icon-acceptance.md`, `release-readiness-gate.md`, `modern-ui-audit-matrix.md`.
+Prior shipped: Modern Control polish (`specs/009-modern-control-polish/`, v1.33.x); UI Journey Modernization (`specs/008-ui-journey-modernization/`, v1.10.x+).
+Known P0: EXE icon unreadable blue square (`PKG-ICON-01`).
 Builds on: Phase B Dashboard (`specs/006-phase-b-dashboard/`, v1.8.x).
 Baseline reference: `specs/001-baseline-spec/spec.md` (FR-001–FR-021).
 <!-- SPECKIT END -->

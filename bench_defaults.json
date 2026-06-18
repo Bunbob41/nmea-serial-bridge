@@ -22,5 +22,23 @@
     "subnet_mask": "255.255.255.0",
     "ins_ip": "192.168.1.20",
     "notes": "DCT / high-rate workflow: listen on udp_port; send INS output to pc_ip:udp_port. See docs/NORBIT_DCT.md for field wiring."
+  },
+  "cube_mavlink": {
+    "com": "COM9",
+    "baud": 115200,
+    "udp_host": "0.0.0.0",
+    "udp_port": 14550,
+    "nmea_mode": "raw",
+    "udp_fanout": true,
+    "notes": "Edit com to your Cube MAVLink UART (Device Manager). Raw binary, UDP listen 14550. Mission Planner → UDP Client 127.0.0.1:14550. Use Presets → Load (not list click alone). See docs/OPERATOR_GUIDE.md §5.6."
+  },
+  "cube_gps_uart": {
+    "com": "COM10",
+    "baud": 38400,
+    "udp_host": "0.0.0.0",
+    "udp_port": 10110,
+    "nmea_mode": "passthrough",
+    "udp_fanout": false,
+    "notes": "ArduPilot GPS injection via dedicated UART. Set com to the Cube UART port connected to this PC (e.g. Telem2). ArduPilot params: SERIALx_PROTOCOL=5 (GPS), SERIALx_BAUD=38 (38400), GPS_TYPE2=5 (NMEA). NMEA sim or INS sends UDP to this PC:10110 → bridge forwards over UART → Cube treats it as a secondary GPS. Run alongside Cube MAVLink instance for parallel MAVLink relay + GPS injection."
   }
 }
