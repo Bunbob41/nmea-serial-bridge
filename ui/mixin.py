@@ -57,6 +57,7 @@ from py_interpreter import cli_python_gui_spawn, frozen_helper_program_args, qpr
 from ui.bench_setup import extract_operator_guide_section, show_bench_setup_dialog
 from ui.stats_line import (
     format_backpressure_chip,
+    format_backpressure_detail,
     format_backpressure_tooltip,
     format_live_stats_line,
     format_running_hz_chip,
@@ -388,6 +389,14 @@ class BridgeLogicMixin:
             f"ui_choice={picker.CONFIG_PATH} | ui_prefs={ui_prefs.CONFIG_PATH}"
         )
 
+    def _is_shipped_build(self) -> bool:
+        """True for PyInstaller / frozen field builds (not dev `python bridge_gui.py`)."""
+        return bool(getattr(sys, "frozen", False))
+
+    def _view_menu_supports_survey_top_bar_layout(self) -> bool:
+        """Standard/Field top-bar chrome — not the Modern embedded header cluster."""
+        return getattr(self, "_ui_mode", "standard") != "modern"
+
     def _create_survey_menu_bar(self) -> QtWidgets.QWidget:
         """Draggable chip top bar — drag ⋮⋮ grip to reorder; right-click to hide."""
         from ui.ui_editor import migrate_topbar_hidden, migrate_topbar_order
@@ -409,70 +418,90 @@ class BridgeLogicMixin:
         view_btn.setPopupMode(QtWidgets.QToolButton.ToolButtonPopupMode.InstantPopup)
         view_btn.setAutoRaise(True)
         view_menu = QtWidgets.QMenu(view_btn)
+        view_menu.setObjectName("viewLayoutMenu")
+        from ui.view_menu import add_view_menu_action
 
-        act_fs = QtGui.QAction("Full screen", self)
-        act_fs.setShortcut(QtGui.QKeySequence(QtCore.Qt.Key.Key_F11))
-        act_fs.setStatusTip("Toggle full screen (survey / multi-monitor layouts)")
-        act_fs.triggered.connect(self._toggle_fullscreen)
-        self.addAction(act_fs)
-        view_menu.addAction(act_fs)
-
+        add_view_menu_action(
+            view_menu,
+            "Full screen",
+            self._toggle_fullscreen,
+            shortcut=QtGui.QKeySequence(QtCore.Qt.Key.Key_F11),
+            status_tip="Toggle full screen (survey / multi-monitor layouts)",
+            parent=self,
+        )
         act_hud = QtGui.QAction("HUD…", self)
         act_hud.setShortcut(QtGui.QKeySequence("Ctrl+Shift+S"))
-        act_hud.setStatusTip(
-            "Open live metrics (Hz, GNSS, drops, transport health)"
-        )
+        act_hud.setStatusTip("Open live metrics (Hz, GNSS, drops, transport health)")
         act_hud.triggered.connect(self._open_hud)
         self.addAction(act_hud)
         view_menu.addAction(act_hud)
-
         act_ui_editor = QtGui.QAction("UI editor…", self)
         act_ui_editor.setStatusTip(self._ui_editor_status_tip())
         act_ui_editor.triggered.connect(self._open_ui_editor)
         view_menu.addAction(act_ui_editor)
-        act_save_product_ui = QtGui.QAction("Save UI as product default…", self)
-        act_save_product_ui.setStatusTip(
-            "Export this PC's layout (Connect, tabs, top bar, web dashboard tiles) "
-            "for new installs — not COM/UDP presets."
-        )
-        act_save_product_ui.triggered.connect(self._save_ui_as_product_default)
-        view_menu.addAction(act_save_product_ui)
+
+        if not self._is_shipped_build():
+            view_menu.addSeparator()
+            act_save_product_ui = QtGui.QAction("Save UI as product default…", self)
+            act_save_product_ui.setStatusTip(
+                "Export this PC's layout (Connect, tabs, top bar, web dashboard tiles) "
+                "for new installs — not COM/UDP presets."
+            )
+            act_save_product_ui.triggered.connect(self._save_ui_as_product_default)
+            view_menu.addAction(act_save_product_ui)
+
+        view_menu.addSeparator()
         act_reset_product_ui = QtGui.QAction("Reset UI to product default…", self)
         act_reset_product_ui.setStatusTip(
             "Replace saved UI layout with the shipped or fleet product_ui_defaults file."
         )
         act_reset_product_ui.triggered.connect(self._reset_ui_to_product_default)
         view_menu.addAction(act_reset_product_ui)
-        act_bench = QtGui.QAction("Bench pair setup…", self)
-        act_bench.setStatusTip(
-            "Open the bench/com0com guide and run com_free + check_setup (same as preflight_bench.bat)"
-        )
-        act_bench.triggered.connect(self._open_bench_pair_setup)
-        view_menu.addAction(act_bench)
-        act_reset_bar = QtGui.QAction("Reset top bar layout", self)
-        act_reset_bar.setStatusTip("Restore default chip order and show all hidden chips")
-        act_reset_bar.triggered.connect(lambda: self._survey_top_bar.reset_layout())
-        view_menu.addAction(act_reset_bar)
-        act_show_bar = QtGui.QAction("Show all top bar chips", self)
-        act_show_bar.triggered.connect(lambda: self._survey_top_bar.show_all_chips())
-        view_menu.addAction(act_show_bar)
-        act_shortcuts = QtGui.QAction("Toggle shortcuts legend", self)
-        act_shortcuts.triggered.connect(lambda: self._toggle_shortcuts_legend(not self._shortcuts_visible))
-        view_menu.addAction(act_shortcuts)
-        act_move_bar = QtGui.QAction("Move top bar to bottom", self)
-        act_move_bar.triggered.connect(
-            lambda: self._set_top_bar_position("top" if self._topbar_position == "bottom" else "bottom")
-        )
-        view_menu.addAction(act_move_bar)
+
+        if self._view_menu_supports_survey_top_bar_layout():
+            act_reset_bar = QtGui.QAction("Reset top bar layout", self)
+            act_reset_bar.setStatusTip("Restore default chip order and show all hidden chips")
+            act_reset_bar.triggered.connect(lambda: self._survey_top_bar.reset_layout())
+            view_menu.addAction(act_reset_bar)
+            act_show_bar = QtGui.QAction("Show all top bar chips", self)
+            act_show_bar.triggered.connect(lambda: self._survey_top_bar.show_all_chips())
+            view_menu.addAction(act_show_bar)
+            act_shortcuts = QtGui.QAction("Toggle shortcuts legend", self)
+            act_shortcuts.triggered.connect(
+                lambda: self._toggle_shortcuts_legend(not self._shortcuts_visible)
+            )
+            view_menu.addAction(act_shortcuts)
+
         view_menu.addSeparator()
-        self._act_switch_layout = QtGui.QAction("", self)
-        self._act_switch_layout.triggered.connect(self._switch_layout_from_view_menu)
-        view_menu.addAction(self._act_switch_layout)
+        if self._view_menu_supports_survey_top_bar_layout():
+            act_move_bar = QtGui.QAction("Move top bar to bottom", self)
+            act_move_bar.triggered.connect(
+                lambda: self._set_top_bar_position(
+                    "top" if self._topbar_position == "bottom" else "bottom"
+                )
+            )
+            view_menu.addAction(act_move_bar)
+        from ui.layout_cycle import LAYOUT_CYCLE_ORDER, layout_display_name
+
+        self._layout_switch_actions: dict[str, QtGui.QAction] = {}
+        for layout_id in LAYOUT_CYCLE_ORDER:
+            label = layout_display_name(layout_id)
+            act = QtGui.QAction(f"Switch to {label} layout", self)
+            act.triggered.connect(
+                lambda _checked=False, lid=layout_id: self._switch_ui_layout(lid)
+            )
+            view_menu.addAction(act)
+            self._layout_switch_actions[layout_id] = act
         view_menu.aboutToShow.connect(self._refresh_switch_layout_menu)
 
         view_btn.setMenu(view_menu)
+        view_tip = (
+            "Full screen, HUD, layout editor, layout switches, and navigation mode."
+            if getattr(self, "_ui_mode", "") == "modern"
+            else "Layout, HUD, and bar options"
+        )
         configure_topbar_button(
-            view_btn, "View", tooltip="Layout, HUD, and bar options"
+            view_btn, "View", tooltip=view_tip
         )
         self._topbar_widgets["view"] = view_btn
         self._topbar_labels["view"] = "View"
@@ -1208,7 +1237,7 @@ class BridgeLogicMixin:
             )
         if mode == "modern":
             return (
-                "Show or hide header tiles and Tools sidebar items "
+                "Show or hide header chips (View, HUD, Layout) and navigation pages "
                 "(Control, Activity, Hub, Presets, …)"
             )
         return "Show or hide top bar tiles and Tools drawer tabs (Field layout)"
@@ -2391,28 +2420,30 @@ class BridgeLogicMixin:
         return self._switch_ui_layout(other)
 
     def _refresh_switch_layout_menu(self) -> None:
-        act = getattr(self, "_act_switch_layout", None)
-        if act is None:
+        from ui.layout_cycle import layout_display_name, other_layout_ids
+
+        actions: dict[str, QtGui.QAction] = getattr(self, "_layout_switch_actions", {})
+        if not actions:
             return
         cur = normalize_ui_id(getattr(self, "_ui_mode", "standard"))
-        if cur == "standard":
-            act.setText("Switch to Field layout")
-            self._switch_layout_target = "field"
-        else:
-            act.setText("Switch to Standard layout")
-            self._switch_layout_target = "standard"
+        visible_ids = set(other_layout_ids(cur))
         running = self.bridge is not None or (
             self._worker is not None and self._worker.isRunning()
         )
-        act.setEnabled(not running)
-        if running:
-            act.setStatusTip("Stop the bridge before switching layout.")
-        else:
-            act.setStatusTip("Reload the window in the other workspace layout.")
-
-    def _switch_layout_from_view_menu(self) -> None:
-        target = str(getattr(self, "_switch_layout_target", "field"))
-        self._switch_ui_layout(target)
+        tip = (
+            "Stop the bridge before switching layout."
+            if running
+            else "Reload the window in the selected workspace layout."
+        )
+        for layout_id, act in actions.items():
+            show = layout_id in visible_ids
+            act.setVisible(show)
+            if not show:
+                continue
+            name = layout_display_name(layout_id)
+            act.setText(f"Switch to {name} layout")
+            act.setEnabled(not running)
+            act.setStatusTip(tip if running else f"Reload the window in the {name} layout.")
 
     def _switch_ui_layout(self, ui_id: str) -> bool:
         if getattr(self, "_layout_switch_in_progress", False):
@@ -2769,6 +2800,8 @@ class BridgeLogicMixin:
 
             schedule_refresh_connect_qr_overlay(self, delay_ms=0)
 
+    _WEB_PORT_UNLOCK_SECONDS = 10
+
     def _sync_web_port_unlock_chrome(self, unlocked: bool | None = None) -> None:
         chk = getattr(self, "chk_web_port_unlock", None)
         if unlocked is None:
@@ -2780,7 +2813,11 @@ class BridgeLogicMixin:
             chk.blockSignals(False)
         lbl = getattr(self, "lbl_web_port_status", None)
         if lbl is not None:
-            lbl.setText("Editable · 10s" if unlocked else "Locked")
+            if unlocked:
+                seconds = int(getattr(self, "_web_port_unlock_seconds_left", self._WEB_PORT_UNLOCK_SECONDS))
+                lbl.setText(f"Editable · {max(0, seconds)}s")
+            else:
+                lbl.setText("Locked")
             lbl.setProperty("statusKind", "open" if unlocked else "locked")
             lbl.style().unpolish(lbl)
             lbl.style().polish(lbl)
@@ -2805,14 +2842,37 @@ class BridgeLogicMixin:
         timer: QtCore.QTimer | None = getattr(self, "_web_port_unlock_timer", None)
         if timer is None:
             timer = QtCore.QTimer(self)
-            timer.setSingleShot(True)
-            timer.timeout.connect(self._on_web_port_unlock_expired)
+            timer.setInterval(1000)
+            timer.timeout.connect(self._tick_web_port_unlock_countdown)
             self._web_port_unlock_timer = timer
         timer.stop()
         if checked:
-            timer.start(10_000)
+            self._web_port_unlock_seconds_left = self._WEB_PORT_UNLOCK_SECONDS
+            self._sync_web_port_unlock_chrome(True)
+            timer.start()
+        else:
+            self._web_port_unlock_seconds_left = self._WEB_PORT_UNLOCK_SECONDS
+            self._sync_web_port_unlock_chrome(False)
+
+    def _tick_web_port_unlock_countdown(self) -> None:
+        chk = getattr(self, "chk_web_port_unlock", None)
+        if chk is None or not chk.isChecked():
+            timer = getattr(self, "_web_port_unlock_timer", None)
+            if timer is not None:
+                timer.stop()
+            return
+        seconds = int(getattr(self, "_web_port_unlock_seconds_left", self._WEB_PORT_UNLOCK_SECONDS)) - 1
+        self._web_port_unlock_seconds_left = seconds
+        if seconds <= 0:
+            self._on_web_port_unlock_expired()
+            return
+        self._sync_web_port_unlock_chrome(True)
 
     def _on_web_port_unlock_expired(self) -> None:
+        timer = getattr(self, "_web_port_unlock_timer", None)
+        if timer is not None:
+            timer.stop()
+        self._web_port_unlock_seconds_left = self._WEB_PORT_UNLOCK_SECONDS
         chk = getattr(self, "chk_web_port_unlock", None)
         if chk is None or not chk.isChecked():
             return
@@ -4769,7 +4829,51 @@ class BridgeLogicMixin:
         if getattr(self, "_ui_mode", "") == "modern" and callable(sync):
             sync()
 
+    def _wire_backpressure_chip(self) -> None:
+        chip = getattr(self, "lbl_backpressure_chip", None)
+        if chip is None or getattr(self, "_backpressure_chip_wired", False):
+            return
+        self._backpressure_chip_wired = True
+        chip.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
+        chip.setToolTip("Click for reject/drop details")
+
+        class _BackpressureClickFilter(QtCore.QObject):
+            def __init__(self, host: BridgeLogicMixin) -> None:
+                super().__init__(host)
+                self._host = host
+
+            def eventFilter(self, obj: QtCore.QObject, event: QtCore.QEvent) -> bool:
+                if (
+                    obj is chip
+                    and event.type() == QtCore.QEvent.Type.MouseButtonRelease
+                    and event.button() == QtCore.Qt.MouseButton.LeftButton
+                ):
+                    self._host._show_backpressure_detail()
+                    return True
+                return False
+
+        filt = _BackpressureClickFilter(self)
+        chip.installEventFilter(filt)
+        self._backpressure_chip_filter = filt
+
+    def _show_backpressure_detail(self) -> None:
+        merged = getattr(self, "_bridge_stats_cache", {}) or {}
+        detail = format_backpressure_detail(merged)
+        box = QtWidgets.QMessageBox(self)
+        box.setWindowTitle("Transport alerts")
+        box.setIcon(QtWidgets.QMessageBox.Icon.Warning)
+        box.setText(detail)
+        open_activity = box.addButton("Open Activity", QtWidgets.QMessageBox.ButtonRole.ActionRole)
+        box.addButton(QtWidgets.QMessageBox.StandardButton.Ok)
+        box.setDefaultButton(QtWidgets.QMessageBox.StandardButton.Ok)
+        box.exec()
+        if box.clickedButton() is open_activity:
+            opener = getattr(self, "_open_modern_section_by_sid", None)
+            if callable(opener):
+                opener("activity")
+
     def _refresh_backpressure_chip(self, stats: Optional[dict] = None) -> None:
+        self._wire_backpressure_chip()
         chip = getattr(self, "lbl_backpressure_chip", None)
         if chip is None:
             return
@@ -4784,7 +4888,7 @@ class BridgeLogicMixin:
         text, kind = format_backpressure_chip(merged)
         chip.setText(text)
         chip.setProperty("alertKind", kind)
-        chip.setToolTip(format_backpressure_tooltip(merged))
+        chip.setToolTip(format_backpressure_tooltip(merged) + "\n\nClick for details.")
         style = chip.style()
         if style is not None:
             style.unpolish(chip)

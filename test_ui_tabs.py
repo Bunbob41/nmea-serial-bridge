@@ -404,6 +404,9 @@ class TestUiTabs(unittest.TestCase):
         self.assertEqual(win._modern_tools_nav_mode, "top_chips")
         self.assertFalse(win._modern_tools_chip_rail.isHidden())
         self.assertTrue(win._modern_sidebar_scroll.isHidden())
+        rail_lbl = win.findChild(QtWidgets.QLabel, "modernToolsChipRailLabel")
+        self.assertIsNotNone(rail_lbl)
+        self.assertEqual(rail_lbl.text(), "TOOLS")
         chip_labels = [btn.text().strip() for btn in win._tools_chip_buttons]
         dropdowns = getattr(win, "_tools_chip_dropdowns", [])
         self.assertEqual(len(chip_labels), 4)
@@ -516,19 +519,24 @@ class TestUiTabs(unittest.TestCase):
         from ui.modern import BridgeWindowModern
         from ui.ui_editor import UiEditorDialog
 
+        from ui.tool_tabs import build_modern_tools_nav
+
         win = BridgeWindowModern()
         main = win._tab_catalog.get("main_tabs", {})
         tools = win._tab_catalog.get("tools_tabs", {})
         self.assertEqual(main, {})
         self.assertIn("Control", tools)
         self.assertIn("Hub", tools)
-        self.assertEqual(len(tools), 12)
+        self.assertEqual(len(tools), len(build_modern_tools_nav()))
 
         dlg = UiEditorDialog(win)
         tab_names = [dlg._tabs.tabText(i) for i in range(dlg._tabs.count())]
         self.assertNotIn("Main tabs", tab_names)
-        self.assertIn("Tools tabs", tab_names)
+        self.assertIn("Navigation", tab_names)
         self.assertNotIn("Connect", tab_names)
+        self.assertIn("Header", tab_names)
+        topbar_rows = [r.key for r in dlg._topbar_page._rows]
+        self.assertEqual(topbar_rows, ["view", "hud", "ui_switch"])
         self.assertTrue(hasattr(win, "lbl_file_log_live_status"))
         self.assertTrue(hasattr(win, "lbl_presets_live_status"))
         file_log_page = win._tools_stack.widget(win._tools_section_index["file_log"])
@@ -539,6 +547,44 @@ class TestUiTabs(unittest.TestCase):
         guide_page = win._tools_stack.widget(win._tools_section_index["guide"])
         guide_panel = guide_page.findChild(QtWidgets.QWidget, "operatorGuidePanel")
         self.assertIsNotNone(guide_panel)
+
+    def test_modern_chip_rail_respects_saved_nav_order(self) -> None:
+        from ui.modern import BridgeWindowModern
+        from ui.ui_prefs import save_tab_order
+
+        win = BridgeWindowModern()
+        save_tab_order(
+            "modern",
+            "tools_tabs",
+            ["NMEA", "Hub", "Control", "Presets"],
+        )
+        win._rebuild_modern_tools_nav_from_state("tools_tabs")
+        labels = [
+            btn.property("navLabel")
+            for btn in getattr(win, "_tools_chip_buttons", [])
+        ]
+        self.assertEqual(labels, ["NMEA", "Hub", "Control", "Presets"])
+
+    def test_modern_ui_editor_apply_keeps_chip_rail(self) -> None:
+        from ui.modern import BridgeWindowModern
+        from ui.ui_editor import UiEditorDialog
+        from ui.ui_prefs import save_tab_order
+
+        win = BridgeWindowModern()
+        win._apply_modern_tools_nav_mode("top_chips", persist=False)
+        save_tab_order(
+            "modern",
+            "tools_tabs",
+            ["Terminal", "NMEA", "Hub", "Control", "Presets"],
+        )
+        dlg = UiEditorDialog(win)
+        dlg._apply()
+        self._app.processEvents()
+        self.assertFalse(win._modern_tools_chip_rail.isHidden())
+        self.assertGreater(
+            len(win._tools_chip_buttons) + len(win._tools_chip_dropdowns),
+            0,
+        )
 
     def test_modern_open_full_map_handler(self) -> None:
         from unittest.mock import patch
@@ -608,7 +654,7 @@ class TestUiTabs(unittest.TestCase):
         win = BridgeWindowModern()
         self.assertEqual(
             win.status_banner.sizePolicy().horizontalPolicy(),
-            QSizePolicy.Policy.Maximum,
+            QSizePolicy.Policy.Expanding,
         )
         win._set_status_banner("stopped", "Short", "")
         self._app.processEvents()
@@ -640,6 +686,43 @@ class TestUiTabs(unittest.TestCase):
         with patch.object(win, "_on_web_open_dashboard", side_effect=_fake_open):
             win._btn_header_phone_qr.click()
         self.assertEqual(opened, ["yes"])
+
+    def test_modern_shipped_view_menu_is_trimmed(self) -> None:
+        import sys
+        from unittest.mock import patch
+
+        from ui.modern import BridgeWindowModern
+
+        def _menu_labels(menu: QtWidgets.QMenu) -> list[str]:
+            out: list[str] = []
+            for act in menu.actions():
+                if act.isSeparator():
+                    continue
+                if isinstance(act, QtWidgets.QWidgetAction):
+                    widget = act.defaultWidget()
+                    if widget is not None:
+                        lbl = widget.findChild(QtWidgets.QLabel, "viewMenuActionLabel")
+                        if lbl is not None:
+                            out.append(lbl.text().replace("&", "").strip())
+                            continue
+                text = act.text().replace("&", "").strip()
+                if text:
+                    out.append(text)
+            return out
+
+        with patch.object(sys, "frozen", True, create=True):
+            win = BridgeWindowModern()
+            menu = win._topbar_widgets["view"].menu()
+            self.assertIsNotNone(menu)
+            labels = _menu_labels(menu)
+        self.assertIn("Full screen", labels)
+        self.assertNotIn("Save UI as product default…", labels)
+        self.assertNotIn("Reset top bar layout", labels)
+        self.assertNotIn("Show all top bar chips", labels)
+        self.assertNotIn("Move top bar to bottom", labels)
+        self.assertTrue(any("UI editor" in label for label in labels))
+        self.assertTrue(any("Reset UI to product default" in label for label in labels))
+        self.assertTrue(any("Standard" in label for label in labels))
 
     def test_open_hud_single_window_modern(self) -> None:
         from ui.modern import BridgeWindowModern

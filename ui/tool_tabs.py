@@ -1767,6 +1767,27 @@ def build_modern_automated_checks_page(parent: QtWidgets.QWidget) -> QtWidgets.Q
     return host
 
 
+def sort_modern_nav_by_saved_order(
+    items: list,
+    visible_order: list[str],
+    *,
+    tier: bool = False,
+) -> list:
+    """Sort Modern nav leaves or dropdown tiers by UI editor / saved tools_tabs order."""
+    rank = {lbl: i for i, lbl in enumerate(visible_order)}
+
+    def leaf_rank(item: tuple) -> int:
+        return rank.get(item[1], len(visible_order) + 1)
+
+    def dropdown_rank(item: tuple) -> int:
+        children = item[3]
+        child_ranks = [rank[c[1]] for c in children if c[1] in rank]
+        return min(child_ranks) if child_ranks else len(visible_order) + 1
+
+    key_fn = dropdown_rank if tier else leaf_rank
+    return sorted(items, key=key_fn)
+
+
 def build_modern_tools_nav_tiers() -> tuple[
     list[tuple[str, str, str]],
     list[tuple[str, str, str, list[tuple[str, str, str]]]],

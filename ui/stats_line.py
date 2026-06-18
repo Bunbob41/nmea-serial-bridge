@@ -63,12 +63,62 @@ def format_backpressure_chip(d: dict) -> tuple[str, str]:
 
 
 def format_backpressure_tooltip(d: dict) -> str:
-    """One-line operator hint for the backpressure header chip."""
-    line = format_live_stats_line(d)
-    if " · " in line:
-        transport = line.split(" · ", 1)[1]
-        return f"Transport pressure — {transport}"
-    return line
+    """Hover/click hint for the backpressure header chip."""
+    return format_backpressure_detail(d)
+
+
+def format_backpressure_detail(d: dict) -> str:
+    """Plain-language breakdown of drops, rejects, and queue backlog."""
+    d_ns = int(d.get("drops_n2s", 0))
+    d_sn = int(d.get("drops_s2n", 0))
+    r_ns = int(d.get("rej_n2s", 0))
+    r_sn = int(d.get("rej_s2n", 0))
+    q_ns = int(d.get("n2s_q", 0))
+    q_sn = int(d.get("s2n_q", 0))
+    lines: list[str] = []
+
+    if d_ns or d_sn:
+        if d_ns and d_sn:
+            lines.append(
+                f"Dropped {d_ns} net→COM and {d_sn} COM→net chunks (queue full — data lost)."
+            )
+        elif d_ns:
+            lines.append(f"Dropped {d_ns} net→COM chunk(s) — UDP/TCP input queue was full.")
+        else:
+            lines.append(f"Dropped {d_sn} COM→net chunk(s) — serial read queue was full.")
+
+    if r_ns or r_sn:
+        if r_ns and r_sn:
+            lines.append(
+                f"Rejected {r_ns} toward COM and {r_sn} from COM "
+                f"(strict NMEA filter, bad checksum, or incomplete sentence)."
+            )
+        elif r_ns:
+            lines.append(
+                f"Rejected {r_ns} toward COM — strict NMEA filter, bad checksum, "
+                f"or incomplete sentence on the network→serial path."
+            )
+        else:
+            lines.append(
+                f"Rejected {r_sn} from COM toward the network "
+                f"(line did not pass outbound filtering)."
+            )
+
+    q_hi_ns = q_ns >= QUEUE_BACKLOG_DEPTH
+    q_hi_sn = q_sn >= QUEUE_BACKLOG_DEPTH
+    if q_hi_ns or q_hi_sn:
+        if q_hi_ns and q_hi_sn:
+            lines.append(f"Queue backlog: {q_ns} net→COM + {q_sn} COM→net chunks waiting.")
+        elif q_hi_ns:
+            lines.append(f"Queue backlog: {q_ns} net→COM chunks waiting (consumer slow).")
+        else:
+            lines.append(f"Queue backlog: {q_sn} COM→net chunks waiting (consumer slow).")
+
+    if not lines:
+        return "Transport healthy — no drops, rejects, or queue backlog."
+    lines.append("")
+    lines.append("Click Activity → filter Reject for live reject lines.")
+    return "\n".join(lines)
 
 
 def format_running_hz_chip(d: dict) -> tuple[str, str]:

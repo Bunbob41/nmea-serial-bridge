@@ -50,6 +50,7 @@ def make_chip_dropdown_button(
     children: list[tuple[str, str, str, int]],
     on_pick: Callable[[str], None],
     on_cycle: Callable[[str, list[str]], None],
+    utility_actions: list[tuple[str, str, Callable[[], None]]] | None = None,
 ) -> QtWidgets.QToolButton:
     """Dropdown chip for grouped nav tiers (Logging, Bench Tools)."""
     btn = QtWidgets.QToolButton()
@@ -74,6 +75,11 @@ def make_chip_dropdown_button(
     for sid, child_label, child_icon, _idx in children:
         action = menu.addAction(f"{child_icon}  {child_label}".strip())
         action.triggered.connect(lambda _checked=False, s=sid: on_pick(s))
+    if utility_actions:
+        menu.addSeparator()
+        for util_label, util_icon, util_cb in utility_actions:
+            util_action = menu.addAction(f"{util_icon}  {util_label}".strip())
+            util_action.triggered.connect(util_cb)
     btn.setMenu(menu)
     btn.clicked.connect(
         lambda _checked=False, sids=list(child_sids): on_cycle(tier_key, sids)

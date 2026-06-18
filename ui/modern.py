@@ -12,6 +12,7 @@ from __future__ import annotations
 from PySide6 import QtCore, QtGui, QtWidgets
 
 from ui.connect_panels import configure_connect_status_banner
+from ui.header_status import ElidedStatusLabel
 from ui.controls import (
     create_connection_controls,
     refresh_status_bar_labels,
@@ -22,6 +23,7 @@ from ui.mission_review import create_mission_review_tab, hide_mission_review_tab
 from ui.modern_styles import modern_stylesheet
 from ui.network_help import create_network_help_button
 from ui.theme_choice import THEME_SLATE
+from ui.view_menu import add_view_menu_section_header
 from ui.tool_tabs import build_modern_tools_nav, build_modern_tools_nav_groups, build_modern_tools_nav_tiers, build_modern_tools_all_pages
 from ui.ui_prefs import (
     CONFIG_PATH,
@@ -43,6 +45,21 @@ MODERN_CHIP_RAIL_H = 48
 MODERN_CHIP_BTN_H = 32
 # Open from global header only — omitted from the top chip rail to save space.
 MODERN_HEADER_NAV_SIDS = frozenset({"guide"})
+# Survey top bar chips that appear in the Modern global header (View / HUD / Layout).
+MODERN_EMBEDDED_TOPBAR_KEYS = frozenset({"view", "hud", "ui_switch"})
+# Legacy survey chips — persisted for Standard/Field but not shown in Modern header.
+MODERN_EMBEDDED_TOPBAR_FORCE_HIDDEN = frozenset(
+    {
+        "presets",
+        "recent",
+        "tools",
+        "ui_editor",
+        "copy_stats",
+        "shortcuts",
+        "randomize_theme",
+        "standardize_theme",
+    }
+)
 
 MODERN_TOOLS_TAB_HINTS: dict[str, str] = {
     "Control": "COM, baud, UDP/TCP listen, and connection presets",
@@ -130,21 +147,20 @@ class BridgeWindowModern(BridgeLogicMixin, QtWidgets.QWidget):
         bl = QtWidgets.QHBoxLayout(self.status_banner)
         bl.setContentsMargins(8, 0, 8, 0)
         bl.setSpacing(0)
-        self.status_banner_text = QtWidgets.QLabel("Stopped")
+        self.status_banner_text = ElidedStatusLabel()
         self.status_banner_text.setObjectName("modernStatusBannerText")
-        self.status_banner_text.setWordWrap(False)
-        # Elide text instead of stretching beyond available width
-        self.status_banner_text.setSizePolicy(
-            QtWidgets.QSizePolicy.Policy.Preferred,
-            QtWidgets.QSizePolicy.Policy.Fixed,
+        bl.addWidget(self.status_banner_text, 1)
+        configure_connect_status_banner(
+            self.status_banner,
+            self.status_banner_text,
+            single_line=True,
         )
-        bl.addWidget(self.status_banner_text)
-        configure_connect_status_banner(self.status_banner, self.status_banner_text)
         self.status_banner.setMaximumHeight(30)
         self.status_banner.setSizePolicy(
-            QtWidgets.QSizePolicy.Policy.Maximum,
+            QtWidgets.QSizePolicy.Policy.Expanding,
             QtWidgets.QSizePolicy.Policy.Fixed,
         )
+        self.status_banner.setMinimumWidth(0)
         self._wire_modern_status_banner_nav()
 
         self.intent_hint = QtWidgets.QLabel()
@@ -239,12 +255,33 @@ class BridgeWindowModern(BridgeLogicMixin, QtWidgets.QWidget):
         row.addWidget(self.stop_btn)
         row.addWidget(_vsep())
 
-        # Status banner — width follows message text (not full header span)
-        self.status_banner.setSizePolicy(
-            QtWidgets.QSizePolicy.Policy.Maximum,
+        self._header_status_container = QtWidgets.QWidget()
+        self._header_status_container.setObjectName("modernHeaderStatusContainer")
+        self._header_status_container.setSizePolicy(
+            QtWidgets.QSizePolicy.Policy.Expanding,
             QtWidgets.QSizePolicy.Policy.Fixed,
         )
-        row.addWidget(self.status_banner, 0)
+        self._header_status_container.setMinimumWidth(0)
+        status_lay = QtWidgets.QHBoxLayout(self._header_status_container)
+        status_lay.setContentsMargins(0, 0, 0, 0)
+        status_lay.setSpacing(0)
+        status_lay.addWidget(self.status_banner, 1)
+
+        class _StatusContainerResizeFilter(QtCore.QObject):
+            def __init__(self, host: "BridgeWindowModern") -> None:
+                super().__init__(host)
+                self._host = host
+
+            def eventFilter(self, obj: QtCore.QObject, event: QtCore.QEvent) -> bool:
+                if event.type() == QtCore.QEvent.Type.Resize:
+                    self._host._sync_modern_status_banner_width()
+                return False
+
+        self._status_container_resize_filter = _StatusContainerResizeFilter(self)
+        self._header_status_container.installEventFilter(
+            self._status_container_resize_filter
+        )
+        row.addWidget(self._header_status_container, 1)
 
         self._btn_header_guide = QtWidgets.QToolButton()
         self._btn_header_guide.setObjectName("modernHeaderChipBtn")
@@ -256,8 +293,6 @@ class BridgeWindowModern(BridgeLogicMixin, QtWidgets.QWidget):
             lambda: self._open_modern_section_by_sid("guide")
         )
         row.addWidget(self._btn_header_guide, 0)
-
-        row.addStretch(1)
 
         # Backpressure chip — only visible when packets are being dropped (critical)
         row.addWidget(self.lbl_backpressure_chip, 0)
@@ -366,19 +401,15 @@ class BridgeWindowModern(BridgeLogicMixin, QtWidgets.QWidget):
 
     def _embed_survey_bar_in_header(self, bar) -> None:
         """P0/P1: cluster-sized View/HUD/Layout in the global header (no spring stretch)."""
+        self._sync_modern_embedded_topbar_chrome(bar)
+
+    def _sync_modern_embedded_topbar_chrome(self, bar=None) -> None:
+        """Keep only View/HUD/Layout in the header; re-apply after UI editor saves."""
+        bar = bar or getattr(self, "_survey_top_bar", None)
+        if bar is None:
+            return
         try:
-            bar._hidden.update(
-                {
-                    "presets",
-                    "recent",
-                    "tools",
-                    "ui_editor",
-                    "copy_stats",
-                    "shortcuts",
-                    "randomize_theme",
-                    "standardize_theme",
-                }
-            )
+            bar._hidden.update(MODERN_EMBEDDED_TOPBAR_FORCE_HIDDEN)
         except AttributeError:
             pass
         bar._chip_weights.clear()
@@ -387,11 +418,34 @@ class BridgeWindowModern(BridgeLogicMixin, QtWidgets.QWidget):
         bar._track_lay.setSpacing(4)
         bar._track_lay.setContentsMargins(0, 0, 0, 0)
         host = self._modern_header_nav
+        if host is None:
+            return
         nav_lay = host.layout()
-        assert isinstance(nav_lay, QtWidgets.QHBoxLayout)
-        bar.embed_track_in(host, nav_lay)
+        if not isinstance(nav_lay, QtWidgets.QHBoxLayout):
+            return
+        track = getattr(bar, "_track", None)
+        if track is not None:
+            if track.parent() is not host:
+                bar.embed_track_in(host, nav_lay)
+            elif nav_lay.indexOf(track) < 0:
+                nav_lay.addWidget(track, 0)
         bar.set_host_window(self)
         bar.rebuild()
+
+    def _ensure_modern_nav_visible(self) -> None:
+        """After layout edits, keep chip rail or sidebar navigation on screen."""
+        mode = getattr(self, "_modern_tools_nav_mode", "top_chips")
+        chip_rail = getattr(self, "_modern_tools_chip_rail", None)
+        chip_count = len(getattr(self, "_tools_chip_buttons", [])) + len(
+            getattr(self, "_tools_chip_dropdowns", [])
+        )
+        if mode == "top_chips" and chip_count == 0:
+            self._apply_modern_tools_nav_mode("sidebar", persist=True)
+            return
+        self._apply_modern_tools_nav_mode(mode, persist=False)
+        if mode == "top_chips" and chip_rail is not None:
+            chip_rail.setFixedHeight(MODERN_CHIP_RAIL_H)
+            chip_rail.show()
 
     def _ensure_modern_launch_layout(self) -> None:
         """First show: reserve header height and keep the window on-screen."""
@@ -479,12 +533,23 @@ class BridgeWindowModern(BridgeLogicMixin, QtWidgets.QWidget):
         self._control_network_group = self._build_network_group()
         self._control_forms_host = QtWidgets.QWidget()
         self._control_forms_host.setObjectName("modernControlFormsHost")
+        self._control_forms_host.setSizePolicy(
+            QtWidgets.QSizePolicy.Policy.Expanding,
+            QtWidgets.QSizePolicy.Policy.Maximum,
+        )
         self._control_forms_grid = QtWidgets.QGridLayout(self._control_forms_host)
         self._control_forms_grid.setContentsMargins(0, 0, 0, 0)
         self._control_forms_grid.setHorizontalSpacing(14)
         self._control_forms_grid.setVerticalSpacing(14)
-        self._control_forms_grid.addWidget(self._control_serial_group, 0, 0)
-        self._control_forms_grid.addWidget(self._control_network_group, 0, 1)
+        self._control_forms_grid.setAlignment(
+            QtCore.Qt.AlignmentFlag.AlignLeft | QtCore.Qt.AlignmentFlag.AlignTop
+        )
+        self._control_forms_grid.addWidget(
+            self._control_serial_group, 0, 0, QtCore.Qt.AlignmentFlag.AlignTop
+        )
+        self._control_forms_grid.addWidget(
+            self._control_network_group, 0, 1, QtCore.Qt.AlignmentFlag.AlignTop
+        )
         self._control_forms_vertical = False
         content_lay.addWidget(self._control_forms_host, 0)
 
@@ -515,6 +580,7 @@ class BridgeWindowModern(BridgeLogicMixin, QtWidgets.QWidget):
         left_lay = QtWidgets.QVBoxLayout(self._control_left_col)
         left_lay.setContentsMargins(0, 0, 0, 0)
         left_lay.setSpacing(14)
+        left_lay.setAlignment(QtCore.Qt.AlignmentFlag.AlignTop)
         left_lay.addWidget(self._control_forms_host, 0)
         left_lay.addWidget(preset_bar, 0)
         left_lay.addStretch(1)
@@ -523,7 +589,14 @@ class BridgeWindowModern(BridgeLogicMixin, QtWidgets.QWidget):
         right_lay = QtWidgets.QVBoxLayout(self._control_right_col)
         right_lay.setContentsMargins(0, 0, 0, 0)
         right_lay.setSpacing(0)
-        right_lay.addWidget(map_card, 1)
+        right_lay.addWidget(map_card, 0)
+        self._control_map_bottom_spacer = QtWidgets.QWidget()
+        self._control_map_bottom_spacer.setSizePolicy(
+            QtWidgets.QSizePolicy.Policy.Preferred,
+            QtWidgets.QSizePolicy.Policy.Expanding,
+        )
+        right_lay.addWidget(self._control_map_bottom_spacer, 1)
+        self._control_map_right_lay = right_lay
 
         split_lay.addWidget(self._control_left_col, 45)
         split_lay.addWidget(self._control_right_col, 55)
@@ -531,7 +604,7 @@ class BridgeWindowModern(BridgeLogicMixin, QtWidgets.QWidget):
 
         self._control_tab_lay = content_lay
         self._control_split_horizontal = True
-        collapsed = bool(load_modern_layout_prefs().get("control_map_collapsed", True))
+        collapsed = bool(load_modern_layout_prefs().get("control_map_collapsed", False))
         self._sync_control_tab_map_layout(collapsed)
 
         QtCore.QTimer.singleShot(0, self._apply_control_forms_responsive)
@@ -604,15 +677,15 @@ class BridgeWindowModern(BridgeLogicMixin, QtWidgets.QWidget):
         grid.removeWidget(serial)
         grid.removeWidget(network)
         if stack_vertical:
-            grid.addWidget(serial, 0, 0)
-            grid.addWidget(network, 1, 0)
+            grid.addWidget(serial, 0, 0, QtCore.Qt.AlignmentFlag.AlignTop)
+            grid.addWidget(network, 1, 0, QtCore.Qt.AlignmentFlag.AlignTop)
             grid.setColumnStretch(0, 1)
             grid.setColumnStretch(1, 0)
             grid.setRowStretch(0, 0)
             grid.setRowStretch(1, 0)
         else:
-            grid.addWidget(serial, 0, 0)
-            grid.addWidget(network, 0, 1)
+            grid.addWidget(serial, 0, 0, QtCore.Qt.AlignmentFlag.AlignTop)
+            grid.addWidget(network, 0, 1, QtCore.Qt.AlignmentFlag.AlignTop)
             grid.setColumnStretch(0, 1)
             grid.setColumnStretch(1, 1)
             grid.setRowStretch(0, 0)
@@ -620,12 +693,42 @@ class BridgeWindowModern(BridgeLogicMixin, QtWidgets.QWidget):
         self._control_forms_vertical = stack_vertical
 
     def _sync_control_tab_map_layout(self, collapsed: bool) -> None:
-        """Expanded map fills the right split column (or full width when stacked)."""
+        """Expanded map fills the column; collapsed header pins to the top via bottom spacer."""
         map_card = getattr(self, "_control_map_card", None)
+        right_lay: QtWidgets.QVBoxLayout | None = getattr(self, "_control_map_right_lay", None)
+        spacer = getattr(self, "_control_map_bottom_spacer", None)
+        tab_lay: QtWidgets.QVBoxLayout | None = getattr(self, "_control_tab_lay", None)
         if map_card is None:
             return
+
+        host_lay = right_lay
+        if tab_lay is not None and tab_lay.indexOf(map_card) >= 0:
+            host_lay = tab_lay
+
+        if host_lay is None:
+            return
+
+        map_idx = host_lay.indexOf(map_card)
+        if map_idx < 0:
+            return
+
         if collapsed:
-            map_card.setMaximumHeight(16777215)
+            host_lay.setStretch(map_idx, 0)
+            if spacer is not None and host_lay is right_lay:
+                spacer_idx = host_lay.indexOf(spacer)
+                if spacer_idx >= 0:
+                    host_lay.setStretch(spacer_idx, 1)
+                    spacer.show()
+            if tab_lay is not None and host_lay is tab_lay:
+                host_lay.setStretch(map_idx, 0)
+        else:
+            host_lay.setStretch(map_idx, 1)
+            if spacer is not None and host_lay is right_lay:
+                spacer_idx = host_lay.indexOf(spacer)
+                if spacer_idx >= 0:
+                    host_lay.setStretch(spacer_idx, 0)
+                    spacer.hide()
+            map_card.setMinimumHeight(160)
         map_card.updateGeometry()
 
     def _wrap_live_activity_page(self, panel: QtWidgets.QWidget) -> QtWidgets.QWidget:
@@ -796,7 +899,15 @@ class BridgeWindowModern(BridgeLogicMixin, QtWidgets.QWidget):
         )
         outer_lay = QtWidgets.QHBoxLayout(frame)
         outer_lay.setContentsMargins(10, 8, 10, 8)
-        outer_lay.setSpacing(0)
+        outer_lay.setSpacing(8)
+
+        self._modern_tools_chip_rail_label = QtWidgets.QLabel("TOOLS")
+        self._modern_tools_chip_rail_label.setObjectName("modernToolsChipRailLabel")
+        self._modern_tools_chip_rail_label.setSizePolicy(
+            QtWidgets.QSizePolicy.Policy.Fixed,
+            QtWidgets.QSizePolicy.Policy.Fixed,
+        )
+        outer_lay.addWidget(self._modern_tools_chip_rail_label, 0)
 
         scroll = ModernToolsChipScrollArea(frame)
         scroll.setMinimumWidth(0)
@@ -1006,8 +1117,7 @@ class BridgeWindowModern(BridgeLogicMixin, QtWidgets.QWidget):
         self._modern_nav_mode_menu_wired = True
 
         menu.addSeparator()
-        nav_header = menu.addAction("Tools navigation")
-        nav_header.setEnabled(False)
+        add_view_menu_section_header(menu, "Tools navigation")
         self._act_tools_nav_sidebar = QtGui.QAction("Sidebar", self)
         self._act_tools_nav_sidebar.setCheckable(True)
         self._act_tools_nav_sidebar.triggered.connect(
@@ -1097,11 +1207,12 @@ class BridgeWindowModern(BridgeLogicMixin, QtWidgets.QWidget):
         card.setObjectName("modernControlFormCard")
         card.setSizePolicy(
             QtWidgets.QSizePolicy.Policy.Expanding,
-            QtWidgets.QSizePolicy.Policy.Minimum,
+            QtWidgets.QSizePolicy.Policy.Maximum,
         )
         lay = QtWidgets.QVBoxLayout(card)
         lay.setContentsMargins(16, 14, 16, 14)
         lay.setSpacing(10)
+        lay.setAlignment(QtCore.Qt.AlignmentFlag.AlignTop)
         head = QtWidgets.QHBoxLayout()
         head.setSpacing(8)
         if icon:
@@ -1170,14 +1281,17 @@ class BridgeWindowModern(BridgeLogicMixin, QtWidgets.QWidget):
             QtCore.Qt.AlignmentFlag.AlignRight | QtCore.Qt.AlignmentFlag.AlignVCenter,
         )
         body.addLayout(fan)
-        sink = QtWidgets.QHBoxLayout()
-        sink.setSpacing(8)
-        sink.addWidget(self.chk_tcp_sink_enable)
-        sink.addWidget(self._control_form_label("TCP mirror port"))
-        self.tcp_sink_port.setMinimumHeight(34)
-        sink.addWidget(self.tcp_sink_port)
-        sink.addStretch(1)
-        body.addLayout(sink)
+        body.addWidget(self.chk_tcp_sink_enable)
+        port_row = QtWidgets.QHBoxLayout()
+        port_row.setContentsMargins(18, 0, 0, 0)
+        port_row.setSpacing(8)
+        port_row.addWidget(self._control_form_label("Mirror port"), 0)
+        self.tcp_sink_port.setFixedWidth(76)
+        self.tcp_sink_port.setMaximumWidth(88)
+        self.tcp_sink_port.setMinimumHeight(32)
+        port_row.addWidget(self.tcp_sink_port, 0)
+        port_row.addStretch(1)
+        body.addLayout(port_row)
         body.addWidget(self.chk_advanced_net)
         body.addWidget(self._advanced_net)
         lay.addLayout(body)
@@ -1284,6 +1398,12 @@ class BridgeWindowModern(BridgeLogicMixin, QtWidgets.QWidget):
             return out
 
         nav_leaves, nav_dropdowns = build_modern_tools_nav_tiers()
+        from ui.tool_tabs import sort_modern_nav_by_saved_order
+
+        nav_leaves = sort_modern_nav_by_saved_order(nav_leaves, visible_names)
+        nav_dropdowns = sort_modern_nav_by_saved_order(
+            nav_dropdowns, visible_names, tier=True
+        )
 
         for sid, lbl, icon in nav_leaves:
             if sid in MODERN_HEADER_NAV_SIDS or lbl not in visible_set:
@@ -1295,8 +1415,16 @@ class BridgeWindowModern(BridgeLogicMixin, QtWidgets.QWidget):
 
         for _tier_key, tier_label, tier_icon, children in nav_dropdowns:
             child_items = _visible_child_items(children)
+            if child_items:
+                rank = {lbl: i for i, lbl in enumerate(visible_names)}
+                child_items = sorted(
+                    child_items, key=lambda t: rank.get(t[1], len(visible_names) + 1)
+                )
             if not child_items:
                 continue
+            utilities = None
+            if _tier_key == "bench_tools":
+                utilities = [("Bench pair setup…", "🔧", self._open_bench_pair_setup)]
             dropdown = make_chip_dropdown_button(
                 tier_key=_tier_key,
                 label=tier_label,
@@ -1304,6 +1432,7 @@ class BridgeWindowModern(BridgeLogicMixin, QtWidgets.QWidget):
                 children=child_items,
                 on_pick=self._open_modern_section_by_sid,
                 on_cycle=self._cycle_modern_tools_dropdown,
+                utility_actions=utilities,
             )
             chip_dropdowns.append(dropdown)
             lay.addWidget(dropdown)
@@ -1313,11 +1442,12 @@ class BridgeWindowModern(BridgeLogicMixin, QtWidgets.QWidget):
         inner.setFixedHeight(MODERN_CHIP_BTN_H)
         inner.adjustSize()
         scroll = getattr(self, "_modern_tools_chip_scroll", None)
-        if scroll is not None:
+        if scroll is not None and scroll.widget() is not inner:
             scroll.setWidget(inner)
 
         cur = stack.currentIndex()
         self._tools_nav_select(cur)
+        self._ensure_modern_nav_visible()
 
     def _setup_modern_ui_editor_catalogs(self) -> None:
         self._tab_catalog.pop("main_tabs", None)
@@ -1579,35 +1709,21 @@ class BridgeWindowModern(BridgeLogicMixin, QtWidgets.QWidget):
         compact_title = title.strip()
         if detail.strip():
             compact_title = f"{compact_title}  ·  {detail.strip()}"
-        super()._set_status_banner(state, compact_title, "")
-        self._sync_modern_status_banner_width()
+        self.status_banner.setProperty("state", state)
+        self._polish_widget(self.status_banner)
+        label = self.status_banner_text
+        if isinstance(label, ElidedStatusLabel):
+            label.set_full_text(compact_title)
+        else:
+            label.setText(compact_title)
         self._sync_modern_session_chrome()
         self._sync_modern_start_stop_labels()
 
     def _sync_modern_status_banner_width(self) -> None:
-        """Keep the clickable status strip only as wide as its message."""
-        banner = self.status_banner
+        """Refresh elided status text when header geometry changes."""
         label = self.status_banner_text
-        if banner is None or label is None:
-            return
-        label.setWordWrap(False)
-        lay = banner.layout()
-        margins = lay.contentsMargins() if lay is not None else QtCore.QMargins(8, 0, 8, 0)
-        spacing = lay.spacing() if lay is not None else 0
-        fm = QtGui.QFontMetrics(label.font())
-        text = label.text() or ""
-        if "<" in text and ">" in text:
-            doc = QtGui.QTextDocument()
-            doc.setDefaultFont(label.font())
-            doc.setHtml(text)
-            doc.setTextWidth(10000)
-            text_w = int(doc.idealWidth())
-        else:
-            text_w = fm.horizontalAdvance(text)
-        pad = 6
-        width = text_w + margins.left() + margins.right() + spacing + pad
-        banner.setMinimumWidth(max(60, width))
-        banner.setMaximumWidth(max(60, width))
+        if isinstance(label, ElidedStatusLabel):
+            label.refresh_elide()
 
     def _sync_modern_start_stop_labels(self) -> None:
         if self._is_bridge_running():
@@ -1739,6 +1855,7 @@ class BridgeWindowModern(BridgeLogicMixin, QtWidgets.QWidget):
     def resizeEvent(self, event: QtGui.QResizeEvent) -> None:
         super().resizeEvent(event)
         refresh_status_bar_labels(self)
+        self._sync_modern_status_banner_width()
         self._apply_control_forms_responsive(event.size().width())
         from ui.tool_tabs import apply_phone_dashboard_responsive
 
@@ -1750,6 +1867,7 @@ class BridgeWindowModern(BridgeLogicMixin, QtWidgets.QWidget):
         self._sync_modern_phone_qr_btn()
         QtCore.QTimer.singleShot(0, self._ensure_modern_launch_layout)
         QtCore.QTimer.singleShot(120, self._ensure_modern_launch_layout)
+        QtCore.QTimer.singleShot(0, self._sync_modern_status_banner_width)
 
     def changeEvent(self, event: QtCore.QEvent) -> None:
         super().changeEvent(event)

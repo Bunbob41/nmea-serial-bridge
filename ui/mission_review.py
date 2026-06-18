@@ -21,6 +21,8 @@ _TICK_OK = "#34d399"
 _TICK_WARN = "#fbbf24"
 _TICK_BAD = "#f87171"
 _TICK_IDLE = "#475569"
+_CHART_TITLE_BAND = 30
+_CHART_FOOTER_BAND = 22
 
 
 class ThroughputBarChart(QtWidgets.QWidget):
@@ -30,7 +32,7 @@ class ThroughputBarChart(QtWidgets.QWidget):
         super().__init__(parent)
         self.setObjectName("missionThroughputChart")
         self._values: list[int] = []
-        self.setMinimumHeight(140)
+        self.setMinimumHeight(168)
         self.setSizePolicy(
             QtWidgets.QSizePolicy.Policy.Expanding,
             QtWidgets.QSizePolicy.Policy.Fixed,
@@ -43,8 +45,8 @@ class ThroughputBarChart(QtWidgets.QWidget):
     def paintEvent(self, _event: QtGui.QPaintEvent) -> None:
         p = QtGui.QPainter(self)
         p.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
-        rect = self.rect().adjusted(8, 8, -8, -24)
         p.fillRect(self.rect(), QtGui.QColor(_CHART_BG))
+        chart_rect = self.rect().adjusted(8, _CHART_TITLE_BAND + 2, -8, -_CHART_FOOTER_BAND)
 
         p.setPen(QtGui.QColor(_CHART_TEXT))
         from ui.fonts import app_ui_font
@@ -52,31 +54,31 @@ class ThroughputBarChart(QtWidgets.QWidget):
         title_font = app_ui_font(point_size=9)
         title_font.setWeight(QtGui.QFont.Weight.DemiBold)
         p.setFont(title_font)
-        p.drawText(8, 16, "Backup throughput (5 s buckets)")
+        p.drawText(8, 20, "Backup throughput (5 s buckets)")
 
-        if not self._values or rect.width() <= 4 or rect.height() <= 4:
+        if not self._values or chart_rect.width() <= 4 or chart_rect.height() <= 4:
             p.setPen(QtGui.QColor("#94a3b8"))
-            p.drawText(rect, QtCore.Qt.AlignmentFlag.AlignCenter, "No throughput samples")
+            p.drawText(chart_rect, QtCore.Qt.AlignmentFlag.AlignCenter, "No throughput samples")
             p.end()
             return
 
         peak = max(self._values) or 1
         n = len(self._values)
         gap = 2
-        bar_w = max(3, (rect.width() - gap * (n - 1)) // n)
-        x = rect.left()
+        bar_w = max(3, (chart_rect.width() - gap * (n - 1)) // n)
+        x = chart_rect.left()
         for i, val in enumerate(self._values):
-            h = int((val / peak) * rect.height()) if peak else 0
+            h = int((val / peak) * chart_rect.height()) if peak else 0
             h = max(2, h) if val > 0 else 0
-            bar_rect = QtCore.QRect(x, rect.bottom() - h, bar_w, h)
+            bar_rect = QtCore.QRect(x, chart_rect.bottom() - h, bar_w, h)
             color = _CHART_BAR_HI if val == peak and val > 0 else _CHART_BAR
             p.fillRect(bar_rect, QtGui.QColor(color))
             x += bar_w + gap
 
         p.setPen(QtGui.QColor(_CHART_GRID))
-        p.drawLine(rect.left(), rect.bottom(), rect.right(), rect.bottom())
+        p.drawLine(chart_rect.left(), chart_rect.bottom(), chart_rect.right(), chart_rect.bottom())
         p.setPen(QtGui.QColor("#94a3b8"))
-        p.drawText(rect.left(), self.height() - 6, f"peak {_human_bytes(peak)} / bucket")
+        p.drawText(chart_rect.left(), self.height() - 6, f"peak {_human_bytes(peak)} / bucket")
         p.end()
 
 
@@ -87,7 +89,7 @@ class HealthTimeline(QtWidgets.QWidget):
         super().__init__(parent)
         self.setObjectName("missionHealthTimeline")
         self._ticks: list[str] = []
-        self.setMinimumHeight(44)
+        self.setMinimumHeight(72)
         self.setSizePolicy(
             QtWidgets.QSizePolicy.Policy.Expanding,
             QtWidgets.QSizePolicy.Policy.Fixed,
@@ -101,25 +103,26 @@ class HealthTimeline(QtWidgets.QWidget):
         p = QtGui.QPainter(self)
         p.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
         p.fillRect(self.rect(), QtGui.QColor(_CHART_BG))
+        chart_rect = self.rect().adjusted(8, _CHART_TITLE_BAND + 2, -8, -8)
+
         p.setPen(QtGui.QColor(_CHART_TEXT))
         from ui.fonts import app_ui_font
 
         title_font = app_ui_font(point_size=9)
         title_font.setWeight(QtGui.QFont.Weight.DemiBold)
         p.setFont(title_font)
-        p.drawText(8, 16, "Data health timeline")
+        p.drawText(8, 20, "Data health timeline")
 
-        rect = self.rect().adjusted(8, 22, -8, -8)
         if not self._ticks:
             p.setPen(QtGui.QColor("#94a3b8"))
-            p.drawText(rect, QtCore.Qt.AlignmentFlag.AlignCenter, "No health windows")
+            p.drawText(chart_rect, QtCore.Qt.AlignmentFlag.AlignCenter, "No health windows")
             p.end()
             return
 
         n = len(self._ticks)
         gap = 2
-        tick_w = max(4, (rect.width() - gap * (n - 1)) // n)
-        x = rect.left()
+        tick_w = max(4, (chart_rect.width() - gap * (n - 1)) // n)
+        x = chart_rect.left()
         for tick in self._ticks:
             if tick == "bad":
                 color = _TICK_BAD
@@ -129,7 +132,10 @@ class HealthTimeline(QtWidgets.QWidget):
                 color = _TICK_OK
             else:
                 color = _TICK_IDLE
-            p.fillRect(QtCore.QRect(x, rect.top(), tick_w, rect.height()), QtGui.QColor(color))
+            p.fillRect(
+                QtCore.QRect(x, chart_rect.top(), tick_w, chart_rect.height()),
+                QtGui.QColor(color),
+            )
             x += tick_w + gap
         p.end()
 
@@ -174,20 +180,24 @@ def create_mission_review_tab(win: BridgeLogicMixin) -> QtWidgets.QWidget:
     mount_local_backup_location_row(win, backup_lay, show_session_file=True)
     lay.addWidget(win._mission_backup_location_box)
 
+    lay.addStretch(1)
+
     actions = QtWidgets.QHBoxLayout()
+    actions.setSpacing(8)
+    actions.addStretch(1)
     win._mission_btn_quick_export = QtWidgets.QPushButton("Quick Export")
-    win._mission_btn_quick_export.setObjectName("modernStartBtn")
+    win._mission_btn_quick_export.setObjectName("modernToolsPrimaryBtn")
     win._mission_btn_quick_export.setToolTip(
         "Zip the session .raw backup and mission_summary.txt for survey office handoff."
     )
     win._mission_btn_quick_export.clicked.connect(win._on_mission_quick_export)
-    actions.addWidget(win._mission_btn_quick_export)
-    actions.addStretch(1)
+    actions.addWidget(win._mission_btn_quick_export, 0)
     btn_pipeline = QtWidgets.QPushButton("Back to Activity")
+    btn_pipeline.setObjectName("modernToolsSecondaryBtn")
+    btn_pipeline.setToolTip("Return to the Activity wire-tap view.")
     btn_pipeline.clicked.connect(win._show_modern_pipeline_tab)
-    actions.addWidget(btn_pipeline)
+    actions.addWidget(btn_pipeline, 0)
     lay.addLayout(actions)
-    lay.addStretch(1)
     return panel
 
 

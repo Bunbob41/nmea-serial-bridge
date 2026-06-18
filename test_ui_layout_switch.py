@@ -2,9 +2,35 @@
 from __future__ import annotations
 
 import unittest
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
+from ui.layout_cycle import other_layout_ids
 from ui.mixin import BridgeLogicMixin
+
+
+class TestLayoutCycleMenu(unittest.TestCase):
+    def test_other_layout_ids_excludes_current(self) -> None:
+        self.assertEqual(other_layout_ids("standard"), ("field", "modern"))
+        self.assertEqual(other_layout_ids("field"), ("standard", "modern"))
+        self.assertEqual(other_layout_ids("modern"), ("standard", "field"))
+
+    def test_refresh_switch_layout_menu_shows_two_targets(self) -> None:
+        host = object.__new__(BridgeLogicMixin)
+        host._ui_mode = "modern"
+        host.bridge = None
+        host._worker = None
+        act_field = MagicMock()
+        act_standard = MagicMock()
+        act_modern = MagicMock()
+        host._layout_switch_actions = {
+            "standard": act_standard,
+            "field": act_field,
+            "modern": act_modern,
+        }
+        host._refresh_switch_layout_menu()
+        act_standard.setVisible.assert_called_with(True)
+        act_field.setVisible.assert_called_with(True)
+        act_modern.setVisible.assert_called_with(False)
 
 
 class _FakeWindow:

@@ -329,8 +329,9 @@ def build_control_map_panel(
     title = QtWidgets.QLabel("Position track")
     title.setObjectName("modernControlMapTitle")
     title.setToolTip(
-        "GGA/RMC track — tap to expand/collapse. Open full map for browser satellite view."
+        "GGA/RMC track — click anywhere on this bar to expand/collapse."
     )
+    title.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
 
     # Action buttons — only shown when expanded
     btn_open = QtWidgets.QPushButton("Open full map")
@@ -369,7 +370,7 @@ def build_control_map_panel(
     lay.addWidget(body, 1)
 
     # ── Collapse state management ─────────────────────────────────────────
-    _collapsed: list[bool] = [bool(load_modern_layout_prefs().get("control_map_collapsed", True))]
+    _collapsed: list[bool] = [bool(load_modern_layout_prefs().get("control_map_collapsed", False))]
 
     def _apply_collapsed(collapsed: bool, *, save: bool = True) -> None:
         _collapsed[0] = collapsed
@@ -384,12 +385,16 @@ def build_control_map_panel(
         )
         if collapsed:
             card.setMaximumHeight(48)
+            card.setMinimumHeight(0)
+            body.setMinimumHeight(0)
             card.setSizePolicy(
                 QtWidgets.QSizePolicy.Policy.Expanding,
                 QtWidgets.QSizePolicy.Policy.Fixed,
             )
         else:
             card.setMaximumHeight(16777215)
+            card.setMinimumHeight(160)
+            body.setMinimumHeight(120)
             card.setSizePolicy(
                 QtWidgets.QSizePolicy.Policy.Expanding,
                 QtWidgets.QSizePolicy.Policy.Expanding,
@@ -412,26 +417,37 @@ def build_control_map_panel(
 
     btn_collapse.clicked.connect(_toggle)
 
-    # Make the whole header row clickable — but don't steal button clicks
+    def _click_on_action_button(local_pos: QtCore.QPoint) -> bool:
+        for btn in (btn_open, btn_clear, btn_collapse):
+            if btn.isVisible() and btn.geometry().contains(local_pos):
+                return True
+        return False
+
+    # Whole header row toggles — title + frame, not just the chevron.
     class _HeaderFilter(QtCore.QObject):
         def eventFilter(self, obj: QtCore.QObject, event: QtCore.QEvent) -> bool:
-            if (
-                event.type() == QtCore.QEvent.Type.MouseButtonRelease
-                and obj is header_widget
-            ):
-                mouse = event  # type: ignore[assignment]
-                if not btn_open.geometry().contains(mouse.pos()) and not btn_clear.geometry().contains(mouse.pos()) and not btn_collapse.geometry().contains(mouse.pos()):  # type: ignore[union-attr]
-                    _toggle()
-                    return True
-            return False
+            if obj not in (header_widget, title):
+                return False
+            if event.type() != QtCore.QEvent.Type.MouseButtonRelease:
+                return False
+            mouse = event  # type: ignore[assignment]
+            if mouse.button() != QtCore.Qt.MouseButton.LeftButton:
+                return False
+            local = header_widget.mapFromGlobal(mouse.globalPosition().toPoint())
+            if _click_on_action_button(local):
+                return False
+            _toggle()
+            return True
 
     _hf = _HeaderFilter(card)
     header_widget.installEventFilter(_hf)
+    title.installEventFilter(_hf)
     header_widget.setProperty("_header_filter", _hf)  # keep alive
 
     _apply_collapsed(_collapsed[0], save=False)
 
     btn_clear.clicked.connect(widget.clear_track)
+    widget.clear_session()
     opener = getattr(parent, "_on_web_open_dashboard_map", None)
     if callable(opener):
         btn_open.clicked.connect(opener)

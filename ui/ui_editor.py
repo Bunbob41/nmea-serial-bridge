@@ -76,6 +76,8 @@ DEFAULT_TOPBAR_HIDDEN_CHIPS: frozenset[str] = frozenset(
     {"randomize_theme", "standardize_theme"}
 )
 
+MODERN_HEADER_CHIP_KEYS: frozenset[str] = frozenset({"view", "hud", "ui_switch"})
+
 _EDITOR_DIALOG_MIN_W = 680
 _EDITOR_DIALOG_MIN_H = 460
 _EDITOR_DIALOG_DEFAULT_W = 760
@@ -374,10 +376,10 @@ class UiEditorDialog(QtWidgets.QDialog):
             )
         elif ui_mode == "modern":
             intro_text = (
-                "Customize the <b>Modern</b> layout: header tiles, "
-                "<b>Activity / Control / Tools</b> tabs, and the Tools sidebar "
-                "(Hub, Presets, NMEA, …). Use <b>↑ ↓</b> to reorder; checkboxes show or hide. "
-                "<b>OK</b> applies."
+                "Customize the <b>Modern</b> layout: <b>Header</b> (View, HUD, Layout) and "
+                "<b>Navigation</b> (Control, Presets, Hub, chip rail, and sidebar). "
+                "Connect section order applies to <b>Standard</b> layout only. "
+                "Use <b>↑ ↓</b> to reorder; checkboxes show or hide. <b>OK</b> applies."
             )
         else:
             intro_text = (
@@ -412,13 +414,29 @@ class UiEditorDialog(QtWidgets.QDialog):
                 title = labels.get(key, TOPBAR_SHORT_LABEL.get(key, key))
                 bar_rows.append((key, title, key not in hidden_bar, True))
 
+        if ui_mode == "modern":
+            bar_rows = [row for row in bar_rows if row[0] in MODERN_HEADER_CHIP_KEYS]
+
+        topbar_intro = (
+            "View, HUD, and Layout in the Modern global header."
+            if ui_mode == "modern"
+            else "Tiles on the survey top bar (Presets, HUD, Layout, …). "
+            "You can also drag tiles on the live bar."
+        )
+        topbar_legend = (
+            "↑ ↓ reorder header cluster. Checkbox = show in header. View cannot be hidden."
+            if ui_mode == "modern"
+            else "↑ ↓ reorder. Checkbox = show on the top bar. View cannot be hidden."
+        )
         self._topbar_page = _EditorListPage(
-            "Tiles on the survey top bar (Presets, HUD, Layout, …). "
-            "You can also drag tiles on the live bar.",
-            legend="↑ ↓ reorder. Checkbox = show on the top bar. View cannot be hidden.",
+            topbar_intro,
+            legend=topbar_legend,
         )
         self._topbar_page.set_rows(bar_rows, locked_keys=frozenset({"view"}))
-        self._tabs.addTab(self._topbar_page, "Top bar")
+        self._tabs.addTab(
+            self._topbar_page,
+            "Header" if ui_mode == "modern" else "Top bar",
+        )
 
         self._connect_page: Optional[_EditorListPage] = None
         self._connect_toolbar_page: Optional[_EditorListPage] = None
@@ -475,20 +493,22 @@ class UiEditorDialog(QtWidgets.QDialog):
                 tools_catalog, hidden_tabs, ui_mode=ui_mode, tabs_key=tabs_key
             )
             tools_intro = (
-                "Sidebar inside the Tools main tab (Presets, Phone, NMEA, …)."
-                if ui_mode == "standard"
+                "Chip rail and sidebar pages (Control, Presets, Hub, Logging ▾, Bench Tools ▾). "
+                "Applies to both View → Tools navigation modes."
+                if ui_mode == "modern"
                 else (
-                    "Persistent left sidebar (Control, Setup, Logging, Bench)."
-                    if ui_mode == "modern"
+                    "Sidebar inside the Tools main tab (Presets, Phone, NMEA, …)."
+                    if ui_mode == "standard"
                     else "Tabs inside the Field Tools drawer."
                 )
             )
+            tools_tab_label = "Navigation" if ui_mode == "modern" else "Tools tabs"
             self._tools_tabs_page = _EditorListPage(
                 tools_intro,
-                legend="↑ ↓ reorder. Checkbox = show in Tools. At least one item must stay on.",
+                legend="↑ ↓ reorder. Checkbox = show in navigation. At least one item must stay on.",
             )
             self._tools_tabs_page.set_tab_rows(tab_rows)
-            self._tabs.addTab(self._tools_tabs_page, "Tools tabs")
+            self._tabs.addTab(self._tools_tabs_page, tools_tab_label)
 
         btn_row = QtWidgets.QHBoxLayout()
         btn_defaults = QtWidgets.QPushButton("Restore defaults")
@@ -509,11 +529,18 @@ class UiEditorDialog(QtWidgets.QDialog):
             self._tabs.setCurrentIndex(initial_tab)
 
     def _restore_defaults(self) -> None:
-        bar_rows: list[tuple[str, str, bool, bool]] = []
-        for key in DEFAULT_TOPBAR_ORDER:
-            title = TOP_BAR_CHIP_LABELS.get(key, TOPBAR_SHORT_LABEL.get(key, key))
-            visible = key not in DEFAULT_TOPBAR_HIDDEN_CHIPS
-            bar_rows.append((key, title, visible, True))
+        ui_mode = getattr(self._win, "_ui_mode", "standard")
+        if ui_mode == "modern":
+            bar_rows = [
+                (key, TOP_BAR_CHIP_LABELS.get(key, TOPBAR_SHORT_LABEL.get(key, key)), True, True)
+                for key in ("view", "hud", "ui_switch")
+            ]
+        else:
+            bar_rows = []
+            for key in DEFAULT_TOPBAR_ORDER:
+                title = TOP_BAR_CHIP_LABELS.get(key, TOPBAR_SHORT_LABEL.get(key, key))
+                visible = key not in DEFAULT_TOPBAR_HIDDEN_CHIPS
+                bar_rows.append((key, title, visible, True))
         self._topbar_page.set_rows(bar_rows, locked_keys=frozenset({"view"}))
         if self._connect_page is not None:
             restore_connect_panel_layout(self._win)
@@ -653,9 +680,18 @@ class UiEditorDialog(QtWidgets.QDialog):
 
     def _apply(self) -> None:
         win = self._win
+        ui_mode = getattr(win, "_ui_mode", "standard")
         order, hidden = self._topbar_page.ordered_checked()
         order = migrate_topbar_order(order)
         hidden = migrate_topbar_hidden(hidden)
+        if ui_mode == "modern":
+            prior_order = migrate_topbar_order(
+                list(getattr(win, "_topbar_order", [])) or list(DEFAULT_TOPBAR_ORDER)
+            )
+            tail = [key for key in prior_order if key not in order]
+            order = migrate_topbar_order([*order, *tail])
+            prior_hidden = migrate_topbar_hidden(getattr(win, "_topbar_hidden", set()))
+            hidden = migrate_topbar_hidden(prior_hidden | hidden)
         bar = getattr(win, "_survey_top_bar", None)
         if bar is not None:
             weights = bar.chip_weights()
@@ -664,6 +700,8 @@ class UiEditorDialog(QtWidgets.QDialog):
             win._topbar_hidden = set(hidden)  # type: ignore[attr-defined]
             if hasattr(win, "_save_top_bar_prefs"):
                 win._save_top_bar_prefs()  # type: ignore[attr-defined]
+            if ui_mode == "modern" and hasattr(win, "_sync_modern_embedded_topbar_chrome"):
+                win._sync_modern_embedded_topbar_chrome(bar)  # type: ignore[attr-defined]
 
         if self._connect_page is not None:
             panel_order, panel_hidden = self._connect_page.ordered_checked()
@@ -758,6 +796,9 @@ class UiEditorDialog(QtWidgets.QDialog):
 
         if hasattr(win, "_log_ui"):
             win._log_ui("[UI] Layout updated.")  # type: ignore[attr-defined]
+        if ui_mode == "modern":
+            if hasattr(win, "_ensure_modern_nav_visible"):
+                win._ensure_modern_nav_visible()  # type: ignore[attr-defined]
         self.accept()
 
     def select_tab(self, name: str) -> None:
@@ -780,7 +821,9 @@ def open_ui_editor(
     elif focus == "tabs":
         dlg.select_tab("Main tabs")
     elif focus == "tools":
-        dlg.select_tab("Tools tabs")
+        dlg.select_tab("Navigation")
+        if dlg._tabs.count() and dlg._tabs.tabText(0) != "Navigation":
+            dlg.select_tab("Tools tabs")
     dlg.exec()
 
 

@@ -14,10 +14,12 @@ _STATUS_BANNER_MAX_HEIGHT = 56
 def configure_connect_status_banner(
     banner: QtWidgets.QFrame,
     label: QtWidgets.QLabel,
+    *,
+    single_line: bool = False,
 ) -> None:
     """Compact Stopped/Running banner above Connect panels (Standard UI)."""
-    banner.setMaximumHeight(_STATUS_BANNER_MAX_HEIGHT)
-    label.setWordWrap(True)
+    banner.setMaximumHeight(_STATUS_BANNER_MAX_HEIGHT if not single_line else 30)
+    label.setWordWrap(not single_line)
     label.setAlignment(
         QtCore.Qt.AlignmentFlag.AlignLeft | QtCore.Qt.AlignmentFlag.AlignVCenter
     )

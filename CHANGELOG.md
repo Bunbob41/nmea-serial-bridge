@@ -5,6 +5,55 @@ High-level notes for **this fork / branch** (`2034-ui-journey-modernization` and
 
 ---
 
+## v1.35.12
+
+- **View menu (shipped Modern)** — Frozen builds hide dev-only **Save UI as product default** and Standard top-bar items that do not apply to Modern (reset/show chips, move bar, shortcuts legend). Operators keep full screen, HUD, UI editor, reset layout, layout switches, and Tools navigation.
+
+## v1.35.11
+
+- **Modern chip rail** — Added a **TOOLS** section label to the left of the navigation chips (matches the sidebar header).
+
+## v1.35.10
+
+- **Modern navigation recovery** — UI editor Apply re-syncs the chip rail after reorder/hide; falls back to sidebar if chips would be empty; header embed no longer re-parents View/HUD/Layout on every save.
+
+## v1.35.9
+
+- **Modern UI editor** — Scoped to what Modern actually uses: **Header** (View/HUD/Layout only), **Navigation** (chip rail + sidebar pages). Connect / main-tabs editors stay Standard-only; chip rail now respects saved page order from the editor.
+
+## v1.35.8
+
+- **Serial link card** — Form cards no longer stretch vertically to match the taller Network column; content stays compact at the top of the left column.
+- **Header status** — Full “Stopped · Pick a COM port…” line shows when the header has room; elision refreshes on window resize instead of staying stuck at “Stopp…”.
+
+## v1.35.7
+
+- **Position track header** — Click anywhere on the “Position track” bar to expand/collapse (not just the chevron).
+
+## v1.35.6
+
+- **Position track fix** — Restored map canvas height on Control (layout alignment was preventing the track body from expanding); idle “Stopped” message shows on launch again.
+
+## v1.35.5
+
+- **Control tab polish** — Extra TCP mirror port on its own indented row with a compact port field (no label overlap); Position track expanded by default and pinned to the top of the column when collapsed.
+- **Rejects chip** — Header ⚠ rej chip is clickable; shows a plain-language breakdown and optional jump to Activity.
+
+## v1.35.4
+
+- **View → Layout switches** — Menu lists every workspace you are not on (Standard, Field, Modern); two choices when three layouts exist, instead of a single toggle target.
+
+## v1.35.3
+
+- **Header status flex** — Status banner expands into available header width with trailing ellipsis instead of hard clipping; Guide and layout controls no longer steal space via a premature stretch.
+- **Dashboard port lock countdown** — Web API port unlock shows a live `Editable · Ns` tick each second and re-locks the spin box at zero.
+- **View menu structure** — Grouped separators, non-clickable section headers, right-aligned shortcut rows; **Bench pair setup** moved to **Bench Tools ▾** menu.
+- **Mission Review / Black box** (v1.35.2) — Chart title clearance, path elide + copy, placeholder contrast, footer button group.
+
+## v1.35.2
+
+- **Mission Review / Black box polish** — Chart title band clearance fixes bar overlap; session `.raw` path middle-ellipsis + copy button; brighter backup-path placeholder; Quick Export and Back to Activity grouped bottom-right.
+
 ## v1.35.1
 
 - **Nav dropdown chips** — Extra right padding and menu-arrow inset so the caret is not flush to the border; main-button click cycles Logging/Bench Tools children (Activity → Black box → …) instead of resetting to the first item; active child name stays on the chip with blue highlight.

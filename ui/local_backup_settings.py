@@ -4,7 +4,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from PySide6 import QtWidgets
+from PySide6 import QtCore, QtGui, QtWidgets
 
 from core.local_logger import allocate_session_folder, format_session_folder_name
 from ui.ui_prefs import (
@@ -15,6 +15,56 @@ from ui.ui_prefs import (
 
 if TYPE_CHECKING:
     from ui.mixin import BridgeLogicMixin
+
+
+class ElidedPathLabel(QtWidgets.QLabel):
+    """Single-line path display with middle-ellipsis on narrow panes."""
+
+    def __init__(self, parent: QtWidgets.QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setObjectName("missionSessionPathValue")
+        self._full_path = ""
+        self.setSizePolicy(
+            QtWidgets.QSizePolicy.Policy.Expanding,
+            QtWidgets.QSizePolicy.Policy.Preferred,
+        )
+        self.setMinimumWidth(0)
+
+    def set_full_path(self, path: str) -> None:
+        self._full_path = str(path or "").strip()
+        self.setToolTip(self._full_path if self._full_path else "")
+        self._refresh_elide()
+
+    def full_path(self) -> str:
+        return self._full_path
+
+    def resizeEvent(self, event: QtGui.QResizeEvent) -> None:
+        super().resizeEvent(event)
+        self._refresh_elide()
+
+    def _refresh_elide(self) -> None:
+        if not self._full_path:
+            self.setText("(none recorded)")
+            return
+        width = max(40, self.width())
+        self.setText(self.fontMetrics().elidedText(
+            self._full_path,
+            QtCore.Qt.TextElideMode.ElideMiddle,
+            width,
+        ))
+
+
+def _copy_session_path_to_clipboard(win: BridgeLogicMixin) -> None:
+    lbl = getattr(win, "_mission_session_path_label", None)
+    path = lbl.full_path() if isinstance(lbl, ElidedPathLabel) else ""
+    if not path:
+        return
+    app = QtWidgets.QApplication.instance()
+    if app is not None:
+        app.clipboard().setText(path)
+    log = getattr(win, "_log_ui", None)
+    if callable(log):
+        log("[Backup] Session file path copied to clipboard.")
 
 
 def mount_local_backup_location_row(
@@ -66,10 +116,23 @@ def mount_local_backup_location_row(
     lay.addLayout(folder_row)
 
     if show_session_file:
-        win._mission_session_path_label = QtWidgets.QLabel()
-        win._mission_session_path_label.setObjectName("modernIntentHint")
-        win._mission_session_path_label.setWordWrap(True)
-        lay.addWidget(win._mission_session_path_label)
+        session_row = QtWidgets.QHBoxLayout()
+        session_row.setSpacing(8)
+        session_prefix = QtWidgets.QLabel("This session file:")
+        session_prefix.setObjectName("modernToolsInlineSection")
+        session_row.addWidget(session_prefix, 0)
+        win._mission_session_path_label = ElidedPathLabel()
+        session_row.addWidget(win._mission_session_path_label, 1)
+        win._mission_session_path_copy = QtWidgets.QToolButton()
+        win._mission_session_path_copy.setObjectName("missionSessionPathCopy")
+        win._mission_session_path_copy.setText("📋")
+        win._mission_session_path_copy.setToolTip("Copy session .raw path to clipboard")
+        win._mission_session_path_copy.setFixedSize(28, 28)
+        win._mission_session_path_copy.clicked.connect(
+            lambda: _copy_session_path_to_clipboard(win)
+        )
+        session_row.addWidget(win._mission_session_path_copy, 0)
+        lay.addLayout(session_row)
 
 
 def sync_local_backup_location_ui(win: BridgeLogicMixin) -> None:
@@ -101,6 +164,12 @@ def sync_local_backup_location_ui(win: BridgeLogicMixin) -> None:
 def set_mission_session_path_label(win: BridgeLogicMixin, path: str) -> None:
     lbl = getattr(win, "_mission_session_path_label", None)
     if lbl is None:
+        return
+    if isinstance(lbl, ElidedPathLabel):
+        lbl.set_full_path(str(path or "").strip())
+        copy_btn = getattr(win, "_mission_session_path_copy", None)
+        if copy_btn is not None:
+            copy_btn.setEnabled(bool(lbl.full_path()))
         return
     path_s = str(path or "").strip()
     if path_s:

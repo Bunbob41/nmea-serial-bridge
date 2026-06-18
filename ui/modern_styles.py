@@ -96,7 +96,10 @@ QFrame#modernGlobalHeader[sessionMode="true"] QPushButton#modernStopBtn {{
     font-size: 8.5pt;
 }}
 QFrame#modernGlobalHeader[sessionMode="true"] QFrame#modernStatusBanner {{
-    max-width: 999px;
+    max-width: none;
+}}
+QWidget#modernHeaderStatusContainer {{
+    min-width: 0;
 }}
 QToolButton#modernHeaderQrBtn {{
     background-color: {MODERN_SURFACE_ALT};
@@ -243,6 +246,44 @@ QLabel#modernStatusBannerText {{
     font-size: 9pt;
     font-weight: 600;
     background: transparent;
+    min-width: 0;
+}}
+QMenu#viewLayoutMenu {{
+    min-width: 280px;
+    padding: 4px 0;
+}}
+QMenu#viewLayoutMenu::separator {{
+    height: 1px;
+    background: {MODERN_BORDER};
+    margin: 4px 8px;
+}}
+QLabel#viewMenuSectionHeader {{
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    color: #718096;
+    background: transparent;
+}}
+QWidget#viewMenuSectionHeaderRow {{
+    background: transparent;
+}}
+QWidget#viewMenuActionRow {{
+    background: transparent;
+}}
+QWidget#viewMenuActionRow:hover {{
+    background-color: {MODERN_SURFACE_ALT};
+}}
+QLabel#viewMenuActionLabel {{
+    color: {MODERN_TEXT};
+    font-size: 9pt;
+    background: transparent;
+}}
+QLabel#viewMenuShortcutLabel {{
+    color: {MODERN_TEXT_MUTED};
+    font-size: 8.5pt;
+    font-family: "Maple Mono", "Cascadia Mono", "Consolas", monospace;
+    background: transparent;
+    min-width: 72px;
 }}
 QLabel#modernIntentHint {{
     color: {MODERN_ACCENT_BRIGHT};
@@ -508,6 +549,7 @@ QFrame#modernControlMapHeader {{
     border: none;
     border-radius: 6px;
     padding: 2px 0px;
+    min-height: 28px;
 }}
 QFrame#modernControlMapHeader:hover {{
     background-color: rgba(255, 255, 255, 0.04);
@@ -516,6 +558,10 @@ QLabel#modernControlMapTitle {{
     color: {MODERN_TEXT};
     font-size: 11pt;
     font-weight: 700;
+    background: transparent;
+}}
+QLabel#modernControlMapTitle:hover {{
+    color: {MODERN_ACCENT_BRIGHT};
 }}
 QWidget#modernControlMap {{
     background-color: #0f172a;
@@ -727,6 +773,13 @@ QPushButton#modernSettingsNavBtn[navActive="true"] {{
 QFrame#modernToolsChipRail {{
     background-color: {MODERN_SURFACE};
     border-bottom: 1px solid {MODERN_BORDER};
+}}
+QLabel#modernToolsChipRailLabel {{
+    color: {MODERN_TEXT_MUTED};
+    font-size: 7.5pt;
+    font-weight: 700;
+    letter-spacing: 1px;
+    padding: 0 4px 0 2px;
 }}
 QScrollArea#modernToolsChipScroll {{
     background: transparent;
@@ -1847,6 +1900,31 @@ QWidget#missionThroughputChart,
 QWidget#missionHealthTimeline {{
     border: 1px solid {MODERN_BORDER};
     border-radius: 8px;
+}}
+QLabel#missionSessionPathValue {{
+    color: {MODERN_TEXT};
+    font-family: "Maple Mono", "Cascadia Mono", "Consolas", monospace;
+    font-size: 8.5pt;
+    padding: 2px 0;
+}}
+QToolButton#missionSessionPathCopy {{
+    background-color: {MODERN_SURFACE_ALT};
+    color: {MODERN_TEXT_MUTED};
+    border: 1px solid {MODERN_BORDER};
+    border-radius: 6px;
+    font-size: 10pt;
+    padding: 2px;
+}}
+QToolButton#missionSessionPathCopy:hover {{
+    border-color: {MODERN_ACCENT};
+    color: {MODERN_TEXT};
+}}
+QToolButton#missionSessionPathCopy:disabled {{
+    color: {MODERN_BORDER};
+    border-color: {MODERN_BORDER};
+}}
+QLineEdit#modernPathField::placeholder {{
+    color: #a0aec0;
 }}
 
 /* ═══ Scrollbars ══════════════════════════════════════════════════════════ */

@@ -11,6 +11,7 @@ exports/
 build/
 dist/
 bench_defaults.local.json
+product_ui_defaults.local.json
 *.spec.bak
 .cursor/*.png
 test_out.txt

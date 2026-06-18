@@ -214,6 +214,15 @@ class TestBackpressureChip(unittest.TestCase):
         self.assertIn("2 rej", text)
         self.assertEqual(kind, "warn")
 
+    def test_backpressure_detail_rejects(self) -> None:
+        from ui.stats_line import format_backpressure_detail
+
+        detail = format_backpressure_detail(
+            {"drops_n2s": 0, "drops_s2n": 0, "rej_n2s": 2, "rej_s2n": 0, "n2s_q": 0, "s2n_q": 0}
+        )
+        self.assertIn("Rejected 2 toward COM", detail)
+        self.assertIn("strict NMEA", detail)
+
 
     def test_running_hz_chip_shows_gnss_fix_rate(self) -> None:
         text, tip = format_running_hz_chip(

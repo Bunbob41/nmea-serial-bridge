@@ -19,5 +19,11 @@ def next_layout_id(current: str) -> str:
     return LAYOUT_CYCLE_ORDER[(idx + 1) % len(LAYOUT_CYCLE_ORDER)]
 
 
+def other_layout_ids(current: str) -> tuple[str, ...]:
+    """All workspace ids except ``current`` (menu shows every layout you are not on)."""
+    cur = (current or "standard").strip().lower()
+    return tuple(lid for lid in LAYOUT_CYCLE_ORDER if lid != cur)
+
+
 def layout_display_name(ui_id: str) -> str:
     return _LAYOUT_LABELS.get((ui_id or "").strip().lower(), ui_id.title())

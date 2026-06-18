@@ -113,8 +113,7 @@
           "recent",
           "shortcuts",
           "standardize_theme",
-          "tools",
-          "ui_editor"
+          "tools"
         ],
         "shortcuts_visible": false,
         "position": "top",
@@ -174,14 +173,14 @@
           "Presets",
           "Hub",
           "NMEA",
-          "Phone",
+          "Dashboard",
           "Activity",
           "Black box",
           "File log",
           "Guide",
           "Inject",
-          "Terminal",
-          "Checks"
+          "Checks",
+          "Terminal"
         ]
       }
     },
@@ -208,9 +207,9 @@
           "quick_terminal"
         ],
         "collapsed": {
-          "run": false,
+          "run": true,
           "connection": true,
-          "hint": false,
+          "hint": true,
           "quick_log": true,
           "quick_terminal": true
         },
@@ -317,12 +316,12 @@
     "qr_overlay": {
       "user_positioned": true,
       "float_pos_norm": [
-        0.5,
-        0.6474622770919067
+        0.9666388657214345,
+        0.3620414673046252
       ],
       "float_pos_pixels": [
-        712,
-        450
+        1110,
+        219
       ]
     },
     "auto_discover": {
@@ -344,22 +343,28 @@
     "modern_layout": {
       "dock_state": "AAAA/wAAAAD9AAAAAgAAAAAAAAEPAAACyvwCAAAAAvsAAAAwAG0AbwBkAGUAcgBuAEQAbwBjAGsAXwBDAG8AbgB0AHIAbwBsAF8AcABhAG4AZQBsAQAAAAAAAALKAAABPAD////7AAAAJgBtAG8AZABlAHIAbgBEAG8AYwBrAF8AUwBlAHQAdABpAG4AZwBzAwAAAUYAAACwAAACLAAAAqEAAAABAAABbgAAAsr8AgAAAAL7AAAAMgBtAG8AZABlAHIAbgBEAG8AYwBrAF8AQwBvAG4AbgBlAGMAdABpAG8AbgBfAEgAdQBiAQAAAAAAAAHhAAABcgD////7AAAAKABtAG8AZABlAHIAbgBEAG8AYwBrAF8AVABlAGwAZQBtAGUAdAByAHkBAAAB5QAAAOUAAAC6AP///wAAAqQAAALKAAAABAAAAAQAAAAIAAAACPwAAAAA",
       "hsplit": [
-        511,
-        1000
+        300,
+        720,
+        300
       ],
       "left_vsplit": [
-        663
+        480,
+        260
       ],
       "right_vsplit": [
-        663
+        490,
+        250
       ],
       "slot_assignments": {
-        "left_top": "settings",
         "left_bottom": "telem",
-        "center": "control",
+        "left_top": "settings",
+        "right_bottom": "hub",
         "right_top": "log",
-        "right_bottom": "hub"
-      }
+        "center": "control"
+      },
+      "sidebar_collapsed": false,
+      "control_map_collapsed": false,
+      "tools_nav_mode": "top_chips"
     },
     "modern_module_states": {
       "control": "collapsed",
@@ -404,7 +409,7 @@
       "base_dir": "C:\\Users\\Morgan\\Projects\\udp-com-bridge\\logs\\2026-06-16_21-22\\2026-06-16_23-24",
       "session_folders": false
     },
-    "modern_active_tab_name": "Activity",
-    "modern_active_section": "activity"
+    "modern_active_tab_name": "guide",
+    "modern_active_section": "guide"
   }
 }
