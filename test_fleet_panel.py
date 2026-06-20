@@ -7,6 +7,7 @@ from bridge_core import NetMode
 from core.fleet.config import StreamDefinition
 from ui.fleet_panel import (
     com_summary,
+    net_tooltip,
     stream_mirror_summary,
     stream_mode_summary,
 )
@@ -42,6 +43,28 @@ class FleetPanelSummaryTests(unittest.TestCase):
     def test_stream_mirror_summary_empty(self) -> None:
         stream = StreamDefinition.new("Plain")
         self.assertEqual(stream_mirror_summary(stream), "—")
+
+    def test_net_tooltip_tailscale_guidance(self) -> None:
+        stream = StreamDefinition.new(
+            "MAVLink",
+            net_mode=NetMode.UDP_LISTEN.value,
+            udp_host="0.0.0.0",
+            udp_port=14550,
+            udp_fanout=True,
+        )
+        tip = net_tooltip(stream)
+        self.assertIn("Tailscale", tip)
+        self.assertIn("14550", tip)
+
+    def test_net_tooltip_warns_loopback(self) -> None:
+        stream = StreamDefinition.new(
+            "Bench",
+            net_mode=NetMode.UDP_LISTEN.value,
+            udp_host="127.0.0.1",
+            udp_port=14550,
+        )
+        tip = net_tooltip(stream)
+        self.assertIn("loopback", tip.lower())
 
 
 if __name__ == "__main__":

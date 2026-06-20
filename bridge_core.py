@@ -1223,7 +1223,8 @@ class SerialNetBridge:
                 host, port = self.udp_listen
                 self._ui_log(
                     f"Hint: only the bridge may LISTEN on UDP :{port}. "
-                    f"Other apps must SEND to 127.0.0.1:{port} (or unicast to this PC), not bind the same port."
+                    f"Peers must SEND to this PC's IP:{port} "
+                    f"(127.0.0.1:{port} on one PC; Tailscale/LAN IP for remote Mission Planner)."
                 )
             await self.stop()
             return False

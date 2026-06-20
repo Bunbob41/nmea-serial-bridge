@@ -43,6 +43,25 @@ _STREAM_CONNECTION_FIELDS: tuple[str, ...] = (
 FLEET_MAVLINK_MP_UDP_PORT = 14550
 
 
+def normalize_udp_listen_host(host: str) -> str:
+    """Normalize UDP listen bind address for fleet/control comparisons."""
+    value = (host or "0.0.0.0").strip() or "0.0.0.0"
+    if value in ("*", "::"):
+        return "0.0.0.0"
+    return value
+
+
+def udp_listen_hosts_conflict(host_a: str, host_b: str) -> bool:
+    """True when two UDP listen binds would claim the same port on this PC."""
+    a = normalize_udp_listen_host(host_a)
+    b = normalize_udp_listen_host(host_b)
+    if a == b:
+        return True
+    if a == "0.0.0.0" or b == "0.0.0.0":
+        return True
+    return False
+
+
 def mavlink_mp_stream(**kwargs: Any) -> StreamDefinition:
     """Preset row: Cube MAVLink COM -> UDP listen for Mission Planner UDP Client."""
     defaults: dict[str, Any] = {
@@ -234,7 +253,7 @@ def validate_fleet_config_for_start(
     if stream_id is not None and not targets:
         return errors
     seen_com: dict[str, str] = {}
-    listen_ports: dict[tuple[str, int], str] = {}
+    listen_bindings: list[tuple[str, int, str]] = []
     for stream in targets:
         label = stream.label.strip() or stream.id
         if not stream.label.strip():
@@ -263,15 +282,23 @@ def validate_fleet_config_for_start(
             for mirror in mirror_ports:
                 seen_com[mirror] = f"{label} mirror"
         if stream.net_mode == NetMode.UDP_LISTEN.value:
-            host = (stream.udp_host or "0.0.0.0").strip() or "0.0.0.0"
-            key = (host, int(stream.udp_port))
-            if key in listen_ports:
+            host = normalize_udp_listen_host(stream.udp_host)
+            port = int(stream.udp_port)
+            conflict = next(
+                (
+                    prev_label
+                    for prev_host, prev_port, prev_label in listen_bindings
+                    if prev_port == port and udp_listen_hosts_conflict(host, prev_host)
+                ),
+                None,
+            )
+            if conflict is not None:
                 errors.append(
-                    f"Stream {label}: UDP listen {host}:{stream.udp_port} "
-                    f"already used by {listen_ports[key]}."
+                    f"Stream {label}: UDP listen {host}:{port} "
+                    f"conflicts with {conflict} on the same port."
                 )
             else:
-                listen_ports[key] = label
+                listen_bindings.append((host, port, label))
     return errors
 
 
@@ -283,7 +310,7 @@ def validate_fleet_config(config: FleetConfig) -> list[str]:
         errors.append("At most one stream may be marked Primary.")
     enabled = [s for s in config.streams if s.enabled]
     seen_com: dict[str, str] = {}
-    listen_ports: dict[tuple[str, int], str] = {}
+    listen_bindings: list[tuple[str, int, str]] = []
     for stream in config.streams:
         label = stream.label.strip() or stream.id
         if stream.enabled:
@@ -315,13 +342,21 @@ def validate_fleet_config(config: FleetConfig) -> list[str]:
             for mirror in mirror_ports:
                 seen_com[mirror] = f"{label} mirror"
         if stream.net_mode == NetMode.UDP_LISTEN.value:
-            host = (stream.udp_host or "0.0.0.0").strip() or "0.0.0.0"
-            key = (host, int(stream.udp_port))
-            if key in listen_ports:
+            host = normalize_udp_listen_host(stream.udp_host)
+            port = int(stream.udp_port)
+            conflict = next(
+                (
+                    prev_label
+                    for prev_host, prev_port, prev_label in listen_bindings
+                    if prev_port == port and udp_listen_hosts_conflict(host, prev_host)
+                ),
+                None,
+            )
+            if conflict is not None:
                 errors.append(
-                    f"Stream {label}: UDP listen {host}:{stream.udp_port} "
-                    f"already used by {listen_ports[key]}."
+                    f"Stream {label}: UDP listen {host}:{port} "
+                    f"conflicts with {conflict} on the same port."
                 )
             else:
-                listen_ports[key] = label
+                listen_bindings.append((host, port, label))
     return errors

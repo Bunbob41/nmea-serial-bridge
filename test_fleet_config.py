@@ -11,7 +11,9 @@ from core.fleet.config import (
     FleetConfig,
     StreamDefinition,
     load_fleet_config,
+    normalize_udp_listen_host,
     save_fleet_config,
+    udp_listen_hosts_conflict,
     validate_fleet_config,
 )
 
@@ -113,8 +115,42 @@ class TestFleetConfig(unittest.TestCase):
         s = mavlink_mp_stream()
         self.assertEqual(s.label, "MAVLink / MP")
         self.assertEqual(s.nmea_mode, "raw")
+        self.assertEqual(s.udp_host, "0.0.0.0")
         self.assertEqual(s.udp_port, FLEET_MAVLINK_MP_UDP_PORT)
         self.assertTrue(s.udp_fanout)
+
+    def test_udp_listen_host_conflict_wildcard(self) -> None:
+        self.assertTrue(udp_listen_hosts_conflict("0.0.0.0", "127.0.0.1"))
+        self.assertTrue(udp_listen_hosts_conflict("100.64.1.2", "0.0.0.0"))
+        self.assertFalse(udp_listen_hosts_conflict("192.168.1.5", "10.0.0.5"))
+
+    def test_rejects_conflicting_udp_listen_hosts_same_port(self) -> None:
+        cfg = FleetConfig(
+            streams=[
+                StreamDefinition.new(
+                    "A",
+                    com="COM7",
+                    enabled=True,
+                    net_mode=NetMode.UDP_LISTEN.value,
+                    udp_host="0.0.0.0",
+                    udp_port=14550,
+                ),
+                StreamDefinition.new(
+                    "B",
+                    com="COM8",
+                    enabled=True,
+                    net_mode=NetMode.UDP_LISTEN.value,
+                    udp_host="127.0.0.1",
+                    udp_port=14550,
+                ),
+            ]
+        )
+        errors = validate_fleet_config(cfg)
+        self.assertTrue(any("14550" in e for e in errors))
+
+    def test_normalize_udp_listen_host_defaults(self) -> None:
+        self.assertEqual(normalize_udp_listen_host(""), "0.0.0.0")
+        self.assertEqual(normalize_udp_listen_host("*"), "0.0.0.0")
 
 
 class TestFleetBacklogLine(unittest.TestCase):

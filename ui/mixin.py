@@ -4265,7 +4265,9 @@ class BridgeLogicMixin:
             )
         if getattr(stream, "net_mode", "") != NetMode.UDP_LISTEN.value:
             return None
-        sh = (getattr(stream, "udp_host", "") or "0.0.0.0").strip() or "0.0.0.0"
+        from core.fleet.config import normalize_udp_listen_host, udp_listen_hosts_conflict
+
+        sh = normalize_udp_listen_host(getattr(stream, "udp_host", ""))
         try:
             sport = int(getattr(stream, "udp_port", 0))
         except (TypeError, ValueError):
@@ -4273,19 +4275,19 @@ class BridgeLogicMixin:
         bridge = getattr(self, "bridge", None)
         if bridge is not None and getattr(bridge, "mode", None) == NetMode.UDP_LISTEN and bridge.udp_listen:
             chost, cport = bridge.udp_listen
-            chost = (chost or "0.0.0.0").strip() or "0.0.0.0"
-            if chost == sh and int(cport) == sport:
+            chost = normalize_udp_listen_host(chost)
+            if udp_listen_hosts_conflict(chost, sh) and int(cport) == sport:
                 return (
                     f"UDP {sh}:{sport} is in use by the Control bridge. "
                     "Stop Control or pick a different UDP listen port for this Fleet stream."
                 )
         if starting and getattr(self, "rb_udp_listen", None) and self.rb_udp_listen.isChecked():
-            chost = self.udp_host.text().strip() or "0.0.0.0"
+            chost = normalize_udp_listen_host(self.udp_host.text())
             try:
                 cport = int(self.udp_port.text().strip())
             except ValueError:
                 return None
-            if chost == sh and cport == sport:
+            if udp_listen_hosts_conflict(chost, sh) and cport == sport:
                 return (
                     f"UDP {sh}:{sport} is in use by the Control bridge (starting). "
                     "Wait for Control to finish or pick a different UDP listen port."

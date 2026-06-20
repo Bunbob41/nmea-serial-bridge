@@ -15,9 +15,11 @@ from core.fleet.config import (
     FleetConfig,
     StreamDefinition,
     load_fleet_config,
+    normalize_udp_listen_host,
     save_fleet_config,
     stream_com_ports,
     stream_connection_key,
+    udp_listen_hosts_conflict,
     validate_fleet_config,
     validate_fleet_config_for_start,
 )
@@ -64,18 +66,19 @@ class FleetSupervisor(QtCore.QObject):
         return []
 
     def listening_stream_for_udp(self, host: str, port: int, *, exclude_id: str | None = None) -> Optional[StreamDefinition]:
-        host = (host or "0.0.0.0").strip() or "0.0.0.0"
+        host = normalize_udp_listen_host(host)
         port = int(port)
         for stream in self._config.streams:
             if exclude_id and stream.id == exclude_id:
                 continue
             if stream.net_mode != NetMode.UDP_LISTEN.value:
                 continue
-            sh = (stream.udp_host or "0.0.0.0").strip() or "0.0.0.0"
-            if sh == host and int(stream.udp_port) == port:
-                worker = self._workers.get(stream.id)
-                if worker is not None and worker.is_active():
-                    return stream
+            sh = normalize_udp_listen_host(stream.udp_host)
+            if int(stream.udp_port) != port or not udp_listen_hosts_conflict(sh, host):
+                continue
+            worker = self._workers.get(stream.id)
+            if worker is not None and worker.is_active():
+                return stream
         return None
 
     def running_stream_for_com(self, com: str) -> Optional[StreamDefinition]:
@@ -175,7 +178,7 @@ class FleetSupervisor(QtCore.QObject):
     def _udp_listen_preflight(self, stream: StreamDefinition) -> Optional[str]:
         if stream.net_mode != NetMode.UDP_LISTEN.value:
             return None
-        host = (stream.udp_host or "0.0.0.0").strip() or "0.0.0.0"
+        host = normalize_udp_listen_host(stream.udp_host)
         port = int(stream.udp_port)
         other = self.listening_stream_for_udp(host, port, exclude_id=stream.id)
         if other is not None:
@@ -186,7 +189,8 @@ class FleetSupervisor(QtCore.QObject):
         if not probe_udp_port_available(host, port):
             return (
                 f"UDP listen {host}:{port} is busy - another bridge or app is already bound. "
-                f"Pick another listen port (Fleet streams: {FLEET_UDP_PORT_FIRST}-{FLEET_UDP_PORT_LAST})."
+                f"Pick another listen port (Fleet streams: {FLEET_UDP_PORT_FIRST}-{FLEET_UDP_PORT_LAST}). "
+                "For remote Mission Planner over Tailscale, bind 0.0.0.0 and allow inbound UDP in Windows Firewall."
             )
         return None
 

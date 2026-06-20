@@ -12,6 +12,7 @@ from core.fleet.config import (
     StreamDefinition,
     mavlink_mp_stream,
     normalize_serial_mirror_ports,
+    normalize_udp_listen_host,
     suggest_fleet_udp_port,
     validate_fleet_config,
 )
@@ -110,7 +111,26 @@ def stream_mirror_tooltip(stream: StreamDefinition) -> str:
 
 
 def net_tooltip(stream: StreamDefinition) -> str:
-    return f"Network: {net_summary(stream)}"
+    lines = [f"Network: {net_summary(stream)}"]
+    if stream.net_mode == NetMode.UDP_LISTEN.value:
+        host = normalize_udp_listen_host(stream.udp_host)
+        port = int(stream.udp_port)
+        if host == "127.0.0.1":
+            lines.append(
+                "Listen host is loopback only — remote Mission Planner / Tailscale cannot connect. "
+                "Use 0.0.0.0 for LAN or Tailscale."
+            )
+        else:
+            lines.append(
+                f"Remote Mission Planner: UDP Client → this PC's LAN or Tailscale IP:{port} "
+                "(not 127.0.0.1 from another machine)."
+            )
+            lines.append("Allow inbound UDP on this port in Windows Firewall.")
+        if stream.udp_fanout:
+            lines.append("Fan-out on: every UDP peer that sends first gets COM→net replies.")
+        else:
+            lines.append("Fan-out off: only the most recent sender gets COM→net.")
+    return "\n".join(lines)
 
 
 _COL_LABEL = 0
@@ -326,6 +346,12 @@ class StreamEditDialog(QtWidgets.QDialog):
         if nidx >= 0:
             self._net.setCurrentIndex(nidx)
 
+        self._udp_host = QtWidgets.QLineEdit(normalize_udp_listen_host(self._stream.udp_host))
+        self._udp_host.setToolTip(
+            "Address this stream binds on this PC.\n"
+            "0.0.0.0 = all interfaces (LAN + Tailscale) — required for remote Mission Planner.\n"
+            "127.0.0.1 = this PC only (bench). Remote senders cannot reach loopback."
+        )
         self._udp_port = _fleet_port_spin(self._stream.udp_port)
         self._udp_remote_host = QtWidgets.QLineEdit(self._stream.udp_remote_host)
         self._udp_remote_port = _fleet_port_spin(self._stream.udp_remote_port)
@@ -345,6 +371,7 @@ class StreamEditDialog(QtWidgets.QDialog):
             "Mirrors always copy network→COM even when this is off."
         )
 
+        self._listen_host_label = QtWidgets.QLabel("UDP listen host")
         self._listen_port_label = QtWidgets.QLabel("UDP listen port")
         self._remote_host_label = QtWidgets.QLabel("UDP remote host")
         self._remote_port_label = QtWidgets.QLabel("UDP remote port")
@@ -362,6 +389,7 @@ class StreamEditDialog(QtWidgets.QDialog):
         lay.addRow("Network", self._net)
         lay.addRow("Serial mirrors", self._mirror_ports)
         lay.addRow("", self._mirror_device_tx)
+        lay.addRow(self._listen_host_label, self._udp_host)
         lay.addRow(self._listen_port_label, self._udp_port)
         lay.addRow(self._remote_host_label, self._udp_remote_host)
         lay.addRow(self._remote_port_label, self._udp_remote_port)
@@ -398,6 +426,8 @@ class StreamEditDialog(QtWidgets.QDialog):
         remote = mode == NetMode.UDP_REMOTE.value
         tcp_srv = mode == NetMode.TCP_SERVER.value
         tcp_cli = mode == NetMode.TCP_CLIENT.value
+        self._listen_host_label.setVisible(listen)
+        self._udp_host.setVisible(listen)
         self._listen_port_label.setVisible(listen)
         self._udp_port.setVisible(listen)
         self._remote_host_label.setVisible(remote)
@@ -433,6 +463,7 @@ class StreamEditDialog(QtWidgets.QDialog):
         s.primary = self._primary.isChecked()
         s.nmea_mode = str(self._nmea.currentData())
         s.net_mode = str(self._net.currentData())
+        s.udp_host = normalize_udp_listen_host(self._udp_host.text())
         s.udp_port = int(self._udp_port.value())
         s.udp_remote_host = self._udp_remote_host.text().strip()
         s.udp_remote_port = int(self._udp_remote_port.value())
@@ -469,9 +500,10 @@ class FleetPanelWidget(QtWidgets.QWidget):
         self._btn_add_mavlink = QtWidgets.QPushButton("Add MAVLink / MP")
         self._btn_add_mavlink.setObjectName("modernToolsSecondaryBtn")
         self._btn_add_mavlink.setToolTip(
-            "Cube + Mission Planner: Raw binary, UDP listen 14550, fan-out on. "
+            "Cube + Mission Planner: Raw binary, UDP listen 0.0.0.0:14550, fan-out on. "
             "Pick the Cube MAVLink COM in the dialog, then Start all. "
-            "MP → UDP Client → 127.0.0.1:14550."
+            "Same PC: MP → UDP Client → 127.0.0.1:14550. "
+            "Remote / Tailscale: MP → UDP Client → survey PC Tailscale IP:14550."
         )
         self._btn_start = QtWidgets.QPushButton("Start all")
         self._btn_stop = QtWidgets.QPushButton("Stop all")
