@@ -440,6 +440,29 @@ def create_app(
     # ------------------------------------------------------------------ static dashboard
     static = _static_dir()
     if static is not None:
+        repo_root = Path(__file__).resolve().parent
+        fonts_dir = repo_root / "assets" / "fonts"
+        if fonts_dir.is_dir():
+            app.mount(
+                "/static/fonts",
+                StaticFiles(directory=str(fonts_dir)),
+                name="bundle-fonts",
+            )
+
+        for icon_name in ("app-icon.ico", "app-icon.png"):
+            icon_path = repo_root / "assets" / icon_name
+            if icon_path.is_file():
+                _favicon_path = icon_path
+                break
+        else:
+            _favicon_path = None
+
+        if _favicon_path is not None:
+
+            @app.get("/favicon.ico", include_in_schema=False)
+            def favicon() -> FileResponse:
+                return FileResponse(str(_favicon_path))
+
         app.mount(
             "/static",
             _DevStaticFiles(directory=str(static), html=True),

@@ -39,7 +39,7 @@ def build_modern_activity_body(parent: QtWidgets.QWidget) -> QtWidgets.QWidget:
     parent.btn_clear_ui = QtWidgets.QPushButton("Clear Activity panel")
     parent.btn_clear_ui.setObjectName("modernToolsPrimaryBtn")
     parent.btn_clear_ui.setToolTip(
-        "Clears the on-screen Activity view — does not delete file logs or black-box .raw files."
+        "Clears the on-screen Activity view — does not delete file logs or black-box .nmea files."
     )
     row.addWidget(parent.btn_clear_ui, 0)
 

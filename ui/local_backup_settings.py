@@ -75,7 +75,7 @@ def mount_local_backup_location_row(
 ) -> None:
     """Backup root path, dated-folder toggle, and optional current-session path."""
     hint = QtWidgets.QLabel(
-        "Backup saves raw COM reads to a .raw file. Choose where future sessions write."
+        "Backup saves raw COM reads to a .nmea file. Choose where future sessions write."
     )
     hint.setObjectName("modernIntentHint")
     hint.setWordWrap(True)
@@ -126,7 +126,7 @@ def mount_local_backup_location_row(
         win._mission_session_path_copy = QtWidgets.QToolButton()
         win._mission_session_path_copy.setObjectName("missionSessionPathCopy")
         win._mission_session_path_copy.setText("📋")
-        win._mission_session_path_copy.setToolTip("Copy session .raw path to clipboard")
+        win._mission_session_path_copy.setToolTip("Copy session backup path to clipboard")
         win._mission_session_path_copy.setFixedSize(28, 28)
         win._mission_session_path_copy.clicked.connect(
             lambda: _copy_session_path_to_clipboard(win)

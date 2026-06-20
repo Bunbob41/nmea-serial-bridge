@@ -1,6 +1,7 @@
 """Shared connection field validation for hub, override, and Field strip."""
 from __future__ import annotations
 
+import re
 from typing import Any, Optional
 
 # Survey / GNSS serial: common NMEA defaults through high-rate INS logging.
@@ -17,6 +18,19 @@ BAUD_PRESETS: tuple[int, ...] = (
 
 BAUD_PRESET_LABELS: tuple[str, ...] = tuple(str(b) for b in BAUD_PRESETS)
 DEFAULT_BAUD = 115200
+
+
+def com_port_sort_key(device: str) -> tuple[int, int, str]:
+    """COM1 before COM3 before COM10 (not lexicographic COM1, COM10, COM3)."""
+    raw = (device or "").strip().upper()
+    match = re.match(r"^COM(\d+)$", raw)
+    if match:
+        return (0, int(match.group(1)), raw)
+    return (1, 0, raw)
+
+
+def sort_com_devices(devices: list[str]) -> list[str]:
+    return sorted(devices, key=com_port_sort_key)
 
 
 def parse_baud(text: str) -> Optional[int]:

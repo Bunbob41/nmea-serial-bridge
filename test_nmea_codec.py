@@ -70,6 +70,19 @@ class TestLineAssembler(unittest.TestCase):
         self.assertEqual(len(r.forward), 1)
         self.assertEqual(len(r.rejected), 1)
 
+    def test_strict_extracts_nmea_after_binary_prefix(self) -> None:
+        asm = NmeaLineAssembler()
+        cs = 0
+        body = "GPRMC,123519,A,4807.038,N,01131.000,E,022.4,084.4,230394,003.1,W"
+        for ch in body:
+            cs ^= ord(ch)
+        rmc = f"${body}*{cs:02X}"
+        prefixed = b"\x00\x00\x06\x08\x00\x00\x03" + rmc.encode() + b"\r\n"
+        r = asm.feed(prefixed, NmeaMode.STRICT)
+        self.assertEqual(len(r.forward), 1)
+        self.assertIn(b"$GPRMC", r.forward[0])
+        self.assertEqual(r.rejected, [])
+
 
 class TestNmeaSentenceType(unittest.TestCase):
     def test_sddpt_is_dpt_not_dbt(self) -> None:

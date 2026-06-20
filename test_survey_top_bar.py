@@ -306,6 +306,93 @@ class SurveyTopBarTests(unittest.TestCase):
         assert view is not None
         self.assertFalse(view._grip.isVisible())
         self.assertFalse(view._resize_edge.isVisible())
+        layout_chip = bar.chip("ui_switch")
+        self.assertIsNotNone(layout_chip)
+        assert layout_chip is not None
+        inner = layout_chip._inner
+        self.assertIsInstance(inner, QtWidgets.QToolButton)
+        self.assertEqual(inner.text(), "Layout")
+
+    def test_embed_track_in_uses_minimum_size_policy(self) -> None:
+        app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+        bar = SurveyTopBar()
+        btn = QtWidgets.QToolButton()
+        configure_topbar_button(btn, "Layout")
+        bar.register("ui_switch", "Layout", btn, pin_right=True)
+        bar.set_layout_mode("cluster")
+        host = QtWidgets.QWidget()
+        lay = QtWidgets.QHBoxLayout(host)
+        bar.embed_track_in(host, lay)
+        track = bar._track
+        self.assertEqual(
+            track.sizePolicy().horizontalPolicy(),
+            QtWidgets.QSizePolicy.Policy.Minimum,
+        )
+
+    def test_embedded_nav_minimum_width_fits_chip_labels(self) -> None:
+        app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+        bar = SurveyTopBar()
+        keys_labels = (("view", "View"), ("hud", "HUD"), ("ui_switch", "Layout"))
+        for key, label in keys_labels:
+            btn = QtWidgets.QToolButton()
+            configure_topbar_button(btn, label)
+            bar.register(key, label, btn, pin_right=(key == "ui_switch"))
+        bar.set_prefs([k for k, _ in keys_labels], set())
+        bar.set_layout_mode("cluster")
+        bar.set_interactive_chrome(False)
+        natural_sum = sum(
+            bar._chips[key].natural_total_width(compact=False) for key, _ in keys_labels
+        )
+        nav = QtWidgets.QWidget()
+        nav_lay = QtWidgets.QHBoxLayout(nav)
+        widths: list[int] = []
+
+        def _on_width(need: int) -> None:
+            widths.append(need)
+            nav.setMinimumWidth(need)
+
+        bar.set_cluster_width_callback(_on_width)
+        bar.embed_track_in(nav, nav_lay)
+        nav.show()
+        app.processEvents()
+        bar._apply_cluster_layout()
+        app.processEvents()
+        self.assertTrue(widths)
+        self.assertGreaterEqual(nav.minimumWidth(), natural_sum)
+        layout_chip = bar.chip("ui_switch")
+        self.assertIsNotNone(layout_chip)
+        assert layout_chip is not None
+        inner = layout_chip._inner
+        self.assertIsInstance(inner, QtWidgets.QToolButton)
+        self.assertEqual(inner.text(), "Layout")
+
+    def test_embedded_layout_toggle_shows_full_label(self) -> None:
+        app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+        bar = SurveyTopBar()
+
+        class _Host(QtWidgets.QWidget):
+            _ui_mode = "modern"
+
+        host = _Host()
+        btn = build_ui_switch_inner(host, on_toggle=lambda: True)
+        bar.register("ui_switch", "Layout", btn, pin_right=True)
+        bar.set_layout_mode("cluster")
+        bar.set_interactive_chrome(False)
+        bar.set_prefs(["view", "hud", "ui_switch"], {"hud", "tools"})
+        nav = QtWidgets.QWidget()
+        nav_lay = QtWidgets.QHBoxLayout(nav)
+        bar.embed_track_in(nav, nav_lay)
+        nav.resize(400, 40)
+        nav.show()
+        app.processEvents()
+        bar._apply_cluster_layout()
+        app.processEvents()
+        chip = bar.chip("ui_switch")
+        self.assertIsNotNone(chip)
+        assert chip is not None
+        self.assertEqual(btn.text(), "Layout")
+        self.assertGreaterEqual(btn.maximumWidth(), btn.minimumWidth())
+        self.assertGreaterEqual(chip.minimumWidth(), 90)
 
     def test_cluster_layout_survives_pending_spring_timer(self) -> None:
         app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
@@ -330,6 +417,64 @@ class SurveyTopBarTests(unittest.TestCase):
         keys = bar._visible_keys()
         total = sum(bar._chips[k].width() for k in keys)
         self.assertLess(total, 900 // 2)
+
+
+class ModernToolsChipCompressionTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        if QtWidgets.QApplication.instance() is None:
+            cls._app = QtWidgets.QApplication([])
+        else:
+            cls._app = QtWidgets.QApplication.instance()
+
+    def test_should_use_header_icon_only_hysteresis(self) -> None:
+        from ui.modern_tools_chips import should_use_header_icon_only
+
+        self.assertTrue(
+            should_use_header_icon_only(200, 300, currently_icon_only=False)
+        )
+        self.assertFalse(
+            should_use_header_icon_only(320, 300, currently_icon_only=False)
+        )
+        self.assertTrue(
+            should_use_header_icon_only(310, 300, currently_icon_only=True)
+        )
+        self.assertFalse(
+            should_use_header_icon_only(330, 300, currently_icon_only=True)
+        )
+
+    def test_icon_only_chip_shows_icon_not_label(self) -> None:
+        from ui.modern_tools_chips import apply_embedded_header_chip_style
+
+        btn = QtWidgets.QPushButton()
+        btn.setObjectName("modernToolsNavChip")
+        btn.setProperty("navIcon", "*")
+        btn.setProperty("navLabel", "Control")
+        apply_embedded_header_chip_style(btn, compact=True, icon_only=True)
+        self.assertEqual(btn.text(), "*")
+        self.assertNotIn("Control", btn.text())
+        self.assertEqual(btn.toolTip(), "Control")
+
+    def test_embedded_chip_inner_width_matches_row(self) -> None:
+        from ui.modern_tools_chips import (
+            estimate_embedded_chips_row_width,
+            sync_embedded_chip_inner_width,
+        )
+
+        buttons: list[QtWidgets.QPushButton] = []
+        for icon, label in (("A", "Control"), ("B", "Activity")):
+            btn = QtWidgets.QPushButton()
+            btn.setObjectName("modernToolsNavChip")
+            btn.setProperty("navIcon", icon)
+            btn.setProperty("navLabel", label)
+            buttons.append(btn)
+        inner = QtWidgets.QWidget()
+        row = sync_embedded_chip_inner_width(inner, buttons, [], icon_only=True)
+        self.assertEqual(inner.minimumWidth(), row)
+        self.assertEqual(
+            row,
+            estimate_embedded_chips_row_width(buttons, [], icon_only=True),
+        )
 
 
 if __name__ == "__main__":

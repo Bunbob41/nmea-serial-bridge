@@ -149,6 +149,34 @@ def _find_line_end(buf: bytearray) -> Optional[int]:
     return None
 
 
+def _embedded_nmea_sentences(line: str) -> list[str]:
+    """Extract $-prefixed clauses when binary garbage precedes NMEA on one line."""
+    out: list[str] = []
+    start = 0
+    while True:
+        j = line.find("$", start)
+        if j < 0:
+            break
+        nxt = line.find("$", j + 1)
+        segment = line[j:nxt] if nxt >= 0 else line[j:]
+        segment = segment.strip()
+        if segment:
+            out.append(segment)
+        if nxt < 0:
+            break
+        start = nxt
+    return out
+
+
+def _strict_line_candidates(line: str) -> list[str]:
+    if not line:
+        return []
+    if line[0] in ("$", "!"):
+        return [line]
+    embedded = _embedded_nmea_sentences(line)
+    return embedded if embedded else [line]
+
+
 def _classify_strict(line: str, nmea_filter: Optional[NmeaFilter] = None) -> Tuple[bool, str]:
     s = line.strip()
     if not s:
@@ -200,19 +228,21 @@ class NmeaLineAssembler:
                 out.rejected.append(f"line too long ({len(line)} chars), dropped")
                 continue
 
-            out.ingress_lines += 1
-            if nmea_sentence_type(line) == "GGA":
-                out.ingress_fix_lines += 1
+            candidates = _strict_line_candidates(line) if mode == NmeaMode.STRICT else [line]
+            for sub_line in candidates:
+                out.ingress_lines += 1
+                if nmea_sentence_type(sub_line) == "GGA":
+                    out.ingress_fix_lines += 1
 
-            if mode == NmeaMode.STRICT:
-                ok, reason = _classify_strict(line, nmea_filter)
-                if not ok:
-                    out.rejected.append(reason)
-                    continue
+                if mode == NmeaMode.STRICT:
+                    ok, reason = _classify_strict(sub_line, nmea_filter)
+                    if not ok:
+                        out.rejected.append(reason)
+                        continue
 
-            wire = _line_to_wire(line)
-            if wire:
-                out.forward.append(wire)
+                wire = _line_to_wire(sub_line)
+                if wire:
+                    out.forward.append(wire)
 
         return out
 

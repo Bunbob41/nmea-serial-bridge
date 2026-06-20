@@ -8,13 +8,13 @@ if TYPE_CHECKING:
 
 
 def install_three_way_layout_cycle() -> None:
-    """Patch BridgeLogicMixin so the Layout chip cycles Standard → Field → Modern."""
+    """Patch BridgeLogicMixin so the Layout chip cycles Field → Modern."""
     import ui.mixin as mixin_mod
     from ui.layout_cycle import next_layout_id
     from ui.registry import normalize_ui_id
 
     def _toggle_ui_layout(self: "BridgeLogicMixin") -> bool:
-        cur = normalize_ui_id(getattr(self, "_ui_mode", "standard"))
+        cur = normalize_ui_id(getattr(self, "_ui_mode", "field"))
         nxt = next_layout_id(cur)
         return self._switch_ui_layout(nxt)
 

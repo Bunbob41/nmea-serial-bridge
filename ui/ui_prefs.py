@@ -615,6 +615,7 @@ _MODERN_SPLIT_DEFAULTS: dict[str, list[int]] = {
     "hsplit": [300, 720, 300],
     "left_vsplit": [480, 260],
     "right_vsplit": [490, 250],
+    "header_split": [130, 100, 420, 280],
 }
 _MODERN_ALL_PANELS = frozenset(_MODERN_SLOT_DEFAULTS.values())
 _MODERN_ALL_SLOTS = frozenset(_MODERN_SLOT_DEFAULTS.keys())
@@ -629,10 +630,19 @@ def load_modern_layout_prefs() -> dict[str, Any]:
         "sidebar_collapsed": False,
         "control_map_collapsed": True,
         "tools_nav_mode": "sidebar",
+        "header_split_locked": False,
         **{k: list(v) for k, v in _MODERN_SPLIT_DEFAULTS.items()},
     }
     if not isinstance(raw, dict):
         return out
+    if "header_split_locked" in raw:
+        out["header_split_locked"] = bool(raw.get("header_split_locked"))
+    hs = raw.get("header_split")
+    if isinstance(hs, list) and len(hs) >= 4:
+        try:
+            out["header_split"] = [max(72, int(x)) for x in hs[:4]]
+        except (TypeError, ValueError):
+            pass
     if "sidebar_collapsed" in raw:
         out["sidebar_collapsed"] = bool(raw.get("sidebar_collapsed"))
     if "control_map_collapsed" in raw:
@@ -670,6 +680,8 @@ def save_modern_layout_prefs(
     hsplit: list[int] | None = None,
     left_vsplit: list[int] | None = None,
     right_vsplit: list[int] | None = None,
+    header_split: list[int] | None = None,
+    header_split_locked: bool | None = None,
     slot_assignments: dict[str, str] | None = None,
     sidebar_collapsed: bool | None = None,
     control_map_collapsed: bool | None = None,
@@ -684,6 +696,10 @@ def save_modern_layout_prefs(
         payload["left_vsplit"] = [max(80, int(x)) for x in left_vsplit[:2]]
     if right_vsplit is not None:
         payload["right_vsplit"] = [max(80, int(x)) for x in right_vsplit[:2]]
+    if header_split is not None:
+        payload["header_split"] = [max(72, int(x)) for x in header_split[:4]]
+    if header_split_locked is not None:
+        payload["header_split_locked"] = bool(header_split_locked)
     if slot_assignments is not None:
         payload["slot_assignments"] = {str(k): str(v) for k, v in slot_assignments.items()}
     if sidebar_collapsed is not None:
@@ -722,7 +738,7 @@ def effective_local_backup_base_dir() -> Path:
 
 
 def prepare_local_backup_dir_for_session() -> Path:
-    """Directory used when the bridge opens the next .raw backup file."""
+    """Directory used when the bridge opens the next NMEA backup file."""
     from core.local_logger import allocate_session_folder
 
     prefs = load_local_backup_prefs()
@@ -1333,6 +1349,78 @@ def save_qr_overlay_prefs(
     if pix_out is not None:
         payload["float_pos_pixels"] = pix_out
     data["qr_overlay"] = payload
+    _write_json(data)
+
+
+def load_guide_float_prefs() -> dict[str, Any]:
+    data = _read_json()
+    raw = data.get("guide_float")
+    out: dict[str, Any] = {
+        "hidden": False,
+        "float_pos_norm": None,
+        "float_pos_pixels": None,
+        "user_positioned": False,
+    }
+    if not isinstance(raw, dict):
+        return out
+    out["hidden"] = bool(raw.get("hidden"))
+    norm = raw.get("float_pos_norm")
+    if isinstance(norm, (list, tuple)) and len(norm) >= 2:
+        try:
+            nx = max(0.0, min(1.0, float(norm[0])))
+            ny = max(0.0, min(1.0, float(norm[1])))
+            out["float_pos_norm"] = (nx, ny)
+        except (TypeError, ValueError):
+            pass
+    pix = raw.get("float_pos_pixels")
+    if isinstance(pix, (list, tuple)) and len(pix) >= 2:
+        try:
+            out["float_pos_pixels"] = [int(pix[0]), int(pix[1])]
+        except (TypeError, ValueError):
+            pass
+    if raw.get("user_positioned") is not None:
+        out["user_positioned"] = bool(raw.get("user_positioned"))
+    return out
+
+
+def save_guide_float_prefs(
+    *,
+    hidden: bool | None = None,
+    float_pos_norm: tuple[float, float] | list[float] | None = None,
+    float_pos_pixels: list[int] | None = None,
+    user_positioned: bool | None = None,
+) -> None:
+    prev = load_guide_float_prefs()
+    out_hidden = bool(prev.get("hidden")) if hidden is None else bool(hidden)
+    norm_out = prev.get("float_pos_norm")
+    if float_pos_norm is not None:
+        try:
+            nx = max(0.0, min(1.0, float(float_pos_norm[0])))
+            ny = max(0.0, min(1.0, float(float_pos_norm[1])))
+            norm_out = (nx, ny)
+        except (TypeError, ValueError, IndexError):
+            pass
+    pix_out = prev.get("float_pos_pixels")
+    if float_pos_pixels is not None and len(float_pos_pixels) >= 2:
+        try:
+            pix_out = [max(0, int(float_pos_pixels[0])), max(0, int(float_pos_pixels[1]))]
+        except (TypeError, ValueError):
+            pix_out = None
+    positioned = (
+        bool(user_positioned)
+        if user_positioned is not None
+        else bool(prev.get("user_positioned"))
+    )
+    data = _read_json()
+    payload: dict[str, Any] = {
+        "hidden": out_hidden,
+        "user_positioned": positioned,
+    }
+    if norm_out is not None:
+        payload["float_pos_norm"] = [norm_out[0], norm_out[1]]
+    if pix_out is not None:
+        payload["float_pos_pixels"] = pix_out
+    data["guide_float"] = payload
     _write_json(data)
 
 

@@ -1,7 +1,7 @@
 """Compact status-bar copy for the local black-box backup chip."""
 from __future__ import annotations
 
-
+from core.local_logger import LOCAL_BACKUP_EXT
 def _human_bytes(n: int) -> str:
     n = max(0, int(n))
     if n < 1024:
@@ -49,10 +49,10 @@ def format_backup_status(
                 "Backup was enabled but no writer opened for this session (disk/path error). "
                 "Check the live log and logs/ permissions.",
             )
-        return ("Backup: starting…", "Opening local .raw backup file for this session.")
+        return ("Backup: starting…", "Opening local NMEA backup file for this session.")
     return (
         "Backup: ready",
-        "Enabled — a new logs/backup_YYYYMMDD_HHMM.raw file opens on the next Start.",
+        f"Enabled — a new backup_YYYYMMDD_HHMM{LOCAL_BACKUP_EXT} file opens on the next Start.",
     )
 
 
@@ -82,18 +82,18 @@ def format_black_box_page_status(
             line = f"{line} ({human}, {dropped:,} drops)"
         else:
             line = f"{line} ({human})"
-        tip = f"Writing every COM read to {path or 'logs/backup_*.raw'}"
+        tip = f"Writing every COM read to {path or f'logs/backup_*{LOCAL_BACKUP_EXT}'}"
         if dropped > 0:
             tip += f"\n{dropped:,} chunks dropped (backup queue saturated)"
         return (line, tip)
     if running:
         return (
             "Backup failed to open",
-            "Black box was enabled but no .raw writer opened — check logs/ permissions.",
+            "Black box was enabled but no backup writer opened — check logs/ permissions.",
         )
     return (
-        "Ready — new .raw file on Start",
-        "Enabled. A new logs/backup_YYYYMMDD_HHMM.raw file opens when you Start.",
+        f"Ready — new {LOCAL_BACKUP_EXT} file on Start",
+        f"Enabled. A new logs/backup_YYYYMMDD_HHMM{LOCAL_BACKUP_EXT} file opens when you Start.",
     )
 
 

@@ -242,13 +242,13 @@ THEME_COLOR_MAPS: dict[str, dict[str, str]] = {
 }
 
 DEFAULT_ZONE_COLORS: dict[str, str] = {
-    "background": "#1f2430",
-    "topbar": "#354b6b",
-    "tabs": "#5a3f8c",
-    "buttons": "#c54f8b",
-    "inputs": "#2f6a7a",
-    "logs": "#1d1530",
-    "accent": "#f6c65b",
+    "background": "#241a1f",
+    "topbar": "#3a2a31",
+    "tabs": "#5a3543",
+    "buttons": "#6b3a4a",
+    "inputs": "#1e181c",
+    "logs": "#161214",
+    "accent": "#d4af37",
 }
 
 _ZONE_COLOR_GROUPS: dict[str, tuple[str, ...]] = {
@@ -364,7 +364,7 @@ def zone_colors_for_theme(theme_id: str) -> dict[str, str]:
     elif theme_id == THEME_RANDOM_FAVORITE:
         merged.update(load_random_theme_favorite_zones())
     elif theme_id == THEME_MAROON:
-        return merged
+        return dict(DEFAULT_ZONE_COLORS)
     else:
         color_map = THEME_COLOR_MAPS.get(theme_id)
         if color_map:

@@ -153,7 +153,12 @@ def wire_status_bar(win: QtWidgets.QWidget) -> None:
         )
     bar = getattr(win, "statusBar", None)
     if bar is not None and backup is not None and backup.parent() is None:
-        bar.insertPermanentWidget(0, backup)
+        stats = getattr(win, "lbl_stats", None)
+        # insertPermanentWidget(0) warns when the bar has no widgets yet (Modern UI).
+        if stats is not None and stats.parent() is bar:
+            bar.insertPermanentWidget(0, backup)
+        else:
+            bar.addPermanentWidget(backup)
 
 
 def refresh_status_bar_labels(win: QtWidgets.QWidget) -> None:
@@ -324,7 +329,7 @@ def create_connection_controls(parent: QtWidgets.QWidget) -> None:
         "TCP port for Extra TCP output (default 10111). Clients connect here to listen."
     )
 
-    p.chk_udp_fanout = QtWidgets.QCheckBox("Fan-out  —  send serial data to all UDP peers")
+    p.chk_udp_fanout = QtWidgets.QCheckBox("UDP Fan-out")
     p.chk_udp_fanout.setChecked(True)
     p.chk_udp_fanout.setToolTip(
         "UDP listen mode only.\n\n"
@@ -332,6 +337,16 @@ def create_connection_controls(parent: QtWidgets.QWidget) -> None:
         "contacted the bridge during this session.\n\n"
         "Unchecked (Single-link): only the most recent sender receives the serial stream\n"
         "(legacy one-to-one behaviour)."
+    )
+    from ui.serial_mirror_fields import SerialMirrorPortPicker
+
+    p.serial_mirror_ports = SerialMirrorPortPicker(p)
+    p.chk_serial_mirror_device_tx = QtWidgets.QCheckBox(
+        "Include device TX on serial mirrors"
+    )
+    p.chk_serial_mirror_device_tx.setToolTip(
+        "Also copy bytes read from the primary COM (device→network) onto mirror ports.\n"
+        "Enables a full com0com monitor leg without a second bridge."
     )
     p.chk_advanced_net = QtWidgets.QCheckBox("Advanced network (TCP / UDP remote / all modes)")
     p.chk_advanced_net.setToolTip(
@@ -454,6 +469,7 @@ def create_connection_controls(parent: QtWidgets.QWidget) -> None:
         p.tcp_cli_port,
         p.tcp_reconnect_spin,
         p.tcp_sink_port,
+        p.serial_mirror_ports,
     ]
 
 
@@ -546,7 +562,9 @@ def create_nmea_controls(parent: QtWidgets.QWidget, *, embedded: bool = False) -
     return _scrollable(w)
 
 
-def create_theme_controls(parent: QtWidgets.QWidget) -> QtWidgets.QWidget:
+def create_theme_controls(
+    parent: QtWidgets.QWidget, *, professional: bool = False
+) -> QtWidgets.QWidget:
     from ui.tool_tabs import _scrollable
 
     host = QtWidgets.QWidget()
@@ -556,10 +574,16 @@ def create_theme_controls(parent: QtWidgets.QWidget) -> QtWidgets.QWidget:
     lay.setContentsMargins(14, 14, 14, 14)
     lay.setSpacing(10)
 
-    hint = QtWidgets.QLabel(
-        "Optional colors for bench or training setups. "
-        "Defaults are fine — most operators connect, start the bridge, then minimize."
-    )
+    if professional:
+        hint = QtWidgets.QLabel(
+            "Choose a built-in palette or fine-tune zone colors. "
+            "Changes apply immediately across the Modern workspace."
+        )
+    else:
+        hint = QtWidgets.QLabel(
+            "Optional colors for bench or training setups. "
+            "Defaults are fine — most operators connect, start the bridge, then minimize."
+        )
     hint.setWordWrap(True)
     hint.setObjectName("themeStudioHint")
     lay.addWidget(hint)
@@ -576,23 +600,29 @@ def create_theme_controls(parent: QtWidgets.QWidget) -> QtWidgets.QWidget:
         THEME_FOREST,
         THEME_SUNSET,
         THEME_MIDNIGHT,
-    THEME_RANDOM_CURRENT,
-        THEME_RANDOM_FAVORITE,
     )
+    if not professional:
+        theme_order = (
+            *theme_order,
+            THEME_RANDOM_CURRENT,
+            THEME_RANDOM_FAVORITE,
+        )
     for tid in theme_order:
         parent.cmb_theme_choice.addItem(THEME_LABELS.get(tid, tid), tid)
     parent.cmb_theme_choice.currentIndexChanged.connect(parent._on_theme_choice_changed)
     gf.addRow("Theme:", parent.cmb_theme_choice)
 
-    parent.chk_theme_seed_lock = QtWidgets.QCheckBox("Lock random seed (same vibe)")
-    parent.chk_theme_seed_lock.setObjectName("themeStudioSeedLock")
-    parent.chk_theme_seed_lock.setToolTip(
-        "When enabled, each Randomize click produces the next deterministic variation from one style family."
-    )
-    parent.chk_theme_seed_lock.setChecked(load_random_seed_lock())
-    parent.chk_theme_seed_lock.toggled.connect(parent._set_random_seed_lock)
-    gf.addRow("", parent.chk_theme_seed_lock)
+    if not professional:
+        parent.chk_theme_seed_lock = QtWidgets.QCheckBox("Lock random seed (same vibe)")
+        parent.chk_theme_seed_lock.setObjectName("themeStudioSeedLock")
+        parent.chk_theme_seed_lock.setToolTip(
+            "When enabled, each Randomize click produces the next deterministic variation from one style family."
+        )
+        parent.chk_theme_seed_lock.setChecked(load_random_seed_lock())
+        parent.chk_theme_seed_lock.toggled.connect(parent._set_random_seed_lock)
+        gf.addRow("", parent.chk_theme_seed_lock)
     parent._theme_zone_buttons = {}
+    parent._theme_zone_hex_labels: dict[str, QtWidgets.QLabel] = {}
     parent.theme_zone_list = QtWidgets.QListWidget()
     parent.theme_zone_list.setObjectName("presetList")
     parent.theme_zone_list.setMinimumHeight(160)
@@ -616,12 +646,18 @@ def create_theme_controls(parent: QtWidgets.QWidget) -> QtWidgets.QWidget:
         label = zone_labels.get(zone_id, zone_id.title())
         row = QtWidgets.QHBoxLayout()
         row.setContentsMargins(0, 0, 0, 0)
-        row.addWidget(QtWidgets.QLabel(label))
+        zone_lbl = QtWidgets.QLabel(label)
+        zone_lbl.setObjectName("themeStudioZoneLabel")
+        row.addWidget(zone_lbl)
         swatch = QtWidgets.QPushButton("#000000")
         swatch.setObjectName("themeStudioZoneSwatch")
-        swatch.setMinimumWidth(128)
+        swatch.setMinimumWidth(96)
         swatch.clicked.connect(lambda checked=False, z=zone_id: parent._pick_theme_zone_color(z))
         row.addWidget(swatch)
+        hex_lbl = QtWidgets.QLabel("#000000")
+        hex_lbl.setObjectName("themeStudioZoneHex")
+        hex_lbl.setMinimumWidth(72)
+        row.addWidget(hex_lbl)
         reset_btn = QtWidgets.QPushButton("Reset")
         reset_btn.setObjectName("themeStudioZoneReset")
         reset_btn.setMaximumWidth(62)
@@ -636,31 +672,33 @@ def create_theme_controls(parent: QtWidgets.QWidget) -> QtWidgets.QWidget:
         parent.theme_zone_list.addItem(item)
         parent.theme_zone_list.setItemWidget(item, wrap)
         parent._theme_zone_buttons[zone_id] = swatch
+        parent._theme_zone_hex_labels[zone_id] = hex_lbl
     gf.addRow("Zone order:", parent.theme_zone_list)
     lay.addWidget(grp)
 
-    row = QtWidgets.QHBoxLayout()
-    parent.btn_theme_randomize = QtWidgets.QPushButton("Randomize")
-    parent.btn_theme_randomize.setObjectName("themeStudioRandomBtn")
-    parent.btn_theme_randomize.setToolTip(
-        "New randomized palette (Ctrl+R). Double-click within ~0.3 s for a variant in the same family."
-    )
-    parent.btn_theme_randomize.clicked.connect(parent._randomize_theme_now)
-    parent.btn_theme_standardize = QtWidgets.QPushButton("Standardize")
-    parent.btn_theme_standardize.setObjectName("themeStudioFavBtn")
-    parent.btn_theme_standardize.setToolTip(
-        "Cohesive Field Slate–style palette (Ctrl+Shift+R). "
-        "Double-click quickly for a subtle variant."
-    )
-    parent.btn_theme_standardize.clicked.connect(parent._standardize_theme_now)
-    parent.btn_theme_save_favorite = QtWidgets.QPushButton("Save current random as favorite")
-    parent.btn_theme_save_favorite.setObjectName("themeStudioFavBtn")
-    parent.btn_theme_save_favorite.clicked.connect(parent._save_current_random_theme_as_favorite)
-    row.addWidget(parent.btn_theme_randomize)
-    row.addWidget(parent.btn_theme_standardize)
-    row.addWidget(parent.btn_theme_save_favorite)
-    row.addStretch(1)
-    lay.addLayout(row)
+    if not professional:
+        row = QtWidgets.QHBoxLayout()
+        parent.btn_theme_randomize = QtWidgets.QPushButton("Randomize")
+        parent.btn_theme_randomize.setObjectName("themeStudioRandomBtn")
+        parent.btn_theme_randomize.setToolTip(
+            "New randomized palette (Ctrl+R). Double-click within ~0.3 s for a variant in the same family."
+        )
+        parent.btn_theme_randomize.clicked.connect(parent._randomize_theme_now)
+        parent.btn_theme_standardize = QtWidgets.QPushButton("Standardize")
+        parent.btn_theme_standardize.setObjectName("themeStudioFavBtn")
+        parent.btn_theme_standardize.setToolTip(
+            "Cohesive Field Slate–style palette (Ctrl+Shift+R). "
+            "Double-click quickly for a subtle variant."
+        )
+        parent.btn_theme_standardize.clicked.connect(parent._standardize_theme_now)
+        parent.btn_theme_save_favorite = QtWidgets.QPushButton("Save current random as favorite")
+        parent.btn_theme_save_favorite.setObjectName("themeStudioFavBtn")
+        parent.btn_theme_save_favorite.clicked.connect(parent._save_current_random_theme_as_favorite)
+        row.addWidget(parent.btn_theme_randomize)
+        row.addWidget(parent.btn_theme_standardize)
+        row.addWidget(parent.btn_theme_save_favorite)
+        row.addStretch(1)
+        lay.addLayout(row)
 
     io_row = QtWidgets.QHBoxLayout()
     parent.btn_theme_export_pack = QtWidgets.QPushButton("Export theme pack…")
@@ -710,10 +748,16 @@ def create_theme_controls(parent: QtWidgets.QWidget) -> QtWidgets.QWidget:
     pv.addLayout(pr)
     lay.addWidget(presets_grp)
 
-    note = QtWidgets.QLabel(
-        "Tip: choose Favorite random to reuse your saved palette across sessions. "
-        "Export/import packs to share looks."
-    )
+    if professional:
+        note = QtWidgets.QLabel(
+            "Tip: drag zone rows to reorder, click a swatch to pick a color, "
+            "and use presets or theme packs to reuse palettes across sessions."
+        )
+    else:
+        note = QtWidgets.QLabel(
+            "Tip: choose Favorite random to reuse your saved palette across sessions. "
+            "Export/import packs to share looks."
+        )
     note.setObjectName("themeStudioTip")
     note.setWordWrap(True)
     lay.addWidget(note)

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import errno
+import re
 import logging
 import sys
 import threading
@@ -42,6 +43,7 @@ from survey_quality import (
 
 NET_TO_SERIAL_QUEUE_MAX = 512
 SERIAL_TO_NET_QUEUE_MAX = 512
+SERIAL_MIRROR_MAX_PORTS = 2
 UI_LOG_PENDING_MAX = 2000
 UI_LOG_FLUSH_MS = 50
 UI_LOG_MAX_LINES_PER_FLUSH = 96
@@ -124,6 +126,13 @@ def _open_serial_port_timed(port: str, baud: int, timeout_s: float) -> serial.Se
     if not result:
         raise RuntimeError(f"opening {port} failed with no error")
     return result[0]
+
+
+def _close_serial_port_safe(ser: serial.Serial) -> None:
+    try:
+        ser.close()
+    except Exception:
+        pass
 
 
 def _lookup_serial_hwid(com: str) -> Optional[str]:
@@ -340,6 +349,37 @@ class _FileSurveyLog:
 
 
 @dataclass
+class SerialMirrorConfig:
+    """Write-only duplicate of bridge traffic to extra COM ports (monitor legs)."""
+
+    ports: tuple[str, ...] = ()
+    include_device_tx: bool = False
+
+
+def parse_serial_mirror_ports(
+    text: str,
+    *,
+    primary: str = "",
+    max_ports: int = SERIAL_MIRROR_MAX_PORTS,
+) -> tuple[str, ...]:
+    """Parse COM12, COM13 style lists; skip primary and duplicates."""
+    primary_u = (primary or "").strip().upper()
+    seen: set[str] = set()
+    out: list[str] = []
+    for part in re.split(r"[\s,;]+", (text or "").strip()):
+        port = part.strip().upper()
+        if not port or port.startswith("("):
+            continue
+        if port == primary_u or port in seen:
+            continue
+        seen.add(port)
+        out.append(port)
+        if len(out) >= max(0, int(max_ports)):
+            break
+    return tuple(out)
+
+
+@dataclass
 class TcpSinkConfig:
     """Optional TCP mirror of serial→net egress (independent of primary NetMode)."""
 
@@ -374,6 +414,7 @@ class SerialNetBridge:
         tcp_reconnect_delay: float = DEFAULT_TCP_RECONNECT_S,
         udp_fanout: bool = True,
         tcp_sink: Optional[TcpSinkConfig] = None,
+        serial_mirror: Optional[SerialMirrorConfig] = None,
         nmea_mode: NmeaMode = NmeaMode.PASSTHROUGH,
         nmea_filter: Optional[NmeaFilter] = None,
         serial_auto_reconnect: bool = True,
@@ -441,6 +482,11 @@ class SerialNetBridge:
         self._tcp_sink_server: Optional[asyncio.Server] = None
         self._tcp_sink_writers: Set[asyncio.StreamWriter] = set()
         self._tcp_sink_drops: int = 0
+        self._serial_mirror: Optional[SerialMirrorConfig] = (
+            serial_mirror if serial_mirror and serial_mirror.ports else None
+        )
+        self._mirror_serials: dict[str, serial.Serial] = {}
+        self._mirror_drops: int = 0
         self._udp_peers: set[tuple] = set()
         self._gps_state: list[Optional[str]] = [None]
         self._nav_quality_state: list[Optional[dict]] = [None]
@@ -607,19 +653,14 @@ class SerialNetBridge:
             return
         await self._write_serial_bytes(chunk)
 
-    async def _write_serial_bytes(self, chunk: bytes) -> None:
-        """Write to COM. On Windows, bypass pyserial-asyncio poll writer (can stall under Qt)."""
-        if not self.running or not chunk or not self.serial_writer:
+    async def _write_chunk_to_writer(
+        self, writer: Optional[asyncio.StreamWriter], chunk: bytes, label: str
+    ) -> None:
+        if not writer or not chunk:
             return
-        self._tap_local_backup(chunk)
-        if self._serial_write_lock is None:
-            self._serial_write_lock = asyncio.Lock()
-        async with self._serial_write_lock:
-            await self._write_serial_bytes_locked(chunk)
-
-    async def _write_serial_bytes_locked(self, chunk: bytes) -> None:
         if sys.platform == "win32":
-            ser = self._underlying_serial()
+            transport = writer.transport
+            ser = getattr(transport, "serial", None) if transport is not None else None
             if ser is not None:
 
                 def _blocking_write() -> None:
@@ -630,8 +671,85 @@ class SerialNetBridge:
                     asyncio.to_thread(_blocking_write), timeout=SERIAL_WRITE_TIMEOUT_S
                 )
                 return
-        self.serial_writer.write(chunk)
-        await asyncio.wait_for(self.serial_writer.drain(), timeout=SERIAL_WRITE_TIMEOUT_S)
+        writer.write(chunk)
+        await asyncio.wait_for(writer.drain(), timeout=SERIAL_WRITE_TIMEOUT_S)
+
+    async def _write_mirror_serial(self, ser: serial.Serial, chunk: bytes) -> None:
+        def _blocking_write() -> None:
+            ser.write(chunk)
+            ser.flush()
+
+        await asyncio.wait_for(
+            asyncio.to_thread(_blocking_write), timeout=SERIAL_WRITE_TIMEOUT_S
+        )
+
+    async def _mirror_broadcast(self, chunk: bytes) -> None:
+        if not chunk or not self._mirror_serials:
+            return
+        dead: list[str] = []
+        for com, ser in list(self._mirror_serials.items()):
+            try:
+                await self._write_mirror_serial(ser, chunk)
+            except Exception as e:
+                self._mirror_drops += 1
+                self._schedule_stats_emit()
+                self._ui_log_event_limited(
+                    f"mirror_{com}",
+                    f"Serial mirror {com}: {_friendly_serial_error(e, com)}",
+                )
+                dead.append(com)
+        for com in dead:
+            ser = self._mirror_serials.pop(com, None)
+            if ser is not None:
+                await asyncio.to_thread(_close_serial_port_safe, ser)
+
+    def _schedule_mirror_broadcast(self, chunk: bytes) -> None:
+        if not chunk or not self._mirror_serials or not self.running:
+            return
+
+        def _go() -> None:
+            asyncio.create_task(self._mirror_broadcast(chunk))
+
+        self.loop.call_soon(_go)
+
+    async def _open_mirror_ports(self) -> None:
+        cfg = self._serial_mirror
+        if cfg is None or not cfg.ports:
+            return
+        for port in cfg.ports:
+            try:
+                ser = await asyncio.to_thread(
+                    _open_serial_port_timed, port, self.baud, SERIAL_OPEN_TIMEOUT_S
+                )
+                self._mirror_serials[port] = ser
+                self._ui_log(f"Serial mirror open: {port} @ {self.baud} (write-only)")
+            except Exception as e:
+                self._ui_log(
+                    f"Serial mirror skipped {port}: {_friendly_serial_error(e, port)}"
+                )
+
+    async def _close_mirror_ports(self) -> None:
+        ports = list(self._mirror_serials.items())
+        self._mirror_serials.clear()
+        for com, ser in ports:
+            try:
+                await asyncio.to_thread(_close_serial_port_safe, ser)
+            except Exception:
+                pass
+
+    async def _write_serial_bytes(self, chunk: bytes) -> None:
+        """Write to COM. On Windows, bypass pyserial-asyncio poll writer (can stall under Qt)."""
+        if not self.running or not chunk or not self.serial_writer:
+            return
+        if self._serial_write_lock is None:
+            self._serial_write_lock = asyncio.Lock()
+        async with self._serial_write_lock:
+            await self._write_serial_bytes_locked(chunk)
+
+    async def _write_serial_bytes_locked(self, chunk: bytes) -> None:
+        await self._write_chunk_to_writer(self.serial_writer, chunk, self.com)
+        if self._mirror_serials:
+            await self._mirror_broadcast(chunk)
 
     def hz_remote_to_serial(self) -> float:
         """Rolling ~1 s rate of sentences received net→COM (before strict drops)."""
@@ -682,6 +800,11 @@ class SerialNetBridge:
                 "tcp_sink_clients": len(self._tcp_sink_writers),
                 "tcp_sink_drops": self._tcp_sink_drops,
                 "tcp_sink_enabled": bool(self._tcp_sink),
+                "serial_mirror_ports": len(self._mirror_serials),
+                "serial_mirror_drops": self._mirror_drops,
+                "serial_mirror_device_tx": bool(
+                    self._serial_mirror and self._serial_mirror.include_device_tx
+                ),
                 **self.navigation_quality_stats(),
                 **self.navigation_position_stats(),
                 **self._local_backup_stats(),
@@ -822,6 +945,7 @@ class SerialNetBridge:
                 ),
             )
         else:
+            self._tap_local_backup(data)
             self._log(direction, data)
 
     def _enqueue_serial_to_net(self, data: bytes, direction: str) -> None:
@@ -898,6 +1022,13 @@ class SerialNetBridge:
     def _ingest_serial(self, data: bytes, direction: str) -> None:
         if not self.running:
             return
+        if (
+            self._serial_mirror
+            and self._serial_mirror.include_device_tx
+            and direction.startswith("SER")
+            and self._mirror_serials
+        ):
+            self._schedule_mirror_broadcast(data)
         now = time.monotonic()
         if self.nmea_mode == NmeaMode.RAW:
             if direction.startswith("SER"):
@@ -985,11 +1116,14 @@ class SerialNetBridge:
         self.loop.call_soon(_go)
 
 
-    async def _open_serial_stream(self) -> tuple[asyncio.StreamReader, asyncio.StreamWriter]:
+    async def _open_serial_stream(
+        self, com: Optional[str] = None
+    ) -> tuple[asyncio.StreamReader, asyncio.StreamWriter]:
         """Open COM without hanging the Qt loop (thread join timeout, not wait_for on a stuck thread)."""
         loop = self.loop
+        target = (com or self.com).strip().upper()
         ser = await asyncio.to_thread(
-            _open_serial_port_timed, self.com, self.baud, SERIAL_OPEN_TIMEOUT_S
+            _open_serial_port_timed, target, self.baud, SERIAL_OPEN_TIMEOUT_S
         )
         reader = asyncio.StreamReader(loop=loop)
         protocol = asyncio.StreamReaderProtocol(reader, loop=loop)
@@ -1024,6 +1158,7 @@ class SerialNetBridge:
         self._serial_hwid = _lookup_serial_hwid(self.com)
         self.running = True
         self._start_local_backup()
+        await self._open_mirror_ports()
         self._set_status(f"Serial: {self.com} @ {self.baud} — open", "Network: opening…")
 
         self._tasks.append(asyncio.create_task(self._pump_net_to_serial(), name="pump_n2s"))
@@ -1541,6 +1676,12 @@ class SerialNetBridge:
                     w.close()
                 except Exception:
                     pass
+        for _com, ser in list(self._mirror_serials.items()):
+            try:
+                _close_serial_port_safe(ser)
+            except Exception:
+                pass
+        self._mirror_serials.clear()
         ser = self._underlying_serial()
         if ser is not None:
             try:
@@ -1617,6 +1758,7 @@ class SerialNetBridge:
         self.serial_writer = None
         self.serial_reader = None
         await self._await_closed(writer, "Serial")
+        await self._close_mirror_ports()
 
         self._serial_open = False
         self._network_ready = False
@@ -1685,17 +1827,24 @@ class BridgeAsyncThread(QtCore.QThread):
     def request_stop(self) -> None:
         loop = self._loop
         bridge = self.bridge
-        if not loop or not bridge:
+        if loop is None:
             return
 
         def _stop() -> None:
+            if bridge is not None:
+                try:
+                    bridge.abort_now()
+                except Exception:
+                    pass
             try:
-                bridge.abort_now()
+                loop.stop()
             except Exception:
                 pass
-            loop.stop()
 
-        loop.call_soon_threadsafe(_stop)
+        try:
+            loop.call_soon_threadsafe(_stop)
+        except RuntimeError:
+            pass
 
     def call_on_loop(self, fn: Callable[[], None]) -> None:
         loop = self._loop

@@ -170,11 +170,12 @@
         ],
         "tools_tabs": [
           "Control",
+          "Activity",
           "Presets",
           "Hub",
+          "Fleet",
           "NMEA",
           "Dashboard",
-          "Activity",
           "Black box",
           "File log",
           "Guide",
@@ -330,12 +331,12 @@
     "web_dashboard": {
       "layout_mode": "gridstack",
       "local_storage": {
-        "nmea-gridstack-layout-v2": "[{\"id\":\"map\",\"x\":0,\"y\":0,\"w\":12,\"h\":3},{\"id\":\"status\",\"x\":0,\"y\":3,\"w\":12,\"h\":2},{\"id\":\"log\",\"x\":0,\"y\":5,\"w\":12,\"h\":3},{\"id\":\"tools\",\"x\":0,\"y\":8,\"w\":4,\"h\":4},{\"id\":\"com-setup\",\"x\":4,\"y\":8,\"w\":4,\"h\":10},{\"id\":\"configuration\",\"x\":8,\"y\":8,\"w\":4,\"h\":6},{\"id\":\"discovery\",\"x\":0,\"y\":18,\"w\":8}]",
+        "nmea-gridstack-layout-v2": "[{\"id\":\"map\",\"x\":0,\"y\":0,\"w\":6,\"h\":6},{\"id\":\"status\",\"x\":6,\"y\":0,\"w\":6,\"h\":3},{\"id\":\"configuration\",\"x\":6,\"y\":3,\"w\":6,\"h\":5},{\"id\":\"log\",\"x\":0,\"y\":6,\"w\":6,\"h\":5},{\"id\":\"discovery\",\"x\":0,\"y\":11,\"w\":6,\"h\":2},{\"id\":\"com-setup\",\"x\":6,\"y\":8,\"w\":6,\"h\":2},{\"id\":\"tools\",\"x\":6,\"y\":10,\"w\":6,\"h\":2}]",
         "nmea-dashboard-chrome-v1": "{\"hiddenHeaders\":[\"status\",\"map\",\"log\"],\"logTerminalOnly\":true,\"mapPrioritized\":true,\"mapShowTrack\":true,\"mapBaseLayer\":\"satellite\",\"monitorLayout\":\"simple\",\"hideResizeGrips\":false}",
         "nmea-dashboard-layout-locked": "1",
         "nmea-monitor-collapse": "{\"session\":false,\"backpressure\":false,\"rates\":false,\"connection\":false}",
-        "nmea-dashboard-panels": "{\"map\":true,\"tools\":true,\"log\":true,\"discovery\":false,\"configuration\":true,\"com-setup\":true}",
-        "nmea-dashboard-order": "[\"status\",\"com-setup\",\"map\",\"configuration\",\"log\",\"discovery\",\"tools\"]",
+        "nmea-dashboard-panels": "{\"map\":true,\"status\":true,\"log\":true,\"configuration\":true,\"com-setup\":true,\"discovery\":false,\"tools\":false}",
+        "nmea-dashboard-order": "[\"map\",\"log\",\"status\",\"configuration\",\"com-setup\",\"discovery\",\"tools\"]",
         "nmea-bridge-map-enabled": "1",
         "nmea-bridge-map-base-layer": "satellite"
       }

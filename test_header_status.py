@@ -2,7 +2,8 @@
 from __future__ import annotations
 
 import unittest
-from unittest.mock import MagicMock
+from pathlib import Path
+from unittest.mock import MagicMock, patch
 
 from PySide6 import QtWidgets
 
@@ -18,6 +19,26 @@ class TestElidedStatusLabel(unittest.TestCase):
         else:
             cls._app = QtWidgets.QApplication.instance()
 
+    def test_keeps_stopped_title_when_narrow(self) -> None:
+        lbl = ElidedStatusLabel()
+        lbl.resize(48, 24)
+        msg = "Stopped · Pick a COM port and UDP settings, then Start."
+        lbl.set_full_text(msg)
+        self.assertEqual(lbl.text(), "Stopped")
+
+    def test_keeps_stopped_title_when_label_narrow_but_container_wide(self) -> None:
+        container = QtWidgets.QWidget()
+        container.setObjectName("modernHeaderStatusContainer")
+        container.resize(520, 32)
+        banner = QtWidgets.QFrame(container)
+        banner.setObjectName("modernStatusBanner")
+        banner.setGeometry(0, 0, 520, 30)
+        lbl = ElidedStatusLabel(banner)
+        lbl.resize(42, 24)
+        msg = "Stopped · Set COM & UDP, then Start."
+        lbl.set_full_text(msg)
+        self.assertEqual(lbl.text(), "Stopped")
+
     def test_elides_long_status_line(self) -> None:
         lbl = ElidedStatusLabel()
         lbl.resize(220, 24)
@@ -27,14 +48,22 @@ class TestElidedStatusLabel(unittest.TestCase):
         self.assertLess(len(lbl.text()), len(msg))
         self.assertIn("Stopped", lbl.text())
 
-    def test_uses_container_width_when_parent_is_wider(self) -> None:
+    def test_uses_container_width_when_label_is_still_laying_out(self) -> None:
         container = QtWidgets.QWidget()
         container.setObjectName("modernHeaderStatusContainer")
         container.resize(480, 32)
         lbl = ElidedStatusLabel(container)
-        lbl.resize(120, 24)
+        lbl.resize(0, 24)
         msg = "Stopped · Set COM & UDP, then Start."
         lbl.set_full_text(msg)
+        lbl.refresh_elide()
+        self.assertEqual(lbl.text(), "Stopped")
+
+    def test_shows_full_text_when_label_is_wide_enough(self) -> None:
+        lbl = ElidedStatusLabel()
+        msg = "Stopped · Set COM & UDP, then Start."
+        lbl.set_full_text(msg)
+        lbl.resize(420, 24)
         lbl.refresh_elide()
         self.assertEqual(lbl.text(), msg)
 
@@ -45,6 +74,25 @@ class TestElidedStatusLabel(unittest.TestCase):
         lbl.resize(900, 24)
         lbl.refresh_elide()
         self.assertEqual(lbl.text(), msg)
+
+
+class TestFileLogLocation(unittest.TestCase):
+    def test_open_uses_active_file_log_path(self) -> None:
+        win = object.__new__(BridgeLogicMixin)
+        win._file_log = MagicMock()
+        win._file_log.path = Path("C:/logs/bridge_survey.log")
+        with patch.object(BridgeLogicMixin, "_reveal_path_in_file_manager") as reveal:
+            BridgeLogicMixin._open_file_log_location(win)
+            reveal.assert_called_once_with(win._file_log.path)
+
+    def test_open_falls_back_to_path_field(self) -> None:
+        win = object.__new__(BridgeLogicMixin)
+        win._file_log = None
+        win.file_log_path = MagicMock()
+        win.file_log_path.text.return_value = "D:/data/session.log"
+        with patch.object(BridgeLogicMixin, "_reveal_path_in_file_manager") as reveal:
+            BridgeLogicMixin._open_file_log_location(win)
+            reveal.assert_called_once_with("D:/data/session.log")
 
 
 class TestWebPortUnlockCountdown(unittest.TestCase):

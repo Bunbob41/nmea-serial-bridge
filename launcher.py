@@ -96,11 +96,21 @@ def _menu() -> str:
 
 
 def _spawn_gui(ui_arg: list[str], *, foreground: bool = False) -> None:
-    """Launch bridge_gui. Use foreground+python.exe when run from a terminal (errors visible)."""
+    """Launch bridge_gui. Foreground keeps this terminal; default uses pythonw (no console)."""
     script = ROOT / "bridge_gui.py"
     if foreground:
         exe = Path(sys.executable)
         raise SystemExit(subprocess.call([str(exe), str(script), *ui_arg], cwd=str(ROOT)))
+    if sys.platform == "win32":
+        from py_interpreter import subprocess_no_console_kwargs
+
+        exe = _resolve_pythonw_for_spawn()
+        subprocess.Popen(
+            [str(exe), str(script), *ui_arg],
+            cwd=str(ROOT),
+            **subprocess_no_console_kwargs(),
+        )
+        return
     exe = _resolve_pythonw_for_spawn()
     subprocess.Popen([str(exe), str(script), *ui_arg], cwd=str(ROOT))
     if sys.stdin.isatty():

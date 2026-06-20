@@ -33,21 +33,19 @@ class TestTraySupport(unittest.TestCase):
         self.assertIsNone(getattr(win, "_tray_icon", "missing"))
 
     def test_quit_application_calls_stop_bridge(self) -> None:
-        """Tray Exit must use stop_bridge(), not removed _stop_bridge()."""
+        """Tray Exit must tear down bridge workers before quitting."""
 
         class _FakeWin:
             _force_quit = False
             _stats_popout_window = None
-            stop_bridge_called = False
+            teardown_called = False
 
             def _is_bridge_running(self) -> bool:
                 return True
 
-            def stop_bridge(self) -> None:
-                self.stop_bridge_called = True
-
-            def _shutdown_background_services(self) -> None:
-                pass
+            def _teardown_all_background_work(self, *, wait_ms: int = 4000) -> None:
+                _ = wait_ms
+                self.teardown_called = True
 
             def _close_auxiliary_windows(self) -> None:
                 pass
@@ -61,7 +59,7 @@ class TestTraySupport(unittest.TestCase):
         win = _FakeWin()
         with patch("ui.tray_support.destroy_tray_icon"):
             BridgeLogicMixin._quit_application(win)  # type: ignore[arg-type]
-        self.assertTrue(win.stop_bridge_called)
+        self.assertTrue(win.teardown_called)
         self.assertTrue(win._force_quit)
 
 

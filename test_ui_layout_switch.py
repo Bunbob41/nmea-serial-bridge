@@ -10,9 +10,9 @@ from ui.mixin import BridgeLogicMixin
 
 class TestLayoutCycleMenu(unittest.TestCase):
     def test_other_layout_ids_excludes_current(self) -> None:
-        self.assertEqual(other_layout_ids("standard"), ("field", "modern"))
-        self.assertEqual(other_layout_ids("field"), ("standard", "modern"))
-        self.assertEqual(other_layout_ids("modern"), ("standard", "field"))
+        self.assertEqual(other_layout_ids("field"), ("modern",))
+        self.assertEqual(other_layout_ids("modern"), ("field",))
+        self.assertEqual(other_layout_ids("standard"), ("modern",))
 
     def test_refresh_switch_layout_menu_shows_two_targets(self) -> None:
         host = object.__new__(BridgeLogicMixin)
@@ -28,7 +28,7 @@ class TestLayoutCycleMenu(unittest.TestCase):
             "modern": act_modern,
         }
         host._refresh_switch_layout_menu()
-        act_standard.setVisible.assert_called_with(True)
+        act_standard.setVisible.assert_called_with(False)
         act_field.setVisible.assert_called_with(True)
         act_modern.setVisible.assert_called_with(False)
 
@@ -72,7 +72,7 @@ class TestUiLayoutSwitch(unittest.TestCase):
         host = _LayoutHost()
         with patch("ui.mixin.save_ui_choice") as save_choice, patch(
             "ui.mixin.create_window", return_value=_FakeWindow()
-        ) as create, patch.object(host, "_shutdown_background_services") as shutdown, patch(
+        ) as create, patch.object(host, "_teardown_all_background_work") as teardown, patch(
             "ui.tray_support.destroy_tray_icon"
         ):
             self.assertTrue(host._switch_ui_layout("field"))
@@ -82,7 +82,7 @@ class TestUiLayoutSwitch(unittest.TestCase):
         self.assertFalse(host.quit_requested)
         self.assertEqual(create.call_count, 1)
         self.assertEqual(save_choice.call_count, 1)
-        shutdown.assert_called()
+        teardown.assert_called()
 
     def test_switch_layout_returns_false_when_bridge_running(self) -> None:
         host = _LayoutHost()
@@ -98,8 +98,8 @@ class TestUiLayoutSwitch(unittest.TestCase):
         host = _LayoutHost()
         calls: list[str] = []
 
-        def _shutdown() -> None:
-            calls.append("shutdown")
+        def _teardown(**_kwargs: object) -> None:
+            calls.append("teardown")
 
         def _create(_ui: str) -> _FakeWindow:
             calls.append("create")
@@ -107,17 +107,17 @@ class TestUiLayoutSwitch(unittest.TestCase):
 
         with patch("ui.mixin.save_ui_choice"), patch(
             "ui.mixin.create_window", side_effect=_create
-        ), patch.object(host, "_shutdown_background_services", side_effect=_shutdown), patch(
+        ), patch.object(host, "_teardown_all_background_work", side_effect=_teardown), patch(
             "ui.tray_support.destroy_tray_icon"
         ):
             host._switch_ui_layout("field")
-        self.assertEqual(calls, ["shutdown", "create"])
+        self.assertEqual(calls, ["teardown", "create"])
 
     def test_close_event_during_layout_switch_does_not_quit_app(self) -> None:
         host = _LayoutHost()
         host._layout_switch_in_progress = True
         event = type("_E", (), {"accept": lambda self: None, "ignore": lambda self: None})()
-        with patch.object(host, "_shutdown_background_services"):
+        with patch.object(host, "_teardown_all_background_work"):
             host.closeEvent(event)  # type: ignore[arg-type]
         self.assertFalse(host.quit_requested)
 

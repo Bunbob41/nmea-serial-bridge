@@ -20,6 +20,14 @@ class TestThemeZones(unittest.TestCase):
         self.assertNotEqual(forest["background"], DEFAULT_ZONE_COLORS["background"])
         self.assertTrue(forest["background"].startswith("#"))
 
+    def test_maroon_zone_colors_use_classic_palette(self) -> None:
+        from ui.theme_choice import THEME_MAROON
+
+        maroon = zone_colors_for_theme(THEME_MAROON)
+        self.assertEqual(maroon["accent"], "#d4af37")
+        self.assertEqual(maroon["background"], "#241a1f")
+        self.assertNotEqual(maroon["tabs"], "#5a3f8c")
+
     def test_ocean_zone_colors_from_map(self) -> None:
         from ui.theme_palette import THEME_COLOR_MAPS
 

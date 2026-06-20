@@ -43,7 +43,7 @@ from bridge_core import (
 )
 from ntrip_client import NtripConfig, parse_caster_host, run_ntrip_forwarder
 from nmea_codec import NmeaFilter, NmeaMode
-from ui.connection_fields import read_baud_widget
+from ui.connection_fields import read_baud_widget, sort_com_devices
 from ui.log_view import (
     PRESET_CUSTOM,
     LogViewState,
@@ -309,6 +309,42 @@ class BridgeLogicMixin:
                 pass
             setattr(self, attr, None)
 
+    def _join_qthread(
+        self,
+        thread: QtCore.QThread | None,
+        *,
+        wait_ms: int = 2000,
+        label: str = "worker",
+    ) -> None:
+        if thread is None:
+            return
+        try:
+            if thread.isRunning():
+                if not thread.wait(max(200, int(wait_ms))):
+                    thread.terminate()
+                    thread.wait(800)
+        except RuntimeError:
+            pass
+
+    def _stop_com_lock_worker(self) -> None:
+        worker = getattr(self, "_com_lock_worker", None)
+        if worker is None:
+            return
+        self._join_qthread(worker, wait_ms=2000, label="com_lock_probe")
+        self._detach_com_lock_worker()
+        timer = getattr(self, "_com_lock_probe_watchdog_timer", None)
+        if timer is not None:
+            try:
+                timer.stop()
+            except RuntimeError:
+                pass
+        probe_timer = getattr(self, "_com_lock_probe_timer", None)
+        if probe_timer is not None:
+            try:
+                probe_timer.stop()
+            except RuntimeError:
+                pass
+
     def _stop_bridge_worker_sync(self, wait_ms: int = 4000) -> None:
         """Join asyncio bridge thread so the process can exit cleanly."""
         worker = getattr(self, "_worker", None)
@@ -317,11 +353,69 @@ class BridgeLogicMixin:
         try:
             if worker.isRunning():
                 worker.request_stop()
-                worker.wait(max(500, int(wait_ms)))
+                joined = worker.wait(max(500, int(wait_ms)))
+                if not joined and worker.isRunning():
+                    worker.terminate()
+                    worker.wait(1000)
         except RuntimeError:
             pass
         self._worker = None
         self.bridge = None
+
+    def _stop_fleet_supervisor(self) -> None:
+        """Stop all Fleet tab bridge workers (releases extra COM/UDP binds)."""
+        sup = getattr(self, "_fleet_supervisor", None)
+        if sup is None:
+            return
+        try:
+            sup.stop_all()
+        except Exception:
+            pass
+
+    def _stop_ui_timers(self) -> None:
+        for attr in (
+            "_log_flush_timer",
+            "_stats_timer",
+            "_start_watchdog_timer",
+            "_log_tab_auto_timer",
+            "_stop_guard_timer",
+            "_session_pulse_timer",
+            "_discovery_timer",
+        ):
+            timer = getattr(self, attr, None)
+            if timer is None:
+                continue
+            try:
+                timer.stop()
+            except RuntimeError:
+                pass
+
+    def _teardown_all_background_work(self, *, wait_ms: int = 4000) -> None:
+        """Idempotent stop of bridge, fleet, web, discovery, and UI timers."""
+        if getattr(self, "_teardown_in_progress", False):
+            return
+        self._teardown_in_progress = True
+        try:
+            self._stop_ui_timers()
+            if self._is_bridge_running():
+                self.stop_bridge()
+            else:
+                self._stop_bridge_worker_sync(wait_ms)
+            self._stop_com_lock_worker()
+            self._stop_fleet_supervisor()
+            self._shutdown_background_services()
+        finally:
+            self._teardown_in_progress = False
+
+    def _on_application_about_to_quit(self) -> None:
+        self._teardown_all_background_work(wait_ms=2500)
+        app = QtWidgets.QApplication.instance()
+        lock = getattr(app, "_instance_lock", None) if app is not None else None
+        if lock is not None and lock.isLocked():
+            try:
+                lock.unlock()
+            except Exception:
+                pass
 
     def _reset_ui_log_serial_coalesce(self) -> None:
         self._ui_log_serial_dup_last = None
@@ -377,6 +471,10 @@ class BridgeLogicMixin:
         self._start_auto_discovery_thread()
         self._wire_com_lock_probe()
         QtCore.QTimer.singleShot(200, self._schedule_com_lock_probe)
+        app = QtWidgets.QApplication.instance()
+        if app is not None and not getattr(self, "_quit_hook_installed", False):
+            app.aboutToQuit.connect(self._on_application_about_to_quit)
+            self._quit_hook_installed = True
 
     def _log_startup_self_check(self) -> None:
         from version import __version__
@@ -1959,7 +2057,13 @@ class BridgeLogicMixin:
             act.setChecked(tid == theme_id)
         ui_mode = getattr(self, "_ui_mode", "standard")
         self.setStyleSheet("")  # clear cached rules so theme swap is visible
-        self.setStyleSheet(bridge_stylesheet(ui_mode, theme_id))
+        self._load_theme_zone_colors_for_active_theme()
+        if ui_mode == "modern":
+            from ui.modern_styles import apply_modern_theme_colors
+
+            self.setStyleSheet(apply_modern_theme_colors(self._theme_zone_colors))
+        else:
+            self.setStyleSheet(bridge_stylesheet(ui_mode, theme_id))
         apply_global_contrast_guard(QtWidgets.QApplication.instance())
         from ui.connect_row_style import apply_connect_row_style
 
@@ -2023,6 +2127,7 @@ class BridgeLogicMixin:
         buttons = getattr(self, "_theme_zone_buttons", None)
         if not isinstance(buttons, dict):
             return
+        hex_labels = getattr(self, "_theme_zone_hex_labels", {})
         for zone in THEME_ZONE_KEYS:
             btn = buttons.get(zone)
             if btn is None:
@@ -2031,7 +2136,8 @@ class BridgeLogicMixin:
             txt_color = self._contrast_text_color(color)
             from ui.fonts import FONT_FAMILY_QSS
 
-            btn.setText(color.upper())
+            btn.setText("")
+            btn.setToolTip(color.upper())
             btn.setStyleSheet(
                 "QPushButton#themeStudioZoneSwatch {"
                 f"background-color: {color};"
@@ -2042,8 +2148,12 @@ class BridgeLogicMixin:
                 "font-size: 9pt;"
                 "padding: 2px 6px;"
                 "border-radius: 4px;"
+                "min-height: 22px;"
                 "}"
             )
+            hex_lbl = hex_labels.get(zone) if isinstance(hex_labels, dict) else None
+            if hex_lbl is not None:
+                hex_lbl.setText(color.upper())
 
     @staticmethod
     def _contrast_text_color(bg_hex: str) -> str:
@@ -2244,9 +2354,7 @@ class BridgeLogicMixin:
 
     def _quit_application(self) -> None:
         self._force_quit = True
-        if self._is_bridge_running():
-            self.stop_bridge()
-        self._shutdown_background_services()
+        self._teardown_all_background_work(wait_ms=4000)
         from ui.tray_support import destroy_tray_icon
 
         destroy_tray_icon(self)
@@ -2263,6 +2371,7 @@ class BridgeLogicMixin:
         """Stop web UI, discovery workers, and background threads (idempotent)."""
         self._stop_web_server()
         self._diag_stop()
+        self._stop_ntrip()
         self._cancel_discovery_worker()
         timer = getattr(self, "_discovery_timer", None)
         if timer is not None:
@@ -2462,8 +2571,8 @@ class BridgeLogicMixin:
             self._layout_switch_in_progress = True
             if btn is not None:
                 btn.setEnabled(False)
+            self._teardown_all_background_work(wait_ms=3000)
             self._close_auxiliary_windows()
-            self._shutdown_background_services()
             from ui.tray_support import destroy_tray_icon
 
             destroy_tray_icon(self)
@@ -3304,6 +3413,15 @@ class BridgeLogicMixin:
         QtGui.QDesktopServices.openUrl(QtCore.QUrl(base.rstrip("/") + "/"))
         self._log_ui(f"[Web] Opened dashboard in browser ({base}).")
 
+    def _on_web_open_phone_url(self) -> None:
+        raw = (self.edit_web_phone_url.text() or "").strip()
+        if not raw:
+            self._log_ui("[Web] Enter a phone dashboard URL first.")
+            return
+        url = raw if "://" in raw else f"http://{raw}"
+        QtGui.QDesktopServices.openUrl(QtCore.QUrl(url))
+        self._log_ui(f"[Web] Opened phone dashboard URL in browser.")
+
     def _on_web_open_dashboard_map(self) -> None:
         """Open local dashboard with Position map enabled and prioritized."""
         chk = getattr(self, "chk_web_enabled", None)
@@ -3689,6 +3807,9 @@ class BridgeLogicMixin:
     def _on_control_com_changed(self, text: str) -> None:
         """User picked COM on Control — mirror to hub serial tile only."""
         self._mark_manual_override_dirty()
+        picker = getattr(self, "serial_mirror_ports", None)
+        if picker is not None and hasattr(picker, "refresh"):
+            picker.refresh(primary_com=(text or "").strip())
         self._sync_hub_selection_from_control(force=True)
         port = (text or "").strip()
         if port and not port.startswith("("):
@@ -3757,8 +3878,7 @@ class BridgeLogicMixin:
         worker = getattr(self, "_discovery_worker", None)
         if worker is not None:
             worker.cancel()
-            if worker.isRunning():
-                worker.wait(3000)
+            self._join_qthread(worker, wait_ms=3000, label="discovery_scan")
             self._discovery_worker = None
 
     def _on_hub_refresh_discovery(self) -> None:
@@ -4008,6 +4128,12 @@ class BridgeLogicMixin:
             "udp_port": self.udp_port.text().strip(),
             "udp_fanout": getattr(self, "chk_udp_fanout", None) is None
             or self.chk_udp_fanout.isChecked(),
+            "serial_mirror_ports": getattr(self, "serial_mirror_ports", None)
+            and self.serial_mirror_ports.text().strip()
+            or "",
+            "serial_mirror_device_tx": getattr(self, "chk_serial_mirror_device_tx", None)
+            is not None
+            and self.chk_serial_mirror_device_tx.isChecked(),
             "net_mode": "udp_listen",
         }
         if self.rb_udp_remote.isChecked():
@@ -4060,6 +4186,12 @@ class BridgeLogicMixin:
 
     def _preflight_com(self, com: str, baud: int) -> Optional[str]:
         """Quick COM probe on GUI thread before async start."""
+        fleet_err = self._fleet_com_start_conflict()
+        if fleet_err:
+            return fleet_err
+        udp_err = self._fleet_udp_listen_start_conflict()
+        if udp_err:
+            return udp_err
         state = getattr(self, "_com_lock_state", None)
         if state is not None and getattr(state, "locked", False):
             return str(getattr(state, "reason", "") or f"Cannot open {com}.")
@@ -4069,6 +4201,96 @@ class BridgeLogicMixin:
             return None
         except Exception as exc:
             return _friendly_serial_error(exc, com)
+
+    def _fleet_com_start_conflict(self) -> Optional[str]:
+        """Control Start must not grab a COM already owned by a running Fleet stream."""
+        sup = getattr(self, "_fleet_supervisor", None)
+        if sup is None:
+            return None
+        com = self.com_cb.currentText().strip().upper()
+        if not com:
+            return None
+        from bridge_core import parse_serial_mirror_ports
+
+        targets: list[tuple[str, str]] = [("primary COM", com)]
+        mirror_field = getattr(self, "serial_mirror_ports", None)
+        if mirror_field is not None:
+            for port in parse_serial_mirror_ports(mirror_field.text(), primary=com):
+                targets.append(("serial mirror", port))
+        for role, target in targets:
+            stream = sup.running_stream_for_com(target)
+            if stream is not None:
+                return (
+                    f"{target} ({role}) is already in use by Fleet stream «{stream.label}». "
+                    "Stop that stream on Fleet (or Stop all), or change Control's "
+                    f"{role} — set the mirror dropdown to (none) if you only need one port."
+                )
+        return None
+
+    def _fleet_udp_listen_start_conflict(self) -> Optional[str]:
+        sup = getattr(self, "_fleet_supervisor", None)
+        if sup is None:
+            return None
+        if not getattr(self, "chk_advanced_net", None) or not self.chk_advanced_net.isChecked():
+            return None
+        if not getattr(self, "rb_udp_listen", None) or not self.rb_udp_listen.isChecked():
+            return None
+        host = self.udp_host.text().strip() or "0.0.0.0"
+        try:
+            port = int(self.udp_port.text().strip())
+        except ValueError:
+            return None
+        stream = sup.listening_stream_for_udp(host, port)
+        if stream is None:
+            return None
+        return (
+            f"UDP {host}:{port} is already listened by Fleet stream «{stream.label}». "
+            "Stop it on the Fleet tab or pick a different UDP listen port for Control."
+        )
+
+    def _fleet_control_start_conflict(self, stream: object) -> Optional[str]:
+        """Fleet start must not grab COM/UDP already owned by Control bridge."""
+        from bridge_core import NetMode
+
+        starting = bool(getattr(self, "_starting", False))
+        running = self._is_bridge_running()
+        if not starting and not running:
+            return None
+        control_com = self.com_cb.currentText().strip().upper()
+        stream_com = (getattr(stream, "com", "") or "").strip().upper()
+        if control_com and stream_com and control_com == stream_com:
+            return (
+                f"{control_com} is in use by the Control bridge. "
+                "Stop Control or pick a different COM for this Fleet stream."
+            )
+        if getattr(stream, "net_mode", "") != NetMode.UDP_LISTEN.value:
+            return None
+        sh = (getattr(stream, "udp_host", "") or "0.0.0.0").strip() or "0.0.0.0"
+        try:
+            sport = int(getattr(stream, "udp_port", 0))
+        except (TypeError, ValueError):
+            return None
+        bridge = getattr(self, "bridge", None)
+        if bridge is not None and getattr(bridge, "mode", None) == NetMode.UDP_LISTEN and bridge.udp_listen:
+            chost, cport = bridge.udp_listen
+            chost = (chost or "0.0.0.0").strip() or "0.0.0.0"
+            if chost == sh and int(cport) == sport:
+                return (
+                    f"UDP {sh}:{sport} is in use by the Control bridge. "
+                    "Stop Control or pick a different UDP listen port for this Fleet stream."
+                )
+        if starting and getattr(self, "rb_udp_listen", None) and self.rb_udp_listen.isChecked():
+            chost = self.udp_host.text().strip() or "0.0.0.0"
+            try:
+                cport = int(self.udp_port.text().strip())
+            except ValueError:
+                return None
+            if chost == sh and cport == sport:
+                return (
+                    f"UDP {sh}:{sport} is in use by the Control bridge (starting). "
+                    "Wait for Control to finish or pick a different UDP listen port."
+                )
+        return None
 
     def _wire_com_lock_probe(self) -> None:
         timer = QtCore.QTimer(self)
@@ -4469,6 +4691,12 @@ class BridgeLogicMixin:
             return "Start already in progress."
         if not self.com_cb.currentText().strip():
             return "Select a COM port (Refresh ports if the list is empty)."
+        fleet_err = self._fleet_com_start_conflict()
+        if fleet_err:
+            return fleet_err
+        udp_err = self._fleet_udp_listen_start_conflict()
+        if udp_err:
+            return udp_err
         if self._com_lock_blocks_start():
             com = self.com_cb.currentText().strip() or "COM"
             state = getattr(self, "_com_lock_state", None)
@@ -4977,6 +5205,46 @@ class BridgeLogicMixin:
             line, tip, kind = format_activity_page_status(self)
             _apply_live_chip(act_lbl, line, tip, kind)
 
+        sync_log = getattr(self, "_sync_modern_logging_indicator", None)
+        if getattr(self, "_ui_mode", "") == "modern" and callable(sync_log):
+            sync_log()
+
+    def _reveal_path_in_file_manager(self, path: str | Path) -> None:
+        import subprocess
+
+        raw = str(path or "").strip()
+        if not raw:
+            return
+        target = Path(raw).expanduser()
+        try:
+            target = target.resolve()
+        except OSError:
+            target = Path(raw)
+        if target.is_file():
+            folder = target.parent
+            if sys.platform == "win32":
+                subprocess.Popen(["explorer", "/select,", str(target)])
+            else:
+                QtGui.QDesktopServices.openUrl(
+                    QtCore.QUrl.fromLocalFile(str(folder))
+                )
+            return
+        folder = target if target.is_dir() else target.parent
+        if sys.platform == "win32":
+            subprocess.Popen(["explorer", str(folder)])
+        else:
+            QtGui.QDesktopServices.openUrl(QtCore.QUrl.fromLocalFile(str(folder)))
+
+    def _open_file_log_location(self) -> None:
+        fl = getattr(self, "_file_log", None)
+        if fl is not None and getattr(fl, "path", None):
+            self._reveal_path_in_file_manager(fl.path)
+            return
+        path_edit = getattr(self, "file_log_path", None)
+        raw = path_edit.text().strip() if path_edit is not None else ""
+        if raw:
+            self._reveal_path_in_file_manager(raw)
+
     def _apply_com_preset(self, com: str, baud: int, udp_host: str, udp_port: int) -> None:
         """Apply desk/boat/Cube fields from a named preset — preset wins over hub tiles."""
         self._manual_override_dirty = True
@@ -5025,6 +5293,12 @@ class BridgeLogicMixin:
             "udp_port": udp_port,
             "udp_fanout": udp_fanout,
         }
+        mirror_field = getattr(self, "serial_mirror_ports", None)
+        if mirror_field is not None:
+            out["serial_mirror_ports"] = mirror_field.text().strip()
+        mirror_tx = getattr(self, "chk_serial_mirror_device_tx", None)
+        if mirror_tx is not None:
+            out["serial_mirror_device_tx"] = mirror_tx.isChecked()
         sink_chk = getattr(self, "chk_tcp_sink_enable", None)
         if sink_chk is not None:
             out["tcp_sink_enabled"] = sink_chk.isChecked()
@@ -5316,6 +5590,22 @@ class BridgeLogicMixin:
         fanout_chk = getattr(self, "chk_udp_fanout", None)
         if fanout_chk is not None:
             fanout_chk.setChecked(bool(data.get("udp_fanout", True)))
+        mirror_field = getattr(self, "serial_mirror_ports", None)
+        if mirror_field is not None:
+            raw = data.get("serial_mirror_ports", "")
+            if hasattr(mirror_field, "set_ports"):
+                if isinstance(raw, (list, tuple)):
+                    mirror_field.set_ports(raw)
+                else:
+                    mirror_field.set_ports(str(raw or "").strip())
+                mirror_field.refresh(primary_com=self.com_cb.currentText().strip())
+            elif isinstance(raw, (list, tuple)):
+                mirror_field.setText(", ".join(str(p) for p in raw))
+            else:
+                mirror_field.setText(str(raw or "").strip())
+        mirror_tx = getattr(self, "chk_serial_mirror_device_tx", None)
+        if mirror_tx is not None:
+            mirror_tx.setChecked(bool(data.get("serial_mirror_device_tx", False)))
         sink_chk = getattr(self, "chk_tcp_sink_enable", None)
         if sink_chk is not None:
             sink_chk.setChecked(bool(data.get("tcp_sink_enabled", False)))
@@ -6654,7 +6944,7 @@ class BridgeLogicMixin:
                 self.com_cb.addItem("(no ports — click Refresh)")
                 self.com_cb.setInsertPolicy(QtWidgets.QComboBox.InsertPolicy.NoInsert)
                 return
-            for device in ports:
+            for device in sort_com_devices(ports):
                 self.com_cb.addItem(device)
             self.com_cb.setInsertPolicy(QtWidgets.QComboBox.InsertPolicy.NoInsert)
             if prev:
@@ -6665,6 +6955,9 @@ class BridgeLogicMixin:
                     self.com_cb.setCurrentText(prev)
         finally:
             self.com_cb.blockSignals(False)
+        picker = getattr(self, "serial_mirror_ports", None)
+        if picker is not None and hasattr(picker, "refresh"):
+            picker.refresh(primary_com=self.com_cb.currentText().strip())
         self._schedule_com_lock_probe()
         hub = getattr(self, "connection_hub", None)
         sel = (hub.selected_device_id() if hub else None) or ""
@@ -6835,8 +7128,23 @@ class BridgeLogicMixin:
         log_hex = getattr(self, "chk_log_hex", None) is not None and self.chk_log_hex.isChecked()
         _fanout_chk = getattr(self, "chk_udp_fanout", None)
         udp_fanout = _fanout_chk is None or _fanout_chk.isChecked()
+        from bridge_core import SerialMirrorConfig, TcpSinkConfig, parse_serial_mirror_ports
 
-        from bridge_core import TcpSinkConfig
+        mirror_field = getattr(self, "serial_mirror_ports", None)
+        mirror_ports: tuple[str, ...] = ()
+        if mirror_field is not None:
+            mirror_ports = parse_serial_mirror_ports(
+                mirror_field.text(), primary=com.strip().upper()
+            )
+        mirror_device_tx = (
+            getattr(self, "chk_serial_mirror_device_tx", None) is not None
+            and self.chk_serial_mirror_device_tx.isChecked()
+        )
+        serial_mirror = (
+            SerialMirrorConfig(ports=mirror_ports, include_device_tx=mirror_device_tx)
+            if mirror_ports
+            else None
+        )
 
         tcp_sink: Optional[TcpSinkConfig] = None
         sink_chk = getattr(self, "chk_tcp_sink_enable", None)
@@ -6863,6 +7171,7 @@ class BridgeLogicMixin:
                 file_log=file_log,
                 tcp_reconnect_delay=tcp_reconnect,
                 udp_fanout=udp_fanout,
+                serial_mirror=serial_mirror,
                 tcp_sink=tcp_sink,
                 nmea_mode=nmea_mode,
                 nmea_filter=nmea_filter,
@@ -7098,10 +7407,33 @@ class BridgeLogicMixin:
                 "No mission session to export. Stop the bridge after a backup-enabled run first.",
             )
             return
-        from ui.mission_export import quick_export_mission
+        from ui.mission_export import (
+            QUICK_EXPORT_SAVE_FILTER,
+            export_session_backup_copy,
+            resolve_session_backup_path,
+            suggest_quick_export_path,
+        )
 
         try:
-            zip_path = quick_export_mission(record)
+            source = resolve_session_backup_path(record)
+        except (OSError, FileNotFoundError) as exc:
+            QtWidgets.QMessageBox.critical(
+                self,
+                "Quick Export failed",
+                str(exc),
+            )
+            return
+        default_path = str(suggest_quick_export_path(record))
+        dest, _selected_filter = QtWidgets.QFileDialog.getSaveFileName(
+            self,
+            "Quick Export — save session NMEA log",
+            default_path,
+            QUICK_EXPORT_SAVE_FILTER,
+        )
+        if not dest:
+            return
+        try:
+            out = export_session_backup_copy(source, Path(dest))
         except OSError as exc:
             QtWidgets.QMessageBox.critical(
                 self,
@@ -7109,11 +7441,11 @@ class BridgeLogicMixin:
                 str(exc),
             )
             return
-        self._log_ui(f"Mission Quick Export: {zip_path}")
+        self._log_ui(f"Mission Quick Export: {out}")
         QtWidgets.QMessageBox.information(
             self,
             "Quick Export complete",
-            f"Survey package ready:\n{zip_path}",
+            f"Session log saved for survey office / GIS import:\n{out}",
         )
 
     def _stop_bridge(self) -> None:
@@ -7144,7 +7476,7 @@ class BridgeLogicMixin:
         self.stop_btn.setText("■  Stop bridge")
         self._starting = False
         self.start_btn.setText("Start bridge")
-        self._set_status_banner("stopped", "Stopped", "Choose a path and Start when ready.")
+        self._set_status_banner("stopped", "Stopped", "Set COM & UDP, then Start.")
         self._update_status_bar("Serial: stopped", "Network: stopped")
         self._refresh_backup_status_label()
         self._refresh_nmea_status_chip()
@@ -7172,34 +7504,14 @@ class BridgeLogicMixin:
                 self._hide_to_tray()
                 return
 
-        self._shutdown_background_services()
+        self._teardown_all_background_work(wait_ms=4000)
         self._close_auxiliary_windows()
-        if getattr(self, "_layout_switch_in_progress", False):
-            from ui.tray_support import destroy_tray_icon
-
-            destroy_tray_icon(self)
-            self._stop_bridge_worker_sync(2000)
-            event.accept()
-            return
-        running = self._is_bridge_running()
-        worker = self._worker
-        if running or (worker and worker.isRunning()):
-            if worker:
-                self.bridge = None
-                worker.request_stop()
-                worker.wait(4000)
-            self._worker = None
-            self._finish_stop_ui()
-            self._start_gen += 1
-            if not getattr(self, "_force_quit", False):
-                event.ignore()
-                QtCore.QTimer.singleShot(200, self.close)
-                return
+        self._stop_bridge_worker_sync(1500)
         from ui.tray_support import destroy_tray_icon
 
         destroy_tray_icon(self)
         event.accept()
-        if getattr(self, "_force_quit", False) or not self._is_bridge_running():
+        if not getattr(self, "_layout_switch_in_progress", False):
             self._request_application_quit()
 
     # ------------------------------------------------------------------
@@ -7226,8 +7538,7 @@ class BridgeLogicMixin:
         except (RuntimeError, TypeError):
             pass
         thread.stop()
-        if thread.isRunning():
-            thread.wait(4000)
+        self._join_qthread(thread, wait_ms=4000, label="auto_discovery")
         try:
             thread.deleteLater()
         except RuntimeError:

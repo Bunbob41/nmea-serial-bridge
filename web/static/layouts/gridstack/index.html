@@ -4,6 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Serial Link Dashboard (Grid)</title>
+  <link rel="icon" href="/favicon.ico" type="image/x-icon" />
   <link rel="stylesheet" href="/static/dashboard.css" />
   <link rel="stylesheet" href="/static/vendor/leaflet/leaflet.css" />
   <link rel="stylesheet" href="/static/vendor/gridstack/gridstack.min.css" />
@@ -41,7 +42,7 @@
   <div class="grid-stack" id="dashboard-panels">
 
     <!-- ═══════════════════════════════ COM & PORTS (mobile-first) ═════════════════════ -->
-    <div class="grid-stack-item" gs-id="com-setup" gs-x="0" gs-y="0" gs-w="6" gs-h="4"><div class="grid-stack-item-content"><section class="card com-setup-card dashboard-panel dashboard-panel-open" id="com-setup-card" data-panel="com-setup">
+    <div class="grid-stack-item" gs-id="com-setup" gs-x="6" gs-y="8" gs-w="6" gs-h="2"><div class="grid-stack-item-content"><section class="card com-setup-card dashboard-panel dashboard-panel-open" id="com-setup-card" data-panel="com-setup">
       <button type="button" class="dashboard-panel-toggle" aria-expanded="true"
               aria-controls="panel-body-com-setup" id="panel-toggle-com-setup">
         <span class="dashboard-chevron" aria-hidden="true">▼</span>
@@ -80,7 +81,7 @@
     </div></div>
 
     <!-- ══════════════════════════════════ STATUS CARD ══════════════════════════════════ -->
-    <div class="grid-stack-item" gs-id="status" gs-x="6" gs-y="0" gs-w="6" gs-h="5"><div class="grid-stack-item-content"><section class="card status-card dashboard-panel dashboard-panel-open" id="status-card" data-panel="status">
+    <div class="grid-stack-item" gs-id="status" gs-x="6" gs-y="0" gs-w="6" gs-h="3"><div class="grid-stack-item-content"><section class="card status-card dashboard-panel dashboard-panel-open" id="status-card" data-panel="status">
       <button type="button" class="dashboard-panel-toggle" aria-expanded="true"
               aria-controls="panel-body-status" id="panel-toggle-status">
         <span class="dashboard-chevron" aria-hidden="true">▼</span>
@@ -170,7 +171,7 @@
     </div></div>
 
     <!-- ════════════════════════════════ POSITION MAP ═════════════════════════════════ -->
-    <div class="grid-stack-item" gs-id="map" gs-x="0" gs-y="5" gs-w="6" gs-h="4"><div class="grid-stack-item-content"><section class="card map-card dashboard-panel" id="map-card" data-panel="map">
+    <div class="grid-stack-item" gs-id="map" gs-x="0" gs-y="0" gs-w="6" gs-h="6"><div class="grid-stack-item-content"><section class="card map-card dashboard-panel" id="map-card" data-panel="map">
       <button type="button" class="dashboard-panel-toggle" aria-expanded="false"
               aria-controls="panel-body-map" id="panel-toggle-map">
         <span class="dashboard-chevron" aria-hidden="true">▶</span>
@@ -196,7 +197,7 @@
     </div></div>
 
     <!-- ════════════════════════════════ CONFIGURATION ═════════════════════════════════ -->
-    <div class="grid-stack-item" gs-id="configuration" gs-x="6" gs-y="5" gs-w="6" gs-h="4"><div class="grid-stack-item-content"><section class="card config-card dashboard-panel" id="config-card" data-panel="configuration">
+    <div class="grid-stack-item" gs-id="configuration" gs-x="6" gs-y="3" gs-w="6" gs-h="5"><div class="grid-stack-item-content"><section class="card config-card dashboard-panel" id="config-card" data-panel="configuration">
       <button type="button" class="dashboard-panel-toggle" aria-expanded="false"
               aria-controls="panel-body-configuration" id="panel-toggle-configuration">
         <span class="dashboard-chevron" aria-hidden="true">▶</span>
@@ -257,7 +258,7 @@
     </div></div>
 
     <!-- ════════════════════════════════ TOOLS / UNLOCK ══════════════════════════════════ -->
-    <div class="grid-stack-item" gs-id="tools" gs-x="0" gs-y="9" gs-w="4" gs-h="4"><div class="grid-stack-item-content"><section class="card tools-card dashboard-panel" id="tools-card" data-panel="tools">
+    <div class="grid-stack-item" gs-id="tools" gs-x="6" gs-y="10" gs-w="6" gs-h="2"><div class="grid-stack-item-content"><section class="card tools-card dashboard-panel" id="tools-card" data-panel="tools">
       <button type="button" class="dashboard-panel-toggle" aria-expanded="false"
               aria-controls="panel-body-tools" id="panel-toggle-tools">
         <span class="dashboard-chevron" aria-hidden="true">▶</span>
@@ -312,7 +313,7 @@
     </div></div>
 
     <!-- ═════════════════════════════════════ LIVE LOG ═══════════════════════════════════ -->
-    <div class="grid-stack-item" gs-id="log" gs-x="0" gs-y="13" gs-w="12" gs-h="6"><div class="grid-stack-item-content"><section class="card log-card dashboard-panel" id="log-card" data-panel="log">
+    <div class="grid-stack-item" gs-id="log" gs-x="0" gs-y="6" gs-w="6" gs-h="5"><div class="grid-stack-item-content"><section class="card log-card dashboard-panel" id="log-card" data-panel="log">
       <button type="button" class="dashboard-panel-toggle" aria-expanded="false"
               aria-controls="panel-body-log" id="panel-toggle-log">
         <span class="dashboard-chevron" aria-hidden="true">▶</span>
@@ -367,7 +368,7 @@
     </div></div>
 
     <!-- ═══════════════════════════════════ DISCOVERY ═══════════════════════════════════ -->
-    <div class="grid-stack-item" gs-id="discovery" gs-x="4" gs-y="9" gs-w="8" gs-h="4"><div class="grid-stack-item-content"><section class="card discovery-card dashboard-panel" id="discovery-card" data-panel="discovery">
+    <div class="grid-stack-item" gs-id="discovery" gs-x="0" gs-y="11" gs-w="6" gs-h="2"><div class="grid-stack-item-content"><section class="card discovery-card dashboard-panel" id="discovery-card" data-panel="discovery">
       <button type="button" class="dashboard-panel-toggle" aria-expanded="false"
               aria-controls="panel-body-discovery" id="panel-toggle-discovery">
         <span class="dashboard-chevron" aria-hidden="true">▶</span>
@@ -430,7 +431,7 @@
 
   <script src="/static/vendor/leaflet/leaflet.js"></script>
   <script src="/static/vendor/gridstack/gridstack-all.js"></script>
-  <script src="/static/dashboard.js?v=1.31.1"></script>
+  <script src="/static/dashboard.js?v=1.39.33"></script>
   <script src="/static/layouts/gridstack/gridstack-layout.js"></script>
 </body>
 </html>

@@ -33,11 +33,21 @@ def verify_backup_on_disk(summary: dict[str, object]) -> tuple[int, bool, str]:
     return on_disk, False, ""
 
 
+def _elide_path_middle(path: str, *, max_chars: int = 52) -> str:
+    """Keep folder head and filename tail for dense summary lines."""
+    text = str(path or "").strip()
+    if len(text) <= max_chars:
+        return text
+    keep = max(8, (max_chars - 3) // 2)
+    return f"{text[:keep]}…{text[-keep:]}"
+
+
 def format_mission_summary_line(summary: dict[str, object]) -> str:
     """Single-line integrity report for the dialog."""
     nbytes = int(summary.get("bytes") or 0)
     dropped = int(summary.get("dropped") or 0)
     path = str(summary.get("path") or "").strip() or "(unknown)"
+    path = _elide_path_middle(path)
     return (
         f"Mission Data Safeguarded: {_human_bytes(nbytes)} | "
         f"{dropped:,} Dropped | Path: {path}"

@@ -12,6 +12,11 @@ build/
 dist/
 bench_defaults.local.json
 product_ui_defaults.local.json
+assets/fonts/SegoeUI.ttf
+assets/fonts/Consolas.ttf
+fleet_config.json
+**/fleet_config.json
+.cursor-udp-com-bridge/
 *.spec.bak
 .cursor/*.png
 test_out.txt

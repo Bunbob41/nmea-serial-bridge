@@ -7,7 +7,7 @@ import sys
 from pathlib import Path
 from typing import Any, Optional
 
-from ui.registry import UI_STANDARD, normalize_ui_id
+from ui.registry import UI_FIELD, normalize_ui_id
 
 PRODUCT_UI_SCHEMA_VERSION = 1
 PRODUCT_UI_FILENAME = "product_ui_defaults.json"
@@ -83,8 +83,8 @@ def _deep_merge_dict(base: dict[str, Any], overlay: dict[str, Any]) -> dict[str,
 
 def default_ui_layout_id() -> str:
     merged = load_merged_product_ui_defaults()
-    ui = normalize_ui_id(str(merged.get("ui") or UI_STANDARD))
-    return ui if ui else UI_STANDARD
+    ui = normalize_ui_id(str(merged.get("ui") or UI_FIELD))
+    return ui if ui else UI_FIELD
 
 
 def _sanitize_web_dashboard_for_export(block: Any) -> dict[str, Any] | None:
@@ -135,12 +135,12 @@ def capture_ui_layout_snapshot_from_user_profile() -> dict[str, Any]:
     from ui.picker import CONFIG_PATH as UI_CHOICE_PATH
     from ui.ui_prefs import CONFIG_PATH as UI_PREFS_PATH
 
-    ui = UI_STANDARD
+    ui = UI_FIELD
     if UI_CHOICE_PATH.is_file():
         try:
             raw = json.loads(UI_CHOICE_PATH.read_text(encoding="utf-8"))
             if isinstance(raw, dict):
-                ui = normalize_ui_id(str(raw.get("ui") or UI_STANDARD))
+                ui = normalize_ui_id(str(raw.get("ui") or UI_FIELD))
         except (OSError, json.JSONDecodeError, TypeError):
             pass
 
@@ -198,7 +198,7 @@ def apply_product_ui_defaults_to_user(*, overwrite: bool = True) -> bool:
     from ui.picker import save_ui_choice
     from ui.ui_prefs import CONFIG_PATH as UI_PREFS_PATH, _migrate_schema, _write_json
 
-    ui = normalize_ui_id(str(merged.get("ui") or UI_STANDARD))
+    ui = normalize_ui_id(str(merged.get("ui") or UI_FIELD))
     save_ui_choice(ui)
 
     ui_prefs = merged.get("ui_prefs")

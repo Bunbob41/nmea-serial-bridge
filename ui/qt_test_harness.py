@@ -14,6 +14,9 @@ WINDOWS_QT_SHUTDOWN_EXIT = 3221226505
 def ensure_qt_app(argv: Optional[list[str]] = None) -> QtWidgets.QApplication:
     app = QtWidgets.QApplication.instance()
     if app is None:
+        from ui.fonts import configure_qt_font_environment
+
+        configure_qt_font_environment()
         app = QtWidgets.QApplication(argv if argv is not None else [])
     return app
 

@@ -67,7 +67,7 @@ MAIN_TAB_HINTS: dict[str, str] = {
     "Terminal": "Local PowerShell / cmd",
     "Inject": "Send test NMEA to serial / network",
     "Diagnostics": "Bench checks and file log",
-    "Black box": "Raw session capture (.raw)",
+    "Black box": "NMEA session capture (.nmea)",
     "File log": "Rotating bridge text log",
     "Checks": "Automated bench checks",
 }
@@ -77,6 +77,7 @@ DEFAULT_TOPBAR_HIDDEN_CHIPS: frozenset[str] = frozenset(
 )
 
 MODERN_HEADER_CHIP_KEYS: frozenset[str] = frozenset({"view", "hud", "ui_switch"})
+MODERN_HEADER_CHIP_ORDER: tuple[str, ...] = ("view", "hud", "ui_switch")
 
 _EDITOR_DIALOG_MIN_W = 680
 _EDITOR_DIALOG_MIN_H = 460
@@ -94,6 +95,45 @@ def migrate_topbar_hidden(hidden: set[str] | list[str]) -> set[str]:
     h.discard("hidden_tabs")
     h.discard("view")
     return h
+
+
+def modern_header_editor_rows(
+    order: list[str],
+    hidden: set[str] | list[str],
+    labels: dict[str, str],
+) -> list[tuple[str, str, bool, bool]]:
+    """Header tab rows for Modern — View/HUD/Layout only, in saved order."""
+    hidden_m = migrate_topbar_hidden(hidden)
+    seq = [k for k in migrate_topbar_order(order) if k in MODERN_HEADER_CHIP_KEYS]
+    for key in MODERN_HEADER_CHIP_ORDER:
+        if key not in seq:
+            seq.append(key)
+    rows: list[tuple[str, str, bool, bool]] = []
+    for key in seq:
+        title = labels.get(key, TOPBAR_SHORT_LABEL.get(key, key))
+        rows.append((key, title, key not in hidden_m, True))
+    return rows
+
+
+def merge_modern_header_topbar_prefs(
+    editor_order: list[str],
+    editor_hidden: set[str] | list[str],
+    prior_order: list[str],
+    prior_hidden: set[str] | list[str],
+) -> tuple[list[str], set[str]]:
+    """Apply Header-tab edits without clobbering legacy chip prefs or re-hiding tiles."""
+    eh = migrate_topbar_hidden(editor_hidden)
+    ph = migrate_topbar_hidden(prior_hidden)
+    header_order = [k for k in editor_order if k in MODERN_HEADER_CHIP_KEYS]
+    for key in MODERN_HEADER_CHIP_ORDER:
+        if key not in header_order:
+            header_order.append(key)
+    non_header_order = [k for k in prior_order if k not in MODERN_HEADER_CHIP_KEYS]
+    order = migrate_topbar_order([*header_order, *non_header_order])
+    non_header_hidden = ph - MODERN_HEADER_CHIP_KEYS
+    header_hidden = {k for k in eh if k in MODERN_HEADER_CHIP_KEYS}
+    hidden = migrate_topbar_hidden(non_header_hidden | header_hidden)
+    return order, hidden
 
 
 def build_main_tab_editor_rows(
@@ -403,19 +443,19 @@ class UiEditorDialog(QtWidgets.QDialog):
         order = list(bar.order()) if bar is not None else list(DEFAULT_TOPBAR_ORDER)
         order = migrate_topbar_order(order)
         hidden_bar = migrate_topbar_hidden(bar.hidden() if bar is not None else set())
-        bar_rows: list[tuple[str, str, bool, bool]] = []
-        for key in order:
-            if key not in labels and key not in TOPBAR_SHORT_LABEL:
-                continue
-            title = labels.get(key, TOPBAR_SHORT_LABEL.get(key, key))
-            bar_rows.append((key, title, key not in hidden_bar, True))
-        for key in DEFAULT_TOPBAR_ORDER:
-            if key not in {r[0] for r in bar_rows}:
+        if ui_mode == "modern":
+            bar_rows = modern_header_editor_rows(order, hidden_bar, labels)
+        else:
+            bar_rows: list[tuple[str, str, bool, bool]] = []
+            for key in order:
+                if key not in labels and key not in TOPBAR_SHORT_LABEL:
+                    continue
                 title = labels.get(key, TOPBAR_SHORT_LABEL.get(key, key))
                 bar_rows.append((key, title, key not in hidden_bar, True))
-
-        if ui_mode == "modern":
-            bar_rows = [row for row in bar_rows if row[0] in MODERN_HEADER_CHIP_KEYS]
+            for key in DEFAULT_TOPBAR_ORDER:
+                if key not in {r[0] for r in bar_rows}:
+                    title = labels.get(key, TOPBAR_SHORT_LABEL.get(key, key))
+                    bar_rows.append((key, title, key not in hidden_bar, True))
 
         topbar_intro = (
             "View, HUD, and Layout in the Modern global header."
@@ -688,10 +728,10 @@ class UiEditorDialog(QtWidgets.QDialog):
             prior_order = migrate_topbar_order(
                 list(getattr(win, "_topbar_order", [])) or list(DEFAULT_TOPBAR_ORDER)
             )
-            tail = [key for key in prior_order if key not in order]
-            order = migrate_topbar_order([*order, *tail])
             prior_hidden = migrate_topbar_hidden(getattr(win, "_topbar_hidden", set()))
-            hidden = migrate_topbar_hidden(prior_hidden | hidden)
+            order, hidden = merge_modern_header_topbar_prefs(
+                order, hidden, prior_order, prior_hidden
+            )
         bar = getattr(win, "_survey_top_bar", None)
         if bar is not None:
             weights = bar.chip_weights()

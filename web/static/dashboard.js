@@ -49,32 +49,32 @@ let lastDashboardStatus = null;
 const BAUD_PRESETS = [4800, 9600, 19200, 38400, 57600, 115200, 230400, 460800];
 const DEFAULT_BAUD = 115200;
 
-const GNSS_BADGE_STYLE = "padding: 6px; border-radius: 4px; font-weight: bold; display: inline-block;";
+const GNSS_BADGE_CLASS = {
+  rtk: "gnss-badge gnss-badge-rtk",
+  gps: "gnss-badge gnss-badge-gps",
+  bad: "gnss-badge gnss-badge-bad",
+};
 
-function gnssBadgeStylesheet(quality, streamIdle, stale) {
-  if (streamIdle || stale || quality === 0) {
-    return `background-color: #F8D7DA; color: #721C24; ${GNSS_BADGE_STYLE}`;
-  }
-  if (quality === 4 || quality === 5) {
-    return `background-color: #D4EDDA; color: #155724; ${GNSS_BADGE_STYLE}`;
-  }
-  if (quality === 1 || quality === 2) {
-    return `background-color: #CCE5FF; color: #004085; ${GNSS_BADGE_STYLE}`;
-  }
-  return `background-color: #F8D7DA; color: #721C24; ${GNSS_BADGE_STYLE}`;
+function gnssBadgeClass(quality, streamIdle, stale) {
+  if (streamIdle || stale || quality === 0) return GNSS_BADGE_CLASS.bad;
+  if (quality === 4 || quality === 5) return GNSS_BADGE_CLASS.rtk;
+  if (quality === 1 || quality === 2) return GNSS_BADGE_CLASS.gps;
+  return GNSS_BADGE_CLASS.bad;
 }
 
 function applyGnssStatusStyles(status) {
   const q = status.gnss_quality;
   const idle = !!status.gnss_stream_idle;
   const stale = !!status.gnss_stale;
-  const ss = gnssBadgeStylesheet(
-    typeof q === "number" ? q : null,
-    idle,
-    stale
-  );
   const gEl = document.getElementById("stat-gnss");
-  if (gEl) gEl.style.cssText = ss;
+  if (gEl) {
+    gEl.className = `stat-value ${gnssBadgeClass(
+      typeof q === "number" ? q : null,
+      idle,
+      stale
+    )}`;
+    gEl.style.cssText = "";
+  }
   const card = document.getElementById("status-card");
   if (card) {
     card.classList.remove("gnss-tone-rtk", "gnss-tone-gps", "gnss-tone-bad", "gnss-tone-idle");
@@ -1656,12 +1656,13 @@ function initDashboardPanels() {
         discovery: false,
       }
     : {
-        "com-setup": true,
+        map: true,
+        log: true,
         status: true,
         configuration: true,
-        tools: true,
-        log: true,
-        discovery: true,
+        "com-setup": true,
+        discovery: false,
+        tools: false,
       };
 
   document.querySelectorAll(".dashboard-panel[data-panel]").forEach((panel) => {

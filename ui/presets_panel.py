@@ -6,6 +6,17 @@ from PySide6 import QtCore, QtWidgets
 from bench_config import validate_preset_name
 from ui.tool_tabs import _scrollable
 
+_PRESET_IP_FIELD_MAX_W = 248
+
+
+def _preset_ip_field(edit: QtWidgets.QLineEdit) -> QtWidgets.QLineEdit:
+    edit.setMaximumWidth(_PRESET_IP_FIELD_MAX_W)
+    edit.setSizePolicy(
+        QtWidgets.QSizePolicy.Policy.Fixed,
+        QtWidgets.QSizePolicy.Policy.Fixed,
+    )
+    return edit
+
 
 def create_presets_tab(
     parent: QtWidgets.QWidget,
@@ -30,11 +41,18 @@ def create_presets_tab(
         hint.setObjectName("tabHint")
         lay.addWidget(hint)
 
-    row = QtWidgets.QHBoxLayout()
+    split = QtWidgets.QHBoxLayout()
+    split.setSpacing(12)
+
+    list_card = QtWidgets.QFrame()
+    list_card.setObjectName("modernPresetListCard")
+    list_lay = QtWidgets.QVBoxLayout(list_card)
+    list_lay.setContentsMargins(10, 10, 10, 10)
+    list_lay.setSpacing(0)
     parent.preset_list = QtWidgets.QListWidget()
     parent.preset_list.setObjectName("presetList")
     parent.preset_list.setMinimumWidth(160)
-    min_h = 140 if embedded else 96
+    min_h = 180 if embedded else 220
     parent.preset_list.setMinimumHeight(min_h)
     parent.preset_list.setSelectionMode(QtWidgets.QAbstractItemView.SelectionMode.SingleSelection)
     parent.preset_list.setDragEnabled(True)
@@ -42,15 +60,29 @@ def create_presets_tab(
     parent.preset_list.setDropIndicatorShown(True)
     parent.preset_list.setDefaultDropAction(QtCore.Qt.DropAction.MoveAction)
     parent.preset_list.setDragDropMode(QtWidgets.QAbstractItemView.DragDropMode.InternalMove)
+    parent.preset_list.setVerticalScrollBarPolicy(
+        QtCore.Qt.ScrollBarPolicy.ScrollBarAsNeeded
+    )
+    parent.preset_list.setHorizontalScrollBarPolicy(
+        QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+    )
     parent.preset_list.setFocusPolicy(QtCore.Qt.FocusPolicy.StrongFocus)
     parent.preset_list.setToolTip(
         "Click to select and edit survey fields (PC IP, subnet, notes). "
         "Load or double-click applies COM/UDP/NMEA to Connect. "
         "Saved on this PC (%USERPROFILE%\\.cursor-udp-com-bridge\\path_presets.json)."
     )
-    row.addWidget(parent.preset_list, 1)
+    list_lay.addWidget(parent.preset_list, 1)
+    split.addWidget(list_card, 4)
 
-    btn_col = QtWidgets.QVBoxLayout()
+    right_panel = QtWidgets.QWidget()
+    right_panel.setObjectName("modernPresetRightPanel")
+    right_lay = QtWidgets.QVBoxLayout(right_panel)
+    right_lay.setContentsMargins(0, 0, 0, 0)
+    right_lay.setSpacing(10)
+
+    btn_row = QtWidgets.QHBoxLayout()
+    btn_row.setSpacing(6)
     parent.btn_preset_load = QtWidgets.QPushButton("Load")
     parent.btn_preset_load.setObjectName("btnPresetLoad")
     parent.btn_preset_save = QtWidgets.QPushButton("Save")
@@ -66,27 +98,37 @@ def create_presets_tab(
         parent.btn_preset_save,
         parent.btn_preset_save_as,
         parent.btn_preset_new,
-        parent.btn_preset_delete,
     ):
-        b.setMinimumWidth(96)
-        btn_col.addWidget(b)
-    btn_col.addStretch(1)
-    row.addLayout(btn_col)
-    lay.addLayout(row, 1)
+        b.setMinimumWidth(72)
+        btn_row.addWidget(b, 0)
+    btn_row.addStretch(1)
+    parent.btn_preset_delete.setMinimumWidth(72)
+    btn_row.addWidget(parent.btn_preset_delete, 0)
+    right_lay.addLayout(btn_row)
 
     net_box = QtWidgets.QGroupBox("Survey network (optional — boat / LAN)")
     net_box.setObjectName("modernToolsFormGroup")
     nf = QtWidgets.QFormLayout(net_box)
-    parent.preset_pc_ip = QtWidgets.QLineEdit()
-    parent.preset_subnet = QtWidgets.QLineEdit()
-    parent.preset_ins_ip = QtWidgets.QLineEdit()
+    nf.setFieldGrowthPolicy(
+        QtWidgets.QFormLayout.FieldGrowthPolicy.FieldsStayAtSizeHint
+    )
+    parent.preset_pc_ip = _preset_ip_field(QtWidgets.QLineEdit())
+    parent.preset_subnet = _preset_ip_field(QtWidgets.QLineEdit())
+    parent.preset_ins_ip = _preset_ip_field(QtWidgets.QLineEdit())
     parent.preset_notes = QtWidgets.QPlainTextEdit()
-    parent.preset_notes.setMaximumHeight(56)
+    parent.preset_notes.setMaximumHeight(72)
+    parent.preset_notes.setMaximumWidth(_PRESET_IP_FIELD_MAX_W)
     nf.addRow("Survey PC IP:", parent.preset_pc_ip)
     nf.addRow("Subnet mask:", parent.preset_subnet)
     nf.addRow("INS IP (reference):", parent.preset_ins_ip)
-    nf.addRow("Notes:", parent.preset_notes)
-    lay.addWidget(net_box)
+    if embedded:
+        notes_lbl = QtWidgets.QLabel("Notes")
+        notes_lbl.setObjectName("modernControlFormLabel")
+        nf.addRow(notes_lbl)
+        nf.addRow(parent.preset_notes)
+    else:
+        nf.addRow("Notes:", parent.preset_notes)
+    right_lay.addWidget(net_box)
 
     if include_advanced_net:
         adv = QtWidgets.QGroupBox("Advanced network (TCP / UDP remote)")
@@ -94,14 +136,18 @@ def create_presets_tab(
         av.addWidget(parent.chk_advanced_net)
         av.addWidget(parent._advanced_net)
         av.addWidget(parent.chk_serial_auto_reconnect)
-        lay.addWidget(adv)
+        right_lay.addWidget(adv)
     else:
         note = QtWidgets.QLabel(
             "TCP / UDP remote modes: Control tab → Network → Advanced network."
         )
         note.setWordWrap(True)
         note.setObjectName("tabNote")
-        lay.addWidget(note)
+        right_lay.addWidget(note)
+
+    right_lay.addStretch(1)
+    split.addWidget(right_panel, 6)
+    lay.addLayout(split, 1)
 
     parent.btn_preset_load.clicked.connect(parent._preset_load_selected)
     parent.btn_preset_save.clicked.connect(parent._preset_save_selected)

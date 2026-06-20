@@ -30,53 +30,18 @@ class TestUiTabs(unittest.TestCase):
     def setUpClass(cls) -> None:
         cls._app = QtWidgets.QApplication.instance() or QtWidgets.QApplication(sys.argv)
 
-    def test_standard_advanced_net_on_connect_tab(self) -> None:
-        from ui.standard import BridgeWindowStandard
+    def test_modern_theme_page_professional_controls(self) -> None:
+        from ui.modern import BridgeWindowModern
 
-        win = BridgeWindowStandard()
-        tabs = win._main_tabs
-        labels = [tabs.tabText(i) for i in range(tabs.count())]
-        self.assertIn("Connect", labels)
-        connect_page = tabs.widget(labels.index("Connect"))
-        self.assertIsNotNone(connect_page)
-        self.assertIn("Log", labels)
-        log_page = tabs.widget(labels.index("Log"))
-        self.assertIsNotNone(log_page)
-        self.assertIs(
-            _tab_page_containing(win.chk_advanced_net),
-            connect_page,
-            "Advanced network must stay on Connect, not Presets",
-        )
-        if "Presets" in labels:
-            presets_page = tabs.widget(labels.index("Presets"))
-            self.assertIsNot(
-                _tab_page_containing(win.chk_advanced_net),
-                presets_page,
-                "Advanced network must stay on Connect, not Presets",
-            )
-
-    def test_standard_has_theme_tab(self) -> None:
-        from ui.standard import BridgeWindowStandard
-
-        win = BridgeWindowStandard()
-        tabs = win._main_tabs
-        labels = [tabs.tabText(i) for i in range(tabs.count())]
-        self.assertIn("Log", labels)
-        # "Theme" is now inside the Tools drawer, not a top-level tab
-        self.assertIn("Tools", labels)
-        tools_nav = getattr(win, "_tools_nav", None)
-        self.assertIsNotNone(tools_nav, "_tools_nav sidebar must exist on Standard layout")
-        nav_labels = [tools_nav.item(i).text() for i in range(tools_nav.count())]  # type: ignore[union-attr]
-        self.assertIn("Theme", nav_labels)
-        self.assertTrue(tabs.tabBar().isMovable())
-        self.assertIs(_tab_page_containing(win.log_view), tabs.widget(labels.index("Log")))
-        self.assertTrue(hasattr(win, "connect_mini_log"))
-        self.assertTrue(hasattr(win, "connect_terminal_out"))
-        self.assertTrue(hasattr(win, "_connect_panel_disclosures"))
-        stack = getattr(win, "_connect_panel_stack", None)
-        self.assertIsNotNone(stack)
-        disclosures = getattr(win, "_connect_panel_disclosures", {})
-        self.assertGreaterEqual(len(disclosures), 4)
+        win = BridgeWindowModern()
+        theme_idx = win._tools_section_index["theme"]
+        theme_page = win._tools_stack.widget(theme_idx)
+        self.assertEqual(theme_page.objectName(), "modernThemePage")
+        self.assertTrue(hasattr(win, "cmb_theme_choice"))
+        self.assertTrue(hasattr(win, "theme_zone_list"))
+        self.assertFalse(hasattr(win, "btn_theme_randomize"))
+        self.assertFalse(hasattr(win, "btn_theme_standardize"))
+        self.assertFalse(hasattr(win, "chk_theme_seed_lock"))
 
     def test_field_advanced_net_on_presets_tab(self) -> None:
         from ui.field import BridgeWindowField
@@ -96,9 +61,9 @@ class TestUiTabs(unittest.TestCase):
         self.assertTrue(tabs.tabBar().isMovable())
 
     def test_preset_list_click_selects_without_loading_connect(self) -> None:
-        from ui.standard import BridgeWindowStandard
+        from ui.field import BridgeWindowField
 
-        win = BridgeWindowStandard()
+        win = BridgeWindowField()
         win.show()
         self._app.processEvents()
         lst = win.preset_list
@@ -121,7 +86,7 @@ class TestUiTabs(unittest.TestCase):
         from unittest.mock import patch
 
         import bench_config as bc
-        from ui.standard import BridgeWindowStandard
+        from ui.field import BridgeWindowField
 
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "path_presets.json"
@@ -146,7 +111,7 @@ class TestUiTabs(unittest.TestCase):
                     },
                     boat_style=True,
                 )
-                win = BridgeWindowStandard()
+                win = BridgeWindowField()
                 win.show()
                 self._app.processEvents()
                 one_item = win.preset_list.item(0)
@@ -159,9 +124,9 @@ class TestUiTabs(unittest.TestCase):
                 self.assertEqual(win.udp_port.text(), "10111")
 
     def test_preset_buttons_disabled_while_running(self) -> None:
-        from ui.standard import BridgeWindowStandard
+        from ui.field import BridgeWindowField
 
-        win = BridgeWindowStandard()
+        win = BridgeWindowField()
         win.show()
         self._app.processEvents()
         win._starting = False
@@ -177,7 +142,7 @@ class TestUiTabs(unittest.TestCase):
         from unittest.mock import MagicMock, patch
 
         import bench_config as bc
-        from ui.standard import BridgeWindowStandard
+        from ui.field import BridgeWindowField
 
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "path_presets.json"
@@ -191,7 +156,7 @@ class TestUiTabs(unittest.TestCase):
                         "udp_port": 10110,
                     },
                 )
-                win = BridgeWindowStandard()
+                win = BridgeWindowField()
                 win.start_bridge = MagicMock()  # type: ignore[method-assign]
                 win.stop_bridge = MagicMock()  # type: ignore[method-assign]
                 with patch.object(win, "_diag_run_check_setup") as mock_check:
@@ -206,7 +171,7 @@ class TestUiTabs(unittest.TestCase):
         from unittest.mock import patch
 
         import bench_config as bc
-        from ui.standard import BridgeWindowStandard
+        from ui.field import BridgeWindowField
 
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "path_presets.json"
@@ -220,7 +185,7 @@ class TestUiTabs(unittest.TestCase):
                         "udp_port": 10115,
                     },
                 )
-                win = BridgeWindowStandard()
+                win = BridgeWindowField()
                 win._set_active_preset("Alpha")
                 args = win._diag_check_setup_args(production=False)
                 self.assertIn("--port", args)
@@ -234,7 +199,7 @@ class TestUiTabs(unittest.TestCase):
         from unittest.mock import patch
 
         import bench_config as bc
-        from ui.standard import BridgeWindowStandard
+        from ui.field import BridgeWindowField
 
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "path_presets.json"
@@ -259,7 +224,7 @@ class TestUiTabs(unittest.TestCase):
                     },
                     boat_style=True,
                 )
-                win = BridgeWindowStandard()
+                win = BridgeWindowField()
                 win._set_active_preset("Desk test")
                 args = win._diag_check_setup_args(production=True)
                 self.assertIn("--production", args)
@@ -282,9 +247,9 @@ class TestUiTabs(unittest.TestCase):
             self.assertEqual(win.intent_hint.toolTip(), "")
 
     def test_nmea_strict_grid_disabled_by_default(self) -> None:
-        from ui.standard import BridgeWindowStandard
+        from ui.field import BridgeWindowField
 
-        win = BridgeWindowStandard()
+        win = BridgeWindowField()
         box = win._nmea_strict_types_box
         self.assertIsNotNone(box)
         win.rb_nmea_passthrough.setChecked(True)
@@ -295,9 +260,9 @@ class TestUiTabs(unittest.TestCase):
         self.assertTrue(box.isEnabled())
 
     def test_stats_tick_handles_non_bridge_object(self) -> None:
-        from ui.standard import BridgeWindowStandard
+        from ui.field import BridgeWindowField
 
-        win = BridgeWindowStandard()
+        win = BridgeWindowField()
         win.bridge = object()  # type: ignore[assignment]
         win._starting = False
         win._tick_stats()
@@ -305,9 +270,9 @@ class TestUiTabs(unittest.TestCase):
         self.assertTrue("Stopped" in win.lbl_stats.text())
 
     def test_status_chips_handle_non_bridge_object(self) -> None:
-        from ui.standard import BridgeWindowStandard
+        from ui.field import BridgeWindowField
 
-        win = BridgeWindowStandard()
+        win = BridgeWindowField()
         win.bridge = object()  # type: ignore[assignment]
         win._refresh_nmea_status_chip()
         self._app.processEvents()
@@ -368,10 +333,12 @@ class TestUiTabs(unittest.TestCase):
         self.assertNotIn("More", joined)
         self.assertNotIn("Remote", joined)
         self.assertNotIn("Clear view", joined)
-        self.assertEqual(len(labels), 11)
+        self.assertEqual(len(labels), 13)
+        self.assertIn("🎨  Theme", labels)
         self.assertNotIn("📖  Guide", joined)
         self.assertIn("🎛  Control", labels)
         self.assertIn("🛰  Hub", labels)
+        self.assertIn("🔀  Fleet", labels)
         self.assertIn("📱  Dashboard", joined)
         checks_idx = win._tools_section_index["checks"]
         checks_page = win._tools_stack.widget(checks_idx)
@@ -381,11 +348,17 @@ class TestUiTabs(unittest.TestCase):
         self.assertGreaterEqual(output.maximumHeight(), 1000)
         self.assertEqual(win._tools_section_index["inject"], labels.index("💉  Inject"))
         self.assertIn("guide", win._tools_section_index)
-        self.assertEqual(win._tools_section_index["activity"], labels.index("📋  Activity"))
+        control_idx = win._tools_section_index["control"]
+        activity_idx = win._tools_section_index["activity"]
+        self.assertEqual(activity_idx, labels.index("📋  Activity"))
+        self.assertEqual(control_idx + 1, activity_idx)
         self.assertLess(
-            win._tools_section_index["activity"],
+            activity_idx,
             win._tools_section_index["black_box"],
         )
+        self.assertIn("theme", win._tools_section_index)
+        theme_page = win._tools_stack.widget(win._tools_section_index["theme"])
+        self.assertEqual(theme_page.objectName(), "modernThemePage")
         collapse_btn = getattr(win, "_modern_sidebar_collapse_btn", None)
         self.assertIsNotNone(collapse_btn)
 
@@ -402,26 +375,47 @@ class TestUiTabs(unittest.TestCase):
 
         win._apply_modern_tools_nav_mode("top_chips", persist=False)
         self.assertEqual(win._modern_tools_nav_mode, "top_chips")
-        self.assertFalse(win._modern_tools_chip_rail.isHidden())
+        chip_sep = getattr(win, "_header_chip_sep", None)
+        self.assertIsNotNone(chip_sep)
+        self.assertIs(chip_sep.parentWidget(), win._header_chip_host)
+        self.assertIs(chip_sep.window(), win)
+        self.assertTrue(win._modern_tools_chip_rail.isHidden())
+        self.assertFalse(win._header_chip_host.isHidden())
+        inner = win._modern_tools_chip_inner
+        scroll = win._modern_tools_chip_scroll
+        self.assertIs(scroll.widget(), inner)
+        self.assertIs(scroll.parentWidget(), win._header_chip_host)
         self.assertTrue(win._modern_sidebar_scroll.isHidden())
         rail_lbl = win.findChild(QtWidgets.QLabel, "modernToolsChipRailLabel")
         self.assertIsNotNone(rail_lbl)
-        self.assertEqual(rail_lbl.text(), "TOOLS")
-        chip_labels = [btn.text().strip() for btn in win._tools_chip_buttons]
+        self.assertTrue(rail_lbl.isHidden())
+        chip_labels = [str(btn.property("navLabel")) for btn in win._tools_chip_buttons]
         dropdowns = getattr(win, "_tools_chip_dropdowns", [])
-        self.assertEqual(len(chip_labels), 4)
+        self.assertEqual(len(chip_labels), 6)
+        self.assertNotIn("Theme", chip_labels)
         self.assertEqual(len(dropdowns), 2)
         tier_keys = {str(b.property("navTierKey")) for b in dropdowns}
         self.assertEqual(tier_keys, {"logging", "bench_tools"})
+        self.assertIn("Activity", chip_labels)
+        self.assertIn("Control", chip_labels)
+        control_pos = chip_labels.index("Control")
+        activity_pos = chip_labels.index("Activity")
+        self.assertEqual(activity_pos, control_pos + 1)
         for _sid, label, icon in nav_spec:
             if _sid == "guide":
                 continue
-            if _sid in {"activity", "black_box", "file_log", "phone", "inject", "terminal", "checks"}:
+            if _sid in {"black_box", "file_log", "phone", "inject", "terminal", "checks"}:
                 continue
-            self.assertIn(f"{icon}  {label}", chip_labels)
-        guide_btn = getattr(win, "_btn_header_guide", None)
-        self.assertIsNotNone(guide_btn)
-        self.assertEqual(guide_btn.text().strip(), "📖  Guide")
+            if _sid == "theme":
+                continue
+            self.assertIn(label, chip_labels)
+            for btn in win._tools_chip_buttons:
+                if str(btn.property("navLabel")) == label:
+                    self.assertIn(icon, btn.text())
+                    self.assertIn(label, btn.text())
+                    break
+            else:
+                self.fail(f"chip for {label} not found")
 
         win._tools_nav_select(win._tools_section_index["presets"])
         preset_idx = win._tools_section_index["presets"]
@@ -436,6 +430,76 @@ class TestUiTabs(unittest.TestCase):
         self.assertTrue(win._modern_tools_chip_rail.isHidden())
         self.assertFalse(win._modern_sidebar_scroll.isHidden())
 
+    def test_modern_header_chips_keep_labels_and_scroll_when_narrow(self) -> None:
+        from ui.modern import BridgeWindowModern
+
+        win = BridgeWindowModern()
+        win._apply_modern_tools_nav_mode("top_chips", persist=False)
+        win._header_chips_icon_only = True
+        win._sync_modern_header_chip_compression()
+        self.assertFalse(win._header_chips_icon_only)
+        for btn in win._tools_chip_buttons:
+            icon = str(btn.property("navIcon") or "").strip()
+            label = str(btn.property("navLabel") or "").strip()
+            self.assertIn(icon, btn.text())
+            self.assertIn(label, btn.text())
+
+        bench_dd = next(
+            b
+            for b in win._tools_chip_dropdowns
+            if str(b.property("navTierKey")) == "bench_tools"
+        )
+        child_sids = list(bench_dd.property("navChildSids"))
+        self.assertIn("theme", child_sids)
+
+    def test_modern_header_chips_launch_scroll_not_clipped(self) -> None:
+        from PySide6 import QtCore
+
+        from ui.modern import BridgeWindowModern
+
+        win = BridgeWindowModern()
+        win.resize(1200, 800)
+        win._apply_modern_tools_nav_mode("top_chips", persist=False)
+        win._restore_modern_header_split()
+        self._app.processEvents()
+        win._sync_modern_header_chip_scroll()
+        scroll = win._modern_tools_chip_scroll
+        self.assertEqual(scroll.horizontalScrollBar().value(), 0)
+        control = next(
+            b for b in win._tools_chip_buttons if str(b.property("navLabel")) == "Control"
+        )
+        self.assertIn("Control", control.text())
+        vp_left = control.mapTo(scroll.viewport(), QtCore.QPoint(0, 0)).x()
+        self.assertGreaterEqual(vp_left, 0)
+
+    def test_modern_header_chips_icon_only_when_narrow(self) -> None:
+        from ui.modern import BridgeWindowModern
+
+        win = BridgeWindowModern()
+        win._apply_modern_tools_nav_mode("top_chips", persist=False)
+        win._apply_embedded_header_chip_styles()
+        for btn in win._tools_chip_buttons:
+            icon = str(btn.property("navIcon") or "").strip()
+            label = str(btn.property("navLabel") or "").strip()
+            self.assertIn(icon, btn.text())
+            self.assertIn(label, btn.text())
+            self.assertEqual(str(btn.property("headerIconOnly")).lower(), "false")
+
+    def test_logging_indicator_reserves_header_trail_width(self) -> None:
+        from ui.modern import BridgeWindowModern
+
+        win = BridgeWindowModern()
+        win._sync_modern_embedded_topbar_chrome()
+        trail = win._header_pane_trail
+        self.assertIsNotNone(trail)
+        win._logging_indicator.hide()
+        win._sync_header_trail_layout()
+        hidden_min = trail.minimumWidth()
+        win._logging_indicator.show()
+        win._sync_header_trail_layout()
+        self.assertGreater(win._header_trail_leading_width(), 0)
+        self.assertGreater(trail.minimumWidth(), hidden_min)
+
     def test_modern_dropdown_chip_cycles_children(self) -> None:
         from ui.modern import BridgeWindowModern
 
@@ -448,14 +512,14 @@ class TestUiTabs(unittest.TestCase):
         self.assertGreaterEqual(len(child_sids), 2)
         win._open_modern_section_by_sid(child_sids[0])
         self._app.processEvents()
-        self.assertEqual(logging_dd.text().strip(), "📋  Activity")
+        self.assertIn("Black box", logging_dd.text())
         win._cycle_modern_tools_dropdown("logging", child_sids)
         self._app.processEvents()
         self.assertEqual(
             win._tools_stack.currentIndex(),
             win._tools_section_index[child_sids[1]],
         )
-        self.assertIn("Black box", logging_dd.text())
+        self.assertIn("File log", logging_dd.text())
 
     def test_modern_dashboard_nav_label(self) -> None:
         from ui.tool_tabs import build_modern_tools_nav
@@ -504,6 +568,16 @@ class TestUiTabs(unittest.TestCase):
         self.assertIsNotNone(getattr(win, "_control_preset_bar", None))
         self.assertEqual(win.intent_hint.objectName(), "modernToolsLiveStatus")
 
+    def test_modern_fleet_page(self) -> None:
+        from ui.modern import BridgeWindowModern
+
+        win = BridgeWindowModern()
+        fleet_idx = win._tools_section_index["fleet"]
+        fleet_page = win._tools_stack.widget(fleet_idx)
+        self.assertEqual(fleet_page.objectName(), "modernFleetTab")
+        self.assertIsNotNone(fleet_page.findChild(QtWidgets.QTableWidget, "modernFleetTable"))
+        self.assertIsNotNone(getattr(win, "_fleet_panel", None))
+
     def test_modern_hub_page_banner(self) -> None:
         from ui.modern import BridgeWindowModern
 
@@ -527,6 +601,7 @@ class TestUiTabs(unittest.TestCase):
         self.assertEqual(main, {})
         self.assertIn("Control", tools)
         self.assertIn("Hub", tools)
+        self.assertIn("Fleet", tools)
         self.assertEqual(len(tools), len(build_modern_tools_nav()))
 
         dlg = UiEditorDialog(win)
@@ -580,7 +655,8 @@ class TestUiTabs(unittest.TestCase):
         dlg = UiEditorDialog(win)
         dlg._apply()
         self._app.processEvents()
-        self.assertFalse(win._modern_tools_chip_rail.isHidden())
+        self.assertFalse(win._header_chip_host.isHidden())
+        self.assertTrue(win._modern_tools_chip_rail.isHidden())
         self.assertGreater(
             len(win._tools_chip_buttons) + len(win._tools_chip_dropdowns),
             0,
@@ -639,10 +715,9 @@ class TestUiTabs(unittest.TestCase):
         from ui.modern import BridgeWindowModern
 
         win = BridgeWindowModern()
-        guide_btn = getattr(win, "_btn_header_guide", None)
-        self.assertIsNotNone(guide_btn)
+        self.assertIsNone(getattr(win, "_floating_guide", None))
         win._open_modern_section_by_sid("control")
-        guide_btn.click()
+        win._open_modern_section_by_sid("guide")
         self._app.processEvents()
         self.assertEqual(win._tools_stack.currentIndex(), win._tools_section_index["guide"])
 
@@ -652,25 +727,28 @@ class TestUiTabs(unittest.TestCase):
         from ui.modern import BridgeWindowModern
 
         win = BridgeWindowModern()
+        win._apply_modern_tools_nav_mode("top_chips", persist=False)
         self.assertEqual(
             win.status_banner.sizePolicy().horizontalPolicy(),
-            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Preferred,
         )
         win._set_status_banner("stopped", "Short", "")
         self._app.processEvents()
-        short_w = win.status_banner.width()
+        short_hint = win.status_banner_text.sizeHint().width()
+        short_w = win._header_status_container.width()
         win._set_status_banner(
             "stopped",
             "Stopped · Pick a COM port and UDP settings, then Start.",
             "",
         )
         self._app.processEvents()
-        long_w = win.status_banner.width()
-        self.assertGreater(long_w, short_w)
-        self.assertLessEqual(
-            long_w,
-            win.status_banner.maximumWidth() + 2,
-        )
+        long_hint = win.status_banner_text.sizeHint().width()
+        long_text = win.status_banner_text.text()
+        self.assertGreater(long_hint, short_hint)
+        self.assertIn("Stopped", long_text)
+        splitter = getattr(win, "_header_splitter", None)
+        self.assertIsNotNone(splitter)
+        self.assertEqual(splitter.count(), 4)
 
     def test_modern_header_phone_opens_dashboard(self) -> None:
         from unittest.mock import patch
@@ -748,6 +826,37 @@ class TestUiTabs(unittest.TestCase):
         self.assertTrue(lbl.isVisible())
         self.assertEqual(lbl.toolTip(), long)
         self.assertLess(len(lbl.text()), len(long))
+
+    def test_bridge_stats_show_live_traffic(self) -> None:
+        from ui.modern import bridge_stats_show_live_traffic
+
+        self.assertFalse(bridge_stats_show_live_traffic({}))
+        self.assertFalse(bridge_stats_show_live_traffic({"hz_down": 0, "lines_up": 0}))
+        self.assertTrue(bridge_stats_show_live_traffic({"hz_down": 1.2}))
+        self.assertTrue(bridge_stats_show_live_traffic({"lines_up": 3}))
+
+    def test_smart_peek_switches_to_control_on_traffic(self) -> None:
+        from ui.modern import BridgeWindowModern
+
+        win = BridgeWindowModern()
+        win._smart_peek_pending = True
+        win._open_modern_section_by_sid("activity")
+        self.assertEqual(win._modern_current_section_sid(), "activity")
+        win._maybe_finish_smart_peek({"hz_down": 2.0, "lines_down": 4})
+        self._app.processEvents()
+        self.assertFalse(win._smart_peek_pending)
+        self.assertEqual(win._modern_current_section_sid(), "control")
+
+    def test_smart_peek_skips_control_if_user_left_activity(self) -> None:
+        from ui.modern import BridgeWindowModern
+
+        win = BridgeWindowModern()
+        win._smart_peek_pending = True
+        win._open_modern_section_by_sid("hub")
+        win._maybe_finish_smart_peek({"hz_up": 1.0})
+        self._app.processEvents()
+        self.assertFalse(win._smart_peek_pending)
+        self.assertEqual(win._modern_current_section_sid(), "hub")
 
 
 if __name__ == "__main__":

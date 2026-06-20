@@ -151,8 +151,10 @@ def build_modern_nmea_settings(parent: QtWidgets.QWidget) -> QtWidgets.QWidget:
     types_box.setObjectName("modernNmeaTypesBox")
     parent._nmea_strict_types_box = types_box
     grid = QtWidgets.QGridLayout(types_box)
-    grid.setHorizontalSpacing(12)
+    grid.setHorizontalSpacing(16)
     grid.setVerticalSpacing(6)
+    for col in range(4):
+        grid.setColumnMinimumWidth(col, 76)
     parent._nmea_type_checks = {}
     for i, st in enumerate(NMEA_SENTENCE_TYPES):
         cb = QtWidgets.QCheckBox(st)

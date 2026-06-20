@@ -13,12 +13,15 @@ from ui.connect_panels import (
     connect_toolbar_order_changed,
     sanitize_connect_panel_hidden,
 )
-from ui.survey_top_bar import normalize_topbar_order
+from ui.survey_top_bar import DEFAULT_TOPBAR_ORDER, normalize_topbar_order
 from ui.ui_editor import (
     MAIN_TAB_HINTS,
+    TOP_BAR_CHIP_LABELS,
     build_connect_panel_editor_rows,
     build_connect_toolbar_rows,
     build_main_tab_editor_rows,
+    merge_modern_header_topbar_prefs,
+    modern_header_editor_rows,
     migrate_topbar_hidden,
     migrate_topbar_order,
 )
@@ -130,6 +133,36 @@ class TestUiEditor(unittest.TestCase):
         self.assertTrue(by_id["Connect"][2])  # subtitle from MAIN_TAB_HINTS
         self.assertIn("COM", by_id["Connect"][2])
         self.assertIn("Inject", by_id["Terminal"][2])
+
+    def test_merge_modern_header_keeps_visible_when_reordering(self) -> None:
+        order, hidden = merge_modern_header_topbar_prefs(
+            ["hud", "view", "ui_switch"],
+            set(),
+            ["view", "presets", "hud", "ui_switch"],
+            {"presets", "hud"},
+        )
+        self.assertEqual(order[:3], ["hud", "view", "ui_switch"])
+        self.assertIn("presets", order)
+        self.assertNotIn("hud", hidden)
+        self.assertIn("presets", hidden)
+
+    def test_merge_modern_header_honors_editor_hide(self) -> None:
+        order, hidden = merge_modern_header_topbar_prefs(
+            ["view", "hud", "ui_switch"],
+            {"hud"},
+            list(DEFAULT_TOPBAR_ORDER),
+            set(),
+        )
+        self.assertIn("hud", hidden)
+        self.assertNotIn("view", hidden)
+
+    def test_modern_header_editor_rows_follow_saved_order(self) -> None:
+        rows = modern_header_editor_rows(
+            ["hud", "view", "ui_switch"],
+            set(),
+            TOP_BAR_CHIP_LABELS,
+        )
+        self.assertEqual([r[0] for r in rows], ["hud", "view", "ui_switch"])
 
 
 if __name__ == "__main__":

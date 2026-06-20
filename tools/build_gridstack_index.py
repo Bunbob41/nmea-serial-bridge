@@ -10,15 +10,15 @@ REPO = Path(__file__).resolve().parents[1]
 if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
 from tools.read_version import read_app_version
-# x, y, w, h on 12-column grid (survey-friendly 2-column default)
+# x, y, w, h on 12-column grid (map+log left, status+config right, bottom utilities)
 GRID_ITEMS = {
-    "com-setup": (0, 0, 6, 4),
-    "status": (6, 0, 6, 5),
-    "map": (0, 5, 6, 4),
-    "configuration": (6, 5, 6, 4),
-    "tools": (0, 9, 4, 4),
-    "discovery": (4, 9, 8, 4),
-    "log": (0, 13, 12, 6),
+    "map": (0, 0, 6, 6),
+    "status": (6, 0, 6, 3),
+    "configuration": (6, 3, 6, 5),
+    "log": (0, 6, 6, 5),
+    "discovery": (0, 11, 6, 2),
+    "com-setup": (6, 8, 6, 2),
+    "tools": (6, 10, 6, 2),
 }
 
 

@@ -5,6 +5,7 @@ import argparse
 import multiprocessing
 import os
 import sys
+from pathlib import Path
 
 from py_interpreter import run_frozen_helper_if_requested
 
@@ -21,20 +22,79 @@ from bridge_core import (  # noqa: F401 — re-export for older scripts
     configure_windows_event_loop_policy,
 )
 from ui.app_icon import apply_app_icon
-from ui.fonts import app_ui_font, ensure_bundled_fonts
-from ui.registry import create_window
-from ui.standard import BridgeWindowStandard
+from ui.fonts import app_ui_font, configure_qt_font_environment, ensure_bundled_fonts
+from ui.registry import UI_FIELD, create_window
 
-BridgeWindow = BridgeWindowStandard
+BridgeWindow = None  # resolved via create_window(ui_id)
+
+
+def _launch_log(msg: str) -> None:
+    try:
+        log_dir = Path.home() / ".cursor-udp-com-bridge"
+        log_dir.mkdir(parents=True, exist_ok=True)
+        with (log_dir / "launch.log").open("a", encoding="utf-8") as fh:
+            fh.write(msg + "\n")
+    except OSError:
+        pass
+
+
+def _present_main_window(win: QtWidgets.QWidget) -> None:
+    """Ensure the main window is visible, on-screen, and focused."""
+    win.showNormal()
+    if sys.platform == "win32":
+        try:
+            import ctypes
+
+            user32 = ctypes.windll.user32
+            user32.ShowWindow(int(win.winId()), 9)  # SW_RESTORE
+            user32.SetForegroundWindow(int(win.winId()))
+        except Exception:
+            pass
+    else:
+        try:
+            win.raise_()
+        except Exception:
+            pass
+        win.activateWindow()
+
+    app = QtWidgets.QApplication.instance()
+    screen = win.screen() or (app.primaryScreen() if app is not None else None)
+    if screen is None:
+        return
+    available = screen.availableGeometry()
+    frame = win.frameGeometry()
+    if not available.intersects(frame):
+        frame.moveCenter(available.center())
+        win.move(frame.topLeft())
+
+
+def _minimize_launch_console() -> None:
+    """Hide the launcher console after the GUI is up (python.exe dev runs)."""
+    if sys.platform != "win32":
+        return
+    try:
+        import ctypes
+
+        hwnd = ctypes.windll.kernel32.GetConsoleWindow()
+        if hwnd:
+            ctypes.windll.user32.ShowWindow(hwnd, 6)  # SW_MINIMIZE
+    except Exception:
+        pass
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="NMEA UDP/TCP ↔ serial bridge")
     parser.add_argument(
+        "--foreground",
+        "-f",
+        action="store_true",
+        help="Keep this console open (debug)",
+    )
+    parser.add_argument(
         "--ui",
-        choices=["standard", "field", "modern", "minimal", "logfirst"],
+        choices=["field", "modern", "minimal", "logfirst", "standard"],
         default=None,
-        help="UI layout (default: saved choice, picker on first .exe run, else standard)",
+        help="UI layout (default: saved choice, picker on first .exe run, else field)",
     )
     parser.add_argument(
         "--pick-ui",
@@ -46,6 +106,7 @@ def main() -> None:
     # Qt6-native high-DPI scaling — must be set before QApplication is constructed.
     os.environ["QT_AUTO_SCREEN_SCALE_FACTOR"] = "1"
     os.environ["QT_ENABLE_HIGHDPI_SCALING"] = "1"
+    configure_qt_font_environment()
 
     app = QtWidgets.QApplication(sys.argv)
     app.setQuitOnLastWindowClosed(True)
@@ -62,20 +123,34 @@ def main() -> None:
     instance_lock = QLockFile(lock_path)
     instance_lock.setStaleLockTime(0)
     if not instance_lock.tryLock(400):
-        if instance_lock.error() == QLockFile.LockError.LockFailedError:
-            instance_lock.removeStaleLockFile()
-            instance_lock.tryLock(400)
-        if not instance_lock.isLocked():
-            QtWidgets.QMessageBox.warning(
-                None,
-                "Already running",
-                "Serial Link is already open.\n\n"
-                "Check the taskbar or system tray for the window. "
-                "If you switched layouts earlier, end the old python.exe in "
-                "Task Manager only if no window is visible.",
-            )
-            return
+        instance_lock.removeStaleLockFile()
+        instance_lock.tryLock(400)
+    if not instance_lock.isLocked():
+        msg = (
+            "Serial Link is already open.\n\n"
+            "Check the taskbar or system tray (^ by the clock) for a hidden window. "
+            "If the bridge was running when you closed the window, it may still be "
+            "in the tray — right-click the icon and choose Exit.\n\n"
+            "If nothing is visible, end stray python.exe / serial-link.exe in Task Manager, "
+            "delete this lock file, then try again:\n"
+            f"{lock_path}"
+        )
+        if sys.stderr.isatty():
+            print(msg, file=sys.stderr)
+        _launch_log(f"LOCKED: {msg}")
+        QtWidgets.QMessageBox.warning(None, "Already running", msg)
+        return
     app._instance_lock = instance_lock  # type: ignore[attr-defined]
+
+    def _release_instance_lock() -> None:
+        lock = getattr(app, "_instance_lock", None)
+        if lock is not None and lock.isLocked():
+            try:
+                lock.unlock()
+            except Exception:
+                pass
+
+    app.aboutToQuit.connect(_release_instance_lock)
 
     from ui.layout_switch_hook import install_three_way_layout_cycle
     from ui.picker import load_saved_ui, resolve_ui_id
@@ -86,9 +161,22 @@ def main() -> None:
     # Field is the default layout; users swap to Standard via the Layout chip.
     show_picker = args.pick_ui
     ui_id = resolve_ui_id(args.ui, show_picker=show_picker)
-    w = create_window(ui_id)
-    w.show()
-    sys.exit(app.exec())
+    try:
+        w = create_window(ui_id)
+        w.show()
+        _present_main_window(w)
+        if not args.foreground and sys.platform == "win32" and sys.stderr.isatty():
+            _minimize_launch_console()
+        _launch_log(
+            f"OPEN ui={ui_id} title={w.windowTitle()} geo={w.frameGeometry().getRect()}"
+        )
+    except Exception:
+        _release_instance_lock()
+        _launch_log("CRASH during create/show")
+        raise
+    # os._exit: lingering QThreads can block a normal sys.exit after app.quit().
+    code = app.exec()
+    os._exit(int(code) if isinstance(code, int) else 0)
 
 
 if __name__ == "__main__":

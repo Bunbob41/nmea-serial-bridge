@@ -4,13 +4,13 @@ const GRIDSTACK_LAYOUT_LOCK_KEY = "nmea-dashboard-layout-locked";
 const GRIDSTACK_COLLAPSED_ROWS = 1;
 
 const GRIDSTACK_DEFAULT_LAYOUT = [
-  { id: "com-setup", x: 0, y: 0, w: 6, h: 4 },
-  { id: "status", x: 6, y: 0, w: 6, h: 5 },
-  { id: "map", x: 0, y: 5, w: 6, h: 4 },
-  { id: "configuration", x: 6, y: 5, w: 6, h: 4 },
-  { id: "tools", x: 0, y: 9, w: 4, h: 4 },
-  { id: "discovery", x: 4, y: 9, w: 8, h: 4 },
-  { id: "log", x: 0, y: 13, w: 12, h: 6 },
+  { id: "map", x: 0, y: 0, w: 6, h: 6 },
+  { id: "status", x: 6, y: 0, w: 6, h: 3 },
+  { id: "configuration", x: 6, y: 3, w: 6, h: 5 },
+  { id: "log", x: 0, y: 6, w: 6, h: 5 },
+  { id: "discovery", x: 0, y: 11, w: 6, h: 2 },
+  { id: "com-setup", x: 6, y: 8, w: 6, h: 2 },
+  { id: "tools", x: 6, y: 10, w: 6, h: 2 },
 ];
 
 /** @type {Record<string, number>} */

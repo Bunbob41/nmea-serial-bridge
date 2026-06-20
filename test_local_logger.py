@@ -64,6 +64,12 @@ class TestLocalSerialBackup(unittest.TestCase):
             self.assertGreaterEqual(int(backup.snapshot()["dropped"]), 1)
             backup.close()
 
+    def test_allocate_session_path_uses_nmea_extension(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            path = _allocate_session_path(base)
+            self.assertTrue(str(path).endswith(".nmea"))
+
     def test_allocate_session_path_avoids_collision(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             base = Path(tmp)

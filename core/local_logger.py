@@ -18,10 +18,13 @@ _ERROR_COOLDOWN_S = 15.0
 
 
 SESSION_FOLDER_STEM_FMT = "%Y-%m-%d_%H-%M"
+LOCAL_BACKUP_EXT = ".nmea"
+# Legacy sessions may still use .raw — readers should accept both.
+LOCAL_BACKUP_LEGACY_EXT = ".raw"
 
 
 def default_local_backup_dir() -> Path:
-    """Directory beside the app / repo for per-session .raw backups."""
+    """Directory beside the app / repo for per-session NMEA backups."""
     if getattr(sys, "frozen", False):
         return Path(sys.executable).resolve().parent / "logs"
     return Path(__file__).resolve().parent.parent / "logs"
@@ -60,14 +63,15 @@ def allocate_session_folder(base_dir: Path, *, now: datetime | None = None) -> P
 def _allocate_session_path(base_dir: Path, *, now: datetime | None = None) -> Path:
     dt = now or datetime.now()
     stem = f"backup_{dt.strftime('%Y%m%d_%H%M')}"
-    candidate = base_dir / f"{stem}.raw"
+    ext = LOCAL_BACKUP_EXT
+    candidate = base_dir / f"{stem}{ext}"
     if not candidate.exists():
         return candidate
     for n in range(2, 100):
-        alt = base_dir / f"{stem}_{n:02d}.raw"
+        alt = base_dir / f"{stem}_{n:02d}{ext}"
         if not alt.exists():
             return alt
-    return base_dir / f"{stem}_{int(time.time())}.raw"
+    return base_dir / f"{stem}_{int(time.time())}{ext}"
 
 
 class LocalSerialBackup:

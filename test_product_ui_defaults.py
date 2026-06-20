@@ -16,7 +16,7 @@ from product_ui_defaults import (
     sanitize_ui_prefs_for_product_export,
     seed_user_ui_prefs_if_missing,
 )
-from ui.registry import UI_STANDARD
+from ui.registry import UI_FIELD
 
 
 class TestProductUiDefaults(unittest.TestCase):
@@ -61,12 +61,12 @@ class TestProductUiDefaults(unittest.TestCase):
         self.assertEqual(clean["web_ui"], {"port": 8765})
         self.assertEqual(clean["connect_layout"], {"order": ["run"]})
 
-    def test_default_ui_is_standard(self) -> None:
+    def test_default_ui_normalizes_legacy_standard_to_field(self) -> None:
         with mock.patch(
             "product_ui_defaults.load_merged_product_ui_defaults",
             return_value={"ui": "standard", "ui_prefs": {}},
         ):
-            self.assertEqual(default_ui_layout_id(), UI_STANDARD)
+            self.assertEqual(default_ui_layout_id(), UI_FIELD)
 
     def test_merge_local_overrides_base(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -103,7 +103,7 @@ class TestProductUiDefaults(unittest.TestCase):
                 self.assertTrue(seed_user_ui_prefs_if_missing())
                 self.assertTrue(choice_path.is_file())
                 data = json.loads(choice_path.read_text(encoding="utf-8"))
-                self.assertEqual(data.get("ui"), UI_STANDARD)
+                self.assertEqual(data.get("ui"), UI_FIELD)
 
     def test_apply_writes_prefs_and_choice(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -150,7 +150,7 @@ class TestProductUiDefaults(unittest.TestCase):
                 mock.patch("ui.picker.CONFIG_PATH", choice_path),
             ):
                 snap = capture_ui_layout_snapshot_from_user_profile()
-            self.assertEqual(snap["ui"], UI_STANDARD)
+            self.assertEqual(snap["ui"], UI_FIELD)
             self.assertNotIn("recent_sessions", snap["ui_prefs"])
 
 

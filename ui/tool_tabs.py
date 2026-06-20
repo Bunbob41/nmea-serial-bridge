@@ -552,7 +552,7 @@ Settings → Diagnostics → <b>Bench checklist</b> with the bridge stopped.</p>
 """
 
 
-_PHONE_FORM_LABEL_MIN_WIDTH = 120
+_PHONE_FORM_LABEL_MIN_WIDTH = 132
 _PHONE_INLINE_BTN_PX = 32
 _PHONE_FIELD_ACTION_GAP = 8
 
@@ -759,7 +759,7 @@ def _phone_dashboard_card(title: str) -> tuple[QtWidgets.QFrame, QtWidgets.QVBox
     frame.setObjectName("phoneDashboardCard")
     frame.setFrameShape(QtWidgets.QFrame.Shape.NoFrame)
     lay = QtWidgets.QVBoxLayout(frame)
-    lay.setContentsMargins(14, 12, 14, 12)
+    lay.setContentsMargins(14, 12, 14, 16)
     lay.setSpacing(10)
     title_lbl = QtWidgets.QLabel(title)
     title_lbl.setObjectName("phoneCardTitle")
@@ -791,6 +791,8 @@ def _wire_web_control_widgets(parent: QtWidgets.QWidget) -> None:
         parent.btn_web_copy_setup.clicked.connect(parent._on_web_copy_phone_setup)
     if hasattr(parent, "_on_web_paste_setup"):
         parent.btn_web_paste_setup.clicked.connect(parent._on_web_paste_setup)
+    if hasattr(parent, "_on_web_open_phone_url"):
+        parent.btn_web_open_phone_url.clicked.connect(parent._on_web_open_phone_url)
     if hasattr(parent, "_on_web_detect_phone_url"):
         parent.btn_web_detect_phone_url.clicked.connect(parent._on_web_detect_phone_url)
     if hasattr(parent, "_on_web_show_qr_toggled"):
@@ -951,6 +953,7 @@ def build_phone_dashboard_tab(parent: QtWidgets.QWidget) -> QtWidgets.QWidget:
         "Run tailscale ip in cmd if unsure. Used for QR and setup links."
     )
     sp = QtWidgets.QStyle.StandardPixmap
+    copy_link_icon = getattr(sp, "SP_FileLinkIcon", sp.SP_DialogSaveButton)
     parent.btn_web_detect_phone_url = _phone_icon_tool_button(
         inner,
         sp.SP_BrowserReload,
@@ -960,14 +963,21 @@ def build_phone_dashboard_tab(parent: QtWidgets.QWidget) -> QtWidgets.QWidget:
     parent.btn_web_detect_phone_url.setAccessibleName("Detect IP")
     parent.btn_web_copy_setup = _phone_icon_tool_button(
         inner,
-        sp.SP_FileIcon,
+        copy_link_icon,
         "Copy one-tap phone setup link (includes token)",
         icon_role="copyLink",
     )
     parent.btn_web_copy_setup.setAccessibleName("Copy Link")
+    parent.btn_web_open_phone_url = _phone_icon_tool_button(
+        inner,
+        sp.SP_ArrowForward,
+        "Open phone dashboard URL in your default browser",
+        icon_role="openLink",
+    )
+    parent.btn_web_open_phone_url.setAccessibleName("Open Link")
     parent.btn_web_paste_setup = _phone_icon_tool_button(
         inner,
-        sp.SP_DialogOpenButton,
+        sp.SP_DialogApplyButton,
         "Paste setup link from clipboard and import token",
         icon_role="pasteLink",
     )
@@ -976,6 +986,7 @@ def build_phone_dashboard_tab(parent: QtWidgets.QWidget) -> QtWidgets.QWidget:
         parent.edit_web_phone_url,
         parent.btn_web_detect_phone_url,
         parent.btn_web_copy_setup,
+        parent.btn_web_open_phone_url,
         parent.btn_web_paste_setup,
     )
 
@@ -1014,7 +1025,7 @@ def build_phone_dashboard_tab(parent: QtWidgets.QWidget) -> QtWidgets.QWidget:
 
     parent.lbl_web_token_qr = QtWidgets.QLabel()
     parent.lbl_web_token_qr.setObjectName("webTokenQr")
-    parent.lbl_web_token_qr.setFixedSize(168, 168)
+    parent.lbl_web_token_qr.setFixedSize(184, 184)
     parent.lbl_web_token_qr.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
     parent.lbl_web_token_qr.setFrameShape(QtWidgets.QFrame.Shape.NoFrame)
     parent.lbl_web_token_qr.setVisible(parent.chk_web_show_qr.isChecked())
@@ -1024,7 +1035,7 @@ def build_phone_dashboard_tab(parent: QtWidgets.QWidget) -> QtWidgets.QWidget:
 
     qr_field = QtWidgets.QWidget()
     qr_col = QtWidgets.QVBoxLayout(qr_field)
-    qr_col.setContentsMargins(0, 0, 0, 0)
+    qr_col.setContentsMargins(0, 0, 0, 10)
     qr_col.setSpacing(8)
     qr_col.addWidget(_phone_field_anchor(parent.chk_web_show_qr), 0)
     qr_col.addWidget(parent.lbl_web_token_qr, 0, QtCore.Qt.AlignmentFlag.AlignLeft)
@@ -1511,7 +1522,7 @@ def _modern_flat_page(
     if header_tone:
         header.setProperty("headerTone", header_tone)
     h_lay = QtWidgets.QVBoxLayout(header)
-    h_lay.setContentsMargins(20, 18, 20, 14)
+    h_lay.setContentsMargins(16, 12, 16, 10)
     h_lay.setSpacing(6)
 
     title_row = QtWidgets.QHBoxLayout()
@@ -1566,19 +1577,19 @@ def _mount_black_box_ui(parent: QtWidgets.QWidget, lay: QtWidgets.QVBoxLayout) -
     parent.lbl_black_box_live_status = _modern_live_status_label()
     lay.addWidget(parent.lbl_black_box_live_status)
     parent.chk_local_backup = QtWidgets.QCheckBox(
-        "Save raw COM data to local .raw file while bridge runs"
+        "Save raw COM data to local NMEA backup file while bridge runs"
     )
     parent.chk_local_backup.setToolTip(
-        "Writes raw COM traffic (network→COM and COM→network) to backup_*.raw with immediate disk flush. "
-        "Continues even if UDP/TCP fails — independent of the rotating NMEA file log."
+        "Writes raw COM traffic (network→COM and COM→network) to backup_*.nmea with immediate disk flush. "
+        "GIS and hydro tools recognize .nmea without renaming."
     )
     lay.addWidget(parent.chk_local_backup)
     from ui.local_backup_settings import mount_local_backup_location_row
 
     mount_local_backup_location_row(parent, lay, show_session_file=False)
     backup_note = QtWidgets.QLabel(
-        "One new backup_*.raw file per Start (inside the folder above). Survey UDP→COM traffic is "
-        "included. Permission or disk-full errors disable backup for that session without stopping the bridge."
+        "One new backup_*.nmea file per Start (inside the folder above). Survey UDP→COM traffic is "
+        "included. Use Mission Review Quick Export to save as .log or .txt for older tools."
     )
     backup_note.setWordWrap(True)
     backup_note.setObjectName("tabNote")
@@ -1647,7 +1658,7 @@ def build_modern_black_box_page(parent: QtWidgets.QWidget) -> QtWidgets.QWidget:
     host, lay = _modern_flat_page(
         "modernBlackBoxPage",
         "Black box",
-        subtitle="Crash-safe raw COM capture — one .raw file per bridge session.",
+        subtitle="Crash-safe NMEA capture — one .nmea file per bridge session.",
         icon="💾",
     )
     _mount_black_box_ui(parent, lay)
@@ -1707,6 +1718,36 @@ def build_modern_nmea_page(parent: QtWidgets.QWidget) -> QtWidgets.QWidget:
         icon="📡",
     )
     lay.addWidget(build_modern_nmea_settings(parent), 1)
+    return host
+
+
+def build_modern_theme_page(parent: QtWidgets.QWidget) -> QtWidgets.QWidget:
+    from ui.controls import create_theme_controls
+
+    host, lay = _modern_flat_page(
+        "modernThemePage",
+        "Theme",
+        subtitle="Built-in palettes, zone colors, and saved presets for the Modern workspace.",
+        icon="🎨",
+    )
+    lay.addWidget(create_theme_controls(parent, professional=True), 1)
+    return host
+
+
+def build_modern_fleet_page(parent: QtWidgets.QWidget) -> QtWidgets.QWidget:
+    """Modern Tools → Fleet: multi-stream COM to network pipes."""
+    from ui.fleet_panel import build_fleet_panel
+
+    host, lay = _modern_flat_page(
+        "modernFleetTab",
+        "Fleet",
+        subtitle=(
+            "One row per wired sensor — COM to network. Mark one Primary for Survey HUD; "
+            "other streams stay thin pipes."
+        ),
+        icon="🔀",
+    )
+    lay.addWidget(build_fleet_panel(parent), 1)
     return host
 
 
@@ -1792,11 +1833,13 @@ def build_modern_tools_nav_tiers() -> tuple[
     list[tuple[str, str, str]],
     list[tuple[str, str, str, list[tuple[str, str, str]]]],
 ]:
-    """Top chip rail tiers: 4 primary leaves + 2 dropdown groups."""
+    """Top chip rail tiers: primary leaves + dropdown groups."""
     leaves = [
         ("control", "Control", "🎛"),
+        ("activity", "Activity", "📋"),
         ("presets", "Presets", "⚙"),
         ("hub", "Hub", "🛰"),
+        ("fleet", "Fleet", "🔀"),
         ("nmea", "NMEA", "📡"),
     ]
     dropdowns = [
@@ -1805,7 +1848,6 @@ def build_modern_tools_nav_tiers() -> tuple[
             "Logging",
             "📋",
             [
-                ("activity", "Activity", "📋"),
                 ("black_box", "Black box", "💾"),
                 ("file_log", "File log", "📄"),
             ],
@@ -1819,6 +1861,7 @@ def build_modern_tools_nav_tiers() -> tuple[
                 ("inject", "Inject", "💉"),
                 ("terminal", "Terminal", "⌨"),
                 ("checks", "Checks", "🧪"),
+                ("theme", "Theme", "🎨"),
             ],
         ),
     ]
@@ -1826,12 +1869,13 @@ def build_modern_tools_nav_tiers() -> tuple[
 
 
 def build_modern_tools_nav_groups() -> list[tuple[str, list[tuple[str, str, str]]]]:
-    """Modern sidebar groups: Control | Setup | Logging | Bench Tools."""
+    """Modern sidebar groups: Control+Activity | Setup | Logging | Bench Tools."""
     return [
         (
             "Control",
             [
                 ("control", "Control", "🎛"),
+                ("activity", "Activity", "📋"),
             ],
         ),
         (
@@ -1839,13 +1883,13 @@ def build_modern_tools_nav_groups() -> list[tuple[str, list[tuple[str, str, str]
             [
                 ("presets", "Presets", "⚙"),
                 ("hub", "Hub", "🛰"),
+                ("fleet", "Fleet", "🔀"),
                 ("nmea", "NMEA", "📡"),
             ],
         ),
         (
             "Logging",
             [
-                ("activity", "Activity", "📋"),
                 ("black_box", "Black box", "💾"),
                 ("file_log", "File log", "📄"),
             ],
@@ -1857,6 +1901,7 @@ def build_modern_tools_nav_groups() -> list[tuple[str, list[tuple[str, str, str]
                 ("inject", "Inject", "💉"),
                 ("terminal", "Terminal", "⌨"),
                 ("checks", "Checks", "🧪"),
+                ("theme", "Theme", "🎨"),
             ],
         ),
     ]
@@ -1868,6 +1913,23 @@ def build_modern_tools_nav() -> list[tuple[str, str, str]]:
     for _group, items in build_modern_tools_nav_groups():
         out.extend(items)
     return out
+
+
+def order_modern_tools_nav_names(visible_names: list[str]) -> list[str]:
+    """Keep sidebar groups contiguous (Setup once, etc.) regardless of saved tab order."""
+    visible = set(visible_names)
+    ordered: list[str] = []
+    seen: set[str] = set()
+    for _group, items in build_modern_tools_nav_groups():
+        for _sid, label, _icon in items:
+            if label in visible and label not in seen:
+                ordered.append(label)
+                seen.add(label)
+    for name in visible_names:
+        if name not in seen:
+            ordered.append(name)
+            seen.add(name)
+    return ordered
 
 
 def build_modern_tools_all_pages() -> list[tuple[str, str, str]]:

@@ -6,51 +6,80 @@
 /* Ensure HTML hidden attribute is never overridden by CSS display rules */
 [hidden] { display: none !important; }
 
-/* ── Custom properties ────────────────────────────────────────── */
+/* ── Custom properties (aligned with ui/modern_styles.py MODERN_*) ── */
 :root {
   color-scheme: dark;
-  --bg:          #0f1117;
-  --bg-card:     #1a1d27;
-  --bg-card-alt: #1e2233;
-  --card-bg:     #1a1d27;
-  --border:      #2d3148;
-  --text:        #e2e8f0;
-  --text-muted:  #8b93a8;
-  --text-mono:   #93c5fd;
-  --accent:      #60a5fa;
-  --green:       #4ade80;
+  --bg:          #0a0e14;
+  --bg-card:     #111827;
+  --bg-card-alt: #1a2332;
+  --card-bg:     #111827;
+  --border:      #334155;
+  --text:        #f8fafc;
+  --text-muted:  #94a3b8;
+  --text-mono:   #e2f0ff;
+  --accent:      #3b82f6;
+  --accent-bright: #60a5fa;
+  --green:       #34d399;
   --red:         #f87171;
   --amber:       #fbbf24;
+  --terminal-bg: #050a12;
+  --terminal-text: #e2f0ff;
+  --tabbar-bg:   #05070a;
   --btn-start-bg:    #15803d;
   --btn-start-hover: #166534;
   --btn-stop-bg:     #991b1b;
   --btn-stop-hover:  #7f1d1d;
-  --btn-tool-bg:     #1e3a5f;
-  --btn-tool-hover:  #1e4976;
-  --radius:    8px;
+  --btn-tool-bg:     #1a2332;
+  --btn-tool-hover:  #1e3a5f;
+  --radius:    6px;
   --radius-sm: 4px;
   --transition: 140ms ease;
   --gap:   16px;
   --gap-sm: 8px;
+  --font-ui: "Maple Mono", "Cascadia Mono", Consolas, "Courier New", monospace;
   --scrollbar-size: 11px;
-  --scrollbar-track: #151820;
-  --scrollbar-thumb: #6b7a94;
-  --scrollbar-thumb-hover: #8eb8f0;
-  --scrollbar-thumb-border: #8a9ab4;
+  --scrollbar-track: #05070a;
+  --scrollbar-thumb: #475569;
+  --scrollbar-thumb-hover: #60a5fa;
+  --scrollbar-thumb-border: #334155;
+  /* GNSS badge tones (survey_quality.py hud=True) */
+  --gnss-rtk-bg: #2d5a38;
+  --gnss-rtk-fg: #d8f5e0;
+  --gnss-gps-bg: #1e3f66;
+  --gnss-gps-fg: #d6ebff;
+  --gnss-bad-bg: #5c2a32;
+  --gnss-bad-fg: #fce8ea;
+}
+
+/* Maple Mono — same bundle as desktop (assets/fonts via /static/fonts/) */
+@font-face {
+  font-family: "Maple Mono";
+  src: url("/static/fonts/MapleMono-NF-CN-Regular.ttf") format("truetype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Maple Mono";
+  src: url("/static/fonts/MapleMono-NF-CN-Bold.ttf") format("truetype");
+  font-weight: 600 700;
+  font-style: normal;
+  font-display: swap;
 }
 
 /* ── Reset / base ─────────────────────────────────────────────── */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-html { font-size: 16px; scroll-behavior: smooth; }
+html { font-size: 15px; scroll-behavior: smooth; }
 
 body {
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  font-family: var(--font-ui);
   background: var(--bg);
   color: var(--text);
   min-height: 100vh;
   display: flex;
   flex-direction: column;
+  -webkit-font-smoothing: antialiased;
 }
 
 /* Browser defaults often paint <strong> black — unreadable on dark panels */
@@ -66,16 +95,16 @@ body {
 }
 
 /* ── Typography ───────────────────────────────────────────────── */
-.mono { font-family: "Cascadia Code", "Consolas", "Menlo", monospace; }
+.mono { font-family: var(--font-ui); }
 
-/* ── Header ───────────────────────────────────────────────────── */
+/* ── Header (Modern global header parity) ─────────────────────── */
 .app-header {
   display: flex;
   flex-direction: column;
   align-items: stretch;
   padding: 0;
-  background: var(--bg-card);
-  border-bottom: 1px solid var(--border);
+  background: linear-gradient(180deg, #0e1729 0%, var(--bg-card) 100%);
+  border-bottom: 2px solid rgba(59, 130, 246, 0.35);
   position: sticky;
   top: 0;
   z-index: 100;
@@ -143,9 +172,9 @@ body {
 }
 
 .layout-lock-wrap:has(input:checked) {
-  color: var(--accent);
-  border-color: rgba(96, 165, 250, 0.45);
-  background: rgba(96, 165, 250, 0.1);
+  color: var(--accent-bright);
+  border-color: rgba(59, 130, 246, 0.45);
+  background: rgba(59, 130, 246, 0.1);
 }
 
 .layout-lock-wrap input {
@@ -350,20 +379,22 @@ body {
   min-height: 48px;
   padding: 12px var(--gap);
   border: none;
-  background: rgba(255, 255, 255, 0.04);
+  background: var(--bg-card-alt);
   color: var(--text);
   font: inherit;
-  font-size: 0.8rem;
+  font-size: 0.78rem;
   font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
   text-align: left;
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
+  border-bottom: 1px solid var(--border);
 }
 
 .dashboard-panel-toggle:hover {
-  background: rgba(96, 165, 250, 0.1);
+  background: #1e3a5f;
+  color: #fff;
 }
 
 .panel-nudge-group {
@@ -1008,6 +1039,29 @@ body {
 .stat-value.alert-val { color: var(--red); }
 .stat-value.stale-val { color: var(--amber); }
 
+/* GNSS fix badge — dark HUD tones (survey_quality.py hud=True) */
+.stat-value.gnss-badge {
+  display: inline-block;
+  padding: 6px 10px;
+  border-radius: var(--radius-sm);
+  font-size: 0.95rem;
+  font-weight: 700;
+  line-height: 1.2;
+  max-width: 100%;
+}
+.stat-value.gnss-badge-rtk {
+  background: var(--gnss-rtk-bg);
+  color: var(--gnss-rtk-fg);
+}
+.stat-value.gnss-badge-gps {
+  background: var(--gnss-gps-bg);
+  color: var(--gnss-gps-fg);
+}
+.stat-value.gnss-badge-bad {
+  background: var(--gnss-bad-bg);
+  color: var(--gnss-bad-fg);
+}
+
 /* ── Run controls ─────────────────────────────────────────────── */
 .run-controls {
   display: flex;
@@ -1425,12 +1479,17 @@ select.com-quick-select option {
 .btn-tool {
   background: var(--btn-tool-bg);
   color: var(--text);
-  font-size: 0.9rem;
+  border: 1px solid var(--border);
+  font-size: 0.85rem;
   padding: 10px 18px;
   min-height: 44px;
   min-width: auto;
 }
-.btn-tool:not(:disabled):hover { background: var(--btn-tool-hover); }
+.btn-tool:not(:disabled):hover {
+  background: var(--btn-tool-hover);
+  border-color: var(--accent);
+  color: #fff;
+}
 
 .btn-secondary {
   background: var(--bg-card-alt);
@@ -1722,7 +1781,7 @@ select.com-quick-select option {
 .log-panel-wrap {
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  background: #0a0c10;
+  background: var(--terminal-bg);
   overflow: hidden;
   box-shadow: inset 0 2px 12px rgba(0, 0, 0, 0.35);
 }
@@ -1758,7 +1817,7 @@ select.com-quick-select option {
 
 .log-view-stream .log-line:nth-child(odd) { background: rgba(255, 255, 255, 0.02); }
 
-.log-view-stream .log-kind-traffic { border-left-color: #3b82f6; color: #bfdbfe; }
+.log-view-stream .log-kind-traffic { border-left-color: var(--accent); color: var(--terminal-text); }
 .log-view-stream .log-kind-warn     { border-left-color: var(--amber); color: #fde68a; }
 .log-view-stream .log-kind-event    { border-left-color: #a78bfa; color: #ddd6fe; }
 .log-view-stream .log-kind-info     { border-left-color: #64748b; color: #cbd5e1; }

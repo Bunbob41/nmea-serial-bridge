@@ -39,6 +39,8 @@ _PRESET_KEYS = (
     "nmea_mode",
     "nmea_types",
     "udp_fanout",
+    "serial_mirror_ports",
+    "serial_mirror_device_tx",
 )
 _VALID_NMEA_MODES = frozenset({"passthrough", "strict", "raw"})
 _LEGACY_DESK = ("desk", "bench")
@@ -133,6 +135,8 @@ def _normalize_desk(data: dict[str, Any]) -> dict[str, Any]:
         "udp_host": str(data.get("udp_host", "0.0.0.0")).strip() or "0.0.0.0",
         "udp_port": int(data.get("udp_port", 10110)),
         "udp_fanout": bool(data["udp_fanout"]) if "udp_fanout" in data else True,
+        "serial_mirror_ports": str(data.get("serial_mirror_ports", "") or "").strip(),
+        "serial_mirror_device_tx": bool(data.get("serial_mirror_device_tx", False)),
     }
     base.update(_normalize_nmea_fields(data))
     return base

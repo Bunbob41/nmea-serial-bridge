@@ -62,12 +62,19 @@ CHIP_MARGINS_CLUSTER = (6, 4, 6, 4)
 _GRIP_WIDTH = 12
 _RESIZE_EDGE_WIDTH = 5
 _PROP_FULL = "topBarFullText"
-_WIDGET_SIZE_MAX = 16777215
+_WIDGET_SIZE_MAX = 16777214  # Qt QWIDGETSIZE_MAX sentinel; avoid 16777215 warnings
 _MIN_CHIP_FONT_PT = 8.0
 # Enforced in SurveyTopBar._apply_spring_layout — do not reintroduce content-sized gaps.
 TOPBAR_ALWAYS_FILL_TRACK = True
 TOPBAR_LAYOUT_SPRING = "spring"
 TOPBAR_LAYOUT_CLUSTER = "cluster"
+# Floors for embedded Modern header chips (prevents «L…t» elision under compression).
+_CLUSTER_CHIP_MIN_WIDTH: dict[str, int] = {
+    "view": 54,
+    "hud": 52,
+    "ui_switch": 98,
+}
+_EMBEDDED_QSS_HPAD = 20  # modernHeaderNav surveyQuickBtn padding: 10px left + right
 
 
 def text_body_width(fm: QtGui.QFontMetrics, text: str) -> int:
@@ -208,6 +215,7 @@ class TopBarChip(QtWidgets.QFrame):
         self._interactive_chrome = True
         self._inner_base_font = inner.font() if isinstance(inner, QtWidgets.QToolButton) else None
         self.setObjectName("topBarChip")
+        self.setProperty("chipKey", key)
         if hasattr(self, "setClipChildren"):
             self.setClipChildren(True)
         self.setProperty("dragging", False)
@@ -248,10 +256,20 @@ class TopBarChip(QtWidgets.QFrame):
             self._lay.setContentsMargins(*CHIP_MARGINS_CLUSTER)
         self.updateGeometry()
 
+    def _embedded_inner_pad(self) -> int:
+        """Extra horizontal room for Modern header QSS padding on tool buttons."""
+        if isinstance(self._inner, QtWidgets.QToolButton):
+            if self._inner.objectName() == "surveyQuickBtn":
+                return _EMBEDDED_QSS_HPAD
+        return 0
+
     def _body_width_expanded(self) -> int:
         if isinstance(self._inner, QtWidgets.QToolButton):
             full = str(self._inner.property(_PROP_FULL) or self._full_label)
-            return text_body_width(self._inner.fontMetrics(), full)
+            font = QtGui.QFont(self._inner.font())
+            if self._inner.objectName() == "surveyQuickBtn":
+                font.setWeight(QtGui.QFont.Weight.DemiBold)
+            return text_body_width(QtGui.QFontMetrics(font), full)
         return self._inner.sizeHint().width()
 
     def _body_width_compact(self) -> int:
@@ -306,6 +324,33 @@ class TopBarChip(QtWidgets.QFrame):
                 QtWidgets.QSizePolicy.Policy.Expanding,
                 QtWidgets.QSizePolicy.Policy.Fixed,
             )
+            if not self._interactive_chrome:
+                full = (
+                    str(self._inner.property(_PROP_FULL) or self._full_label).strip()
+                    or "?"
+                )
+                btn_font = QtGui.QFont(self._inner_base_font or self._inner.font())
+                if self._inner.objectName() == "surveyQuickBtn":
+                    btn_font.setWeight(QtGui.QFont.Weight.DemiBold)
+                self._inner.setFont(btn_font)
+                self._inner.setText(full)
+                self._inner.setSizePolicy(
+                    QtWidgets.QSizePolicy.Policy.Minimum,
+                    QtWidgets.QSizePolicy.Policy.Fixed,
+                )
+                body_w = self._body_width_expanded() + self._embedded_inner_pad()
+                self._inner.setMinimumWidth(body_w)
+                self._inner.setMaximumWidth(_WIDGET_SIZE_MAX)
+                floor = _CLUSTER_CHIP_MIN_WIDTH.get(self._key, 0)
+                chrome = CHIP_MARGINS_CLUSTER[0] + CHIP_MARGINS_CLUSTER[2] + self._lay.spacing()
+                w = max(w, body_w + chrome, floor, COMPACT_CHIP_WIDTH)
+                self.setMinimumWidth(w)
+                self.setMaximumWidth(_WIDGET_SIZE_MAX)
+                self.setSizePolicy(
+                    QtWidgets.QSizePolicy.Policy.Minimum,
+                    QtWidgets.QSizePolicy.Policy.Fixed,
+                )
+                return
             self._inner.setMinimumWidth(0)
             cap = max(slot, 0) if self._compact else _WIDGET_SIZE_MAX
             self._inner.setMaximumWidth(cap)
@@ -342,6 +387,17 @@ class TopBarChip(QtWidgets.QFrame):
     def _sync_inner_label_width(self, slot: int) -> None:
         """Prefer readable words with smaller font; fallback to abbreviations."""
         if not isinstance(self._inner, QtWidgets.QToolButton):
+            return
+        if not self._interactive_chrome:
+            full = (
+                str(self._inner.property(_PROP_FULL) or self._full_label).strip()
+                or "?"
+            )
+            self._inner.setFont(QtGui.QFont(self._inner_base_font or self._inner.font()))
+            self._inner.setText(full)
+            pad = self._embedded_inner_pad()
+            self._inner.setMinimumWidth(self._body_width_expanded() + pad)
+            self._inner.setMaximumWidth(_WIDGET_SIZE_MAX)
             return
         base = QtGui.QFont(self._inner_base_font or self._inner.font())
         candidates = (
@@ -400,6 +456,7 @@ class SurveyTopBar(QtWidgets.QWidget):
     """Horizontal bar of draggable chips; always fills window width (spring layout)."""
 
     order_changed = QtCore.Signal(list)
+    cluster_width_changed = QtCore.Signal(int)
 
     def __init__(self, parent: Optional[QtWidgets.QWidget] = None) -> None:
         super().__init__(parent)
@@ -413,6 +470,7 @@ class SurveyTopBar(QtWidgets.QWidget):
         self._launch_readable_labels = False
         self._last_visible_sig: tuple[str, ...] = ()
         self._last_spring_sig: tuple[object, ...] = ()
+        self._last_cluster_sig: tuple[tuple[str, int], ...] = ()
         self._spring_layout_busy = False
         self._host_width_fitted = False
         self._layout_mode = TOPBAR_LAYOUT_SPRING
@@ -450,6 +508,7 @@ class SurveyTopBar(QtWidgets.QWidget):
         self._on_order_persist: Optional[
             Callable[[list[str], set[str], dict[str, float]], None]
         ] = None
+        self._on_cluster_width_changed: Optional[Callable[[int], None]] = None
 
     def set_layout_mode(self, mode: str) -> None:
         if mode not in (TOPBAR_LAYOUT_SPRING, TOPBAR_LAYOUT_CLUSTER):
@@ -459,6 +518,7 @@ class SurveyTopBar(QtWidgets.QWidget):
         self._spring_layout_timer.stop()
         self._layout_mode = mode
         self._last_spring_sig = ()
+        self._last_cluster_sig = ()
         self.rebuild()
 
     def set_interactive_chrome(self, visible: bool) -> None:
@@ -469,13 +529,16 @@ class SurveyTopBar(QtWidgets.QWidget):
         """Reparent the chip track into a header slot (Modern merged top bar)."""
         self._track.setParent(host)
         self._track.setSizePolicy(
-            QtWidgets.QSizePolicy.Policy.Maximum,
+            QtWidgets.QSizePolicy.Policy.Minimum,
             QtWidgets.QSizePolicy.Policy.Fixed,
         )
         self._track.setMinimumHeight(28)
         lay.addWidget(self._track, 0)
         self.setFixedHeight(0)
         self.hide()
+
+    def set_cluster_width_callback(self, cb: Optional[Callable[[int], None]]) -> None:
+        self._on_cluster_width_changed = cb
 
     def set_persist_callback(
         self, cb: Callable[[list[str], set[str], dict[str, float]], None]
@@ -728,21 +791,43 @@ class SurveyTopBar(QtWidgets.QWidget):
         finally:
             self._spring_layout_busy = False
 
+    def _notify_cluster_width(self, need: int) -> None:
+        width = max(int(need), 0)
+        cb = self._on_cluster_width_changed
+        if cb is not None:
+            cb(width)
+        self.cluster_width_changed.emit(width)
+
     def _apply_cluster_layout(self) -> None:
         """Content-sized chips grouped on the left; trailing stretch absorbs slack."""
         keys = self._visible_keys()
         if not keys:
             return
-        self._track.setSizePolicy(
-            QtWidgets.QSizePolicy.Policy.Maximum,
-            QtWidgets.QSizePolicy.Policy.Fixed,
-        )
-        for key in keys:
-            chip = self._chips[key]
-            chip.set_compact(False)
-            chip.set_spring_width(chip.natural_total_width(compact=False))
-        self._compact_mode = False
-        self._update_bar_height(cluster=True)
+        sig = tuple((key, self._chips[key].natural_total_width(compact=False)) for key in keys)
+        if sig != self._last_cluster_sig:
+            self._last_cluster_sig = sig
+            total = 0
+            for key in keys:
+                chip = self._chips[key]
+                chip.set_compact(False)
+                nw = chip.natural_total_width(compact=False)
+                nw = max(nw, _CLUSTER_CHIP_MIN_WIDTH.get(key, 0))
+                chip.setMinimumWidth(nw)
+                chip.set_spring_width(nw)
+                total += nw
+            spacing = self._track_lay.spacing() * max(0, len(keys) - 1)
+            m = self._track_lay.contentsMargins()
+            need = total + spacing + m.left() + m.right()
+            self._track.setMinimumWidth(max(need, 0))
+            self._track.setSizePolicy(
+                QtWidgets.QSizePolicy.Policy.Minimum,
+                QtWidgets.QSizePolicy.Policy.Fixed,
+            )
+            self._compact_mode = False
+            self._update_bar_height(cluster=True)
+            self._notify_cluster_width(need)
+        else:
+            self._notify_cluster_width(self._track.minimumWidth())
 
     def _apply_spring_layout_body(
         self,
@@ -805,6 +890,7 @@ class SurveyTopBar(QtWidgets.QWidget):
             self._track_lay.addStretch(1)
             self._cluster_stretch_index = self._track_lay.count() - 1
         self._last_visible_sig = ()
+        self._last_cluster_sig = ()
         self._schedule_spring_layout()
         self._track.updateGeometry()
 
@@ -1042,6 +1128,16 @@ class _LayoutToggleButton(QtWidgets.QToolButton):
                 "Also under View. Stop the bridge first."
             ),
         )
+        self.setSizePolicy(
+            QtWidgets.QSizePolicy.Policy.Minimum,
+            QtWidgets.QSizePolicy.Policy.Fixed,
+        )
+        btn_font = QtGui.QFont(self.font())
+        btn_font.setWeight(QtGui.QFont.Weight.DemiBold)
+        metrics = QtGui.QFontMetrics(btn_font)
+        layout_w = metrics.horizontalAdvance("Layout") + _EMBEDDED_QSS_HPAD + 18
+        self.setMinimumWidth(max(layout_w, _CLUSTER_CHIP_MIN_WIDTH.get("ui_switch", 98)))
+        self.setMaximumWidth(_WIDGET_SIZE_MAX)
         self.clicked.connect(self._request_toggle)
 
     def _request_toggle(self) -> None:

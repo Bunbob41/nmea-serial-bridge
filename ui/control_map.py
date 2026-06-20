@@ -1,12 +1,22 @@
 """Lightweight Control-tab position track (Qt paint, GGA/RMC only)."""
 from __future__ import annotations
 
+import math
+import time
 from typing import Callable, Optional, Sequence
+
+TrackPoint = tuple[float, float, float]  # mono_time, lat, lon
 
 from PySide6 import QtCore, QtGui, QtWidgets
 
 TRACK_MAX = 120
 _DEFAULT_PAD_DEG = 0.00015
+_GRID_DIVISIONS = 4
+_METERS_PER_DEG_LAT = 111_320.0
+_GRID_SNAP_INTERVALS_M = (1, 2, 5, 10, 25, 50, 100, 250, 500)
+_MAX_GRID_LINES_PER_AXIS = 12
+_ROLLING_WINDOW_S = 5.0
+_VELOCITY_CELL_SECONDS = 1.5
 
 
 def position_fix_color_hex(
@@ -86,6 +96,166 @@ def project_latlon(
     return x, y
 
 
+def _bounds_span_meters(
+    bounds: tuple[float, float, float, float],
+) -> tuple[float, float, float]:
+    """Return (lat_mid, lat_span_m, lon_span_m) for the plot bounds."""
+    min_lon, max_lon, min_lat, max_lat = bounds
+    lat_mid = (min_lat + max_lat) * 0.5
+    lat_span_m = (max_lat - min_lat) * _METERS_PER_DEG_LAT
+    lon_span_m = (
+        (max_lon - min_lon)
+        * _METERS_PER_DEG_LAT
+        * max(0.15, math.cos(math.radians(lat_mid)))
+    )
+    return lat_mid, lat_span_m, lon_span_m
+
+
+def _haversine_meters(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    """Ground distance in meters between two WGS84 points."""
+    r = 6_371_000.0
+    p1, p2 = math.radians(lat1), math.radians(lat2)
+    d_lat = math.radians(lat2 - lat1)
+    d_lon = math.radians(lon2 - lon1)
+    a = (
+        math.sin(d_lat / 2) ** 2
+        + math.cos(p1) * math.cos(p2) * math.sin(d_lon / 2) ** 2
+    )
+    return 2 * r * math.asin(min(1.0, math.sqrt(a)))
+
+
+def prune_track_points(
+    points: list[TrackPoint],
+    *,
+    window_s: float = _ROLLING_WINDOW_S,
+    now_mono: Optional[float] = None,
+) -> list[TrackPoint]:
+    """Drop samples older than the rolling window (in-place)."""
+    if not points:
+        return points
+    now = time.monotonic() if now_mono is None else now_mono
+    cutoff = now - window_s
+    while points and points[0][0] < cutoff:
+        points.pop(0)
+    return points
+
+
+def track_points_in_window(
+    points: Sequence[TrackPoint],
+    *,
+    window_s: float = _ROLLING_WINDOW_S,
+    now_mono: Optional[float] = None,
+) -> list[TrackPoint]:
+    """Return track samples from the rolling time window only."""
+    if not points:
+        return []
+    now = time.monotonic() if now_mono is None else now_mono
+    cutoff = now - window_s
+    return [p for p in points if p[0] >= cutoff]
+
+
+def track_average_velocity_mps(
+    points: Sequence[TrackPoint],
+    *,
+    window_s: float = _ROLLING_WINDOW_S,
+    now_mono: Optional[float] = None,
+) -> float:
+    """Average ground speed (m/s) across the rolling track window."""
+    windowed = track_points_in_window(
+        points, window_s=window_s, now_mono=now_mono
+    )
+    if len(windowed) < 2:
+        return 0.0
+    dist_m = 0.0
+    for idx in range(1, len(windowed)):
+        _, lat0, lon0 = windowed[idx - 1]
+        _, lat1, lon1 = windowed[idx]
+        dist_m += _haversine_meters(lat0, lon0, lat1, lon1)
+    dt = windowed[-1][0] - windowed[0][0]
+    if dt <= 1e-6:
+        return 0.0
+    return dist_m / dt
+
+
+def footprint_span_meters(points: Sequence[tuple[float, float]]) -> float:
+    """Largest ground span (m) across a lat/lon point set."""
+    bounds = latlon_bounds(points)
+    if bounds is None:
+        return 1.0
+    _, lat_span_m, lon_span_m = _bounds_span_meters(bounds)
+    return max(lat_span_m, lon_span_m, 1.0)
+
+
+def _snap_interval(raw_m: float) -> int:
+    raw = max(0.5, raw_m)
+    return min(_GRID_SNAP_INTERVALS_M, key=lambda v: abs(v - raw))
+
+
+def snap_grid_interval_meters(bounds: tuple[float, float, float, float]) -> int:
+    """Snap grid cell size from static plot bounds (fallback when no track)."""
+    _, lat_span_m, lon_span_m = _bounds_span_meters(bounds)
+    raw = max(
+        0.5,
+        (lat_span_m / _GRID_DIVISIONS + lon_span_m / _GRID_DIVISIONS) * 0.5,
+    )
+    return _snap_interval(raw)
+
+
+def dynamic_grid_interval_meters(
+    track: Sequence[TrackPoint],
+    bounds: tuple[float, float, float, float],
+    *,
+    window_s: float = _ROLLING_WINDOW_S,
+    now_mono: Optional[float] = None,
+) -> int:
+    """Snap grid spacing from rolling velocity + active work-area footprint."""
+    windowed = track_points_in_window(
+        track, window_s=window_s, now_mono=now_mono
+    )
+    coords = [(lat, lon) for _t, lat, lon in windowed]
+    footprint_m = footprint_span_meters(coords) if coords else 1.0
+    velocity_mps = track_average_velocity_mps(
+        track, window_s=window_s, now_mono=now_mono
+    )
+    static_raw = snap_grid_interval_meters(bounds)
+    raw = max(
+        footprint_m / _GRID_DIVISIONS,
+        velocity_mps * _VELOCITY_CELL_SECONDS,
+        float(static_raw) * 0.35,
+        0.5,
+    )
+    return _snap_interval(raw)
+
+
+def _grid_steps_deg(
+    bounds: tuple[float, float, float, float],
+    interval_m: int,
+) -> tuple[float, float]:
+    """Ground interval in degrees (lat step, lon step at plot mid-latitude)."""
+    lat_mid, _, _ = _bounds_span_meters(bounds)
+    lat_step = interval_m / _METERS_PER_DEG_LAT
+    lon_step = interval_m / (
+        _METERS_PER_DEG_LAT * max(0.15, math.cos(math.radians(lat_mid)))
+    )
+    return lat_step, lon_step
+
+
+def grid_cell_scale_label(
+    bounds: tuple[float, float, float, float],
+    track: Sequence[TrackPoint] | None = None,
+    *,
+    now_mono: Optional[float] = None,
+) -> str:
+    """Human-readable snapped grid spacing for the position track."""
+    if track:
+        interval_m = dynamic_grid_interval_meters(
+            track, bounds, now_mono=now_mono
+        )
+    else:
+        interval_m = snap_grid_interval_meters(bounds)
+    return f"Grid: {interval_m} m"
+
+
 class ControlPositionMap(QtWidgets.QWidget):
     """Simple lat/lon track plot for Modern Control (no tile server)."""
 
@@ -100,7 +270,7 @@ class ControlPositionMap(QtWidgets.QWidget):
             QtWidgets.QSizePolicy.Policy.Expanding,
             QtWidgets.QSizePolicy.Policy.Expanding,
         )
-        self._track: list[tuple[float, float]] = []
+        self._track: list[TrackPoint] = []
         self._marker: tuple[float, float] | None = None
         self._stale = False
         self._stream_idle = False
@@ -164,16 +334,24 @@ class ControlPositionMap(QtWidgets.QWidget):
 
         self._idle = False
         self._marker = (lat_f, lon_f)
+        now = time.monotonic()
         last = self._track[-1] if self._track else None
         if (
             last is None
-            or abs(last[0] - lat_f) > 1e-7
-            or abs(last[1] - lon_f) > 1e-7
+            or abs(last[1] - lat_f) > 1e-7
+            or abs(last[2] - lon_f) > 1e-7
         ):
-            self._track.append((lat_f, lon_f))
+            self._track.append((now, lat_f, lon_f))
+            prune_track_points(self._track, now_mono=now)
             if len(self._track) > TRACK_MAX:
                 self._track = self._track[-TRACK_MAX:]
         self.update()
+
+    def _active_track(self, now_mono: Optional[float] = None) -> list[TrackPoint]:
+        """Rolling 5 s subset used for paint, bounds, velocity, and grid."""
+        now = time.monotonic() if now_mono is None else now_mono
+        prune_track_points(self._track, now_mono=now)
+        return track_points_in_window(self._track, now_mono=now)
 
     def _caption_text(self) -> str:
         if self._marker is None:
@@ -196,16 +374,32 @@ class ControlPositionMap(QtWidgets.QWidget):
         painter.fillRect(rect, QtGui.QColor("#0f172a"))
 
         if self._idle:
+            painter.setPen(QtGui.QColor("#64748b"))
+            icon_font = painter.font()
+            icon_font.setPointSizeF(28.0)
+            painter.setFont(icon_font)
+            painter.drawText(
+                rect.adjusted(12, 0, -12, -28),
+                int(QtCore.Qt.AlignmentFlag.AlignHCenter | QtCore.Qt.AlignmentFlag.AlignVCenter),
+                "🗺",
+            )
             painter.setPen(QtGui.QColor("#94a3b8"))
+            msg_font = painter.font()
+            msg_font.setPointSizeF(max(9.0, msg_font.pointSizeF()))
+            painter.setFont(msg_font)
             painter.drawText(
                 rect.adjusted(12, 0, -12, 0),
-                int(QtCore.Qt.AlignmentFlag.AlignCenter),
+                int(QtCore.Qt.AlignmentFlag.AlignHCenter | QtCore.Qt.AlignmentFlag.AlignVCenter),
                 self._message,
             )
             painter.end()
             return
 
-        points: list[tuple[float, float]] = list(self._track)
+        now = time.monotonic()
+        active = self._active_track(now_mono=now)
+        points: list[tuple[float, float]] = [
+            (lat, lon) for _t, lat, lon in active
+        ]
         if self._marker and (
             not points
             or points[-1][0] != self._marker[0]
@@ -218,7 +412,17 @@ class ControlPositionMap(QtWidgets.QWidget):
             painter.end()
             return
 
-        self._paint_grid(painter, rect, bounds)
+        self._paint_grid(painter, rect, bounds, active, now_mono=now)
+        scale = grid_cell_scale_label(bounds, active, now_mono=now)
+        painter.setPen(QtGui.QColor("#94a3b8"))
+        scale_font = painter.font()
+        scale_font.setPointSizeF(7.5)
+        painter.setFont(scale_font)
+        painter.drawText(
+            rect.adjusted(10, 0, -10, -10),
+            int(QtCore.Qt.AlignmentFlag.AlignRight | QtCore.Qt.AlignmentFlag.AlignBottom),
+            scale,
+        )
 
         if len(points) >= 2:
             path = QtGui.QPainterPath()
@@ -258,13 +462,26 @@ class ControlPositionMap(QtWidgets.QWidget):
 
         caption = self._caption_text()
         if caption:
-            painter.setPen(QtGui.QColor("#cbd5e1"))
             font = painter.font()
             font.setPointSizeF(max(8.0, font.pointSizeF() - 0.5))
             painter.setFont(font)
+            metrics = painter.fontMetrics()
+            text_w = metrics.horizontalAdvance(caption)
+            text_h = metrics.height()
+            pad_x, pad_y = 10, 5
+            pill_w = text_w + pad_x * 2
+            pill_h = text_h + pad_y * 2
+            margin = 12
+            pill_x = margin
+            pill_y = rect.height() - margin - pill_h
+            pill_rect = QtCore.QRectF(pill_x, pill_y, pill_w, pill_h)
+            painter.setPen(QtCore.Qt.PenStyle.NoPen)
+            painter.setBrush(QtGui.QColor(15, 23, 42, 210))
+            painter.drawRoundedRect(pill_rect, 6.0, 6.0)
+            painter.setPen(QtGui.QColor("#e2e8f0"))
             painter.drawText(
-                rect.adjusted(12, 0, -12, -8),
-                int(QtCore.Qt.AlignmentFlag.AlignLeft | QtCore.Qt.AlignmentFlag.AlignBottom),
+                pill_rect,
+                int(QtCore.Qt.AlignmentFlag.AlignCenter),
                 caption,
             )
         painter.end()
@@ -279,17 +496,45 @@ class ControlPositionMap(QtWidgets.QWidget):
         painter: QtGui.QPainter,
         rect: QtCore.QRect,
         bounds: tuple[float, float, float, float],
+        track: Sequence[TrackPoint],
+        *,
+        now_mono: Optional[float] = None,
     ) -> None:
         min_lon, max_lon, min_lat, max_lat = bounds
+        interval_m = dynamic_grid_interval_meters(
+            track, bounds, now_mono=now_mono
+        )
+        lat_step, lon_step = _grid_steps_deg(bounds, interval_m)
         grid_pen = QtGui.QPen(QtGui.QColor(30, 41, 59))
         grid_pen.setWidthF(1.0)
         painter.setPen(grid_pen)
-        for i in range(1, 4):
-            y = rect.top() + (rect.height() * i) / 4
-            painter.drawLine(rect.left() + 8, int(y), rect.right() - 8, int(y))
-        for i in range(1, 4):
-            x = rect.left() + (rect.width() * i) / 4
-            painter.drawLine(int(x), rect.top() + 8, int(x), rect.bottom() - 8)
+
+        plot_left = rect.left() + 8
+        plot_right = rect.right() - 8
+        plot_top = rect.top() + 8
+        plot_bottom = rect.bottom() - 8
+
+        lat = min_lat + lat_step
+        lat_lines = 0
+        while lat < max_lat - 1e-12 and lat_lines < _MAX_GRID_LINES_PER_AXIS:
+            _, y = project_latlon(
+                lat, min_lon, bounds, rect.width(), rect.height()
+            )
+            yi = int(max(plot_top, min(plot_bottom, y)))
+            painter.drawLine(plot_left, yi, plot_right, yi)
+            lat += lat_step
+            lat_lines += 1
+
+        lon = min_lon + lon_step
+        lon_lines = 0
+        while lon < max_lon - 1e-12 and lon_lines < _MAX_GRID_LINES_PER_AXIS:
+            x, _ = project_latlon(
+                min_lat, lon, bounds, rect.width(), rect.height()
+            )
+            xi = int(max(plot_left, min(plot_right, x)))
+            painter.drawLine(xi, plot_top, xi, plot_bottom)
+            lon += lon_step
+            lon_lines += 1
 
         # North hint — lat increases upward on the plot.
         painter.setPen(QtGui.QColor("#64748b"))

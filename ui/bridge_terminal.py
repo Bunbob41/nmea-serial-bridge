@@ -25,7 +25,8 @@ from PySide6 import QtCore, QtGui, QtWidgets
 # ── palette (matches Modern fixed theme) ─────────────────────────────────────
 _BG            = "#050a12"
 _TEXT          = "#e2f0ff"
-_MUTED         = "#64748b"
+_MUTED         = "#475569"
+_META_DIM      = "#3d4f63"
 _ACCENT_BLUE   = "#38bdf8"
 _ACCENT_GREEN  = "#34d399"
 _ACCENT_AMBER  = "#fbbf24"
@@ -91,7 +92,7 @@ class _NmeaHighlighter(QtGui.QSyntaxHighlighter):
                 f.setFontWeight(QtGui.QFont.Weight.Bold)
             return f
 
-        self._f_ts        = _fmt(_MUTED)
+        self._f_ts        = _fmt(_META_DIM)
         self._f_net_com   = _fmt(_ACCENT_BLUE,  bold=True)
         self._f_com_net   = _fmt(_ACCENT_GREEN, bold=True)
         self._f_reject    = _fmt(_ACCENT_AMBER, bold=True)
@@ -102,10 +103,17 @@ class _NmeaHighlighter(QtGui.QSyntaxHighlighter):
         self._f_hex_byte  = _fmt(_ACCENT_BLUE)
         self._f_raw_label = _fmt(_ACCENT_AMBER, bold=True)
         self._f_event     = _fmt(_MUTED, bold=True)
+        self._f_warn      = _fmt("#f87171", bold=True)
 
         # pre-compiled patterns
         self._re_ts    = re.compile(r"^\d{2}:\d{2}:\d{2}\.\d{3}")
         self._re_dir   = re.compile(r"\b(NET→COM|COM→NET|REJECT|RAW|EVENT)\b")
+        self._re_event_body = re.compile(r"EVENT\s{2}")
+        self._re_warn  = re.compile(
+            r"timed out|disconnect|retry|retries|failed|cannot open|blocked|"
+            r"error|refused|unavailable|backpressure|drop",
+            re.IGNORECASE,
+        )
         self._re_start = re.compile(r"\$([A-Z]{2})([A-Z]{3})")
         self._re_cksum = re.compile(r"\*[0-9A-Fa-f]{2}")
         self._re_hex   = re.compile(r"\b[0-9a-f]{2}\b")
@@ -130,6 +138,11 @@ class _NmeaHighlighter(QtGui.QSyntaxHighlighter):
             else:
                 fmt = self._f_raw_label
             self.setFormat(m.start(), m.end() - m.start(), fmt)
+
+        event_body = self._re_event_body.search(text)
+        if event_body and self._re_warn.search(text):
+            start = event_body.end()
+            self.setFormat(start, len(text) - start, self._f_warn)
 
         # NMEA sentence body
         m = self._re_start.search(text)
@@ -261,7 +274,7 @@ class BridgeTerminalPanel(QtWidgets.QWidget):
         actions.setObjectName("wireToolbarActions")
         act_lay = QtWidgets.QHBoxLayout(actions)
         act_lay.setContentsMargins(0, 0, 0, 0)
-        act_lay.setSpacing(4)
+        act_lay.setSpacing(8)
         act_lay.addWidget(self._btn_wrap)
         act_lay.addWidget(self._btn_pause)
         act_lay.addWidget(btn_clear)
@@ -279,6 +292,14 @@ class BridgeTerminalPanel(QtWidgets.QWidget):
         self._view.setUndoRedoEnabled(False)
         from ui.fonts import monospace_ui_font
         self._view.setFont(monospace_ui_font())
+        block_fmt = QtGui.QTextBlockFormat()
+        block_fmt.setLineHeight(
+            140.0,
+            QtGui.QTextBlockFormat.LineHeightTypes.ProportionalHeight.value,
+        )
+        cursor = self._view.textCursor()
+        cursor.setBlockFormat(block_fmt)
+        self._view.setTextCursor(cursor)
         root.addWidget(self._view, 1)
 
         # NMEA syntax highlighter
@@ -315,6 +336,7 @@ class BridgeTerminalPanel(QtWidgets.QWidget):
         btn.setCheckable(True)
         btn.setChecked(checked)
         btn.setFixedHeight(26)
+        btn.setMinimumWidth(68)
         btn.setToolTip(f"Show {label} traffic only" if direction else "Show all traffic")
         return btn
 
@@ -458,10 +480,14 @@ class BridgeTerminalPanel(QtWidgets.QWidget):
             "reject":  "REJECT ",
         }.get(direction, direction.upper())
 
-        # Hex display works whenever _hex_mode is on, regardless of _is_raw_mode.
-        # _is_raw_mode still controls whether the Hex button is visible.
-        if self._hex_mode:
-            body = f"[RAW {len(raw)} bytes]\n{_hex_format(raw)}"
+        # Reject tap carries a UTF-8 reason string, not raw wire bytes.
+        if direction == "reject":
+            try:
+                body = raw.decode("utf-8", errors="replace").rstrip("\r\n")
+            except Exception:
+                body = repr(raw)
+        elif self._hex_mode:
+            body = f"[HEX {len(raw)} bytes]\n{_hex_format(raw)}"
         else:
             try:
                 body = raw.decode("utf-8", errors="replace").rstrip("\r\n")

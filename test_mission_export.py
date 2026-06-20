@@ -6,7 +6,13 @@ import unittest
 import zipfile
 from pathlib import Path
 
-from ui.mission_export import build_mission_summary_text, quick_export_mission
+from ui.mission_export import (
+    build_mission_summary_text,
+    export_session_backup_copy,
+    quick_export_mission_zip,
+    resolve_session_backup_path,
+    suggest_quick_export_path,
+)
 from ui.mission_session import MissionSessionRecord
 
 
@@ -29,9 +35,9 @@ class TestMissionExport(unittest.TestCase):
         self.assertIn("12.50", text)
         self.assertIn("50,000", text)
 
-    def test_quick_export_creates_zip_with_raw_and_summary(self) -> None:
+    def test_quick_export_creates_zip_with_backup_and_summary(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            raw = Path(tmp) / "backup_20260614_1645.raw"
+            raw = Path(tmp) / "backup_20260614_1645.nmea"
             raw.write_bytes(b"$GPGGA" * 200)
             record = MissionSessionRecord(
                 started_mono=0.0,
@@ -42,7 +48,7 @@ class TestMissionExport(unittest.TestCase):
                 total_dropped=0,
                 avg_hz_up=10.0,
             )
-            zip_path = quick_export_mission(record, dest_dir=Path(tmp) / "out")
+            zip_path = quick_export_mission_zip(record, dest_dir=Path(tmp) / "out")
             self.assertTrue(zip_path.is_file())
             with zipfile.ZipFile(zip_path, "r") as zf:
                 names = zf.namelist()
@@ -50,6 +56,41 @@ class TestMissionExport(unittest.TestCase):
                 self.assertIn(raw.name, names)
                 summary = zf.read("mission_summary.txt").decode("utf-8")
                 self.assertIn("Mission Summary", summary)
+
+    def test_resolve_accepts_legacy_raw_extension(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            raw = Path(tmp) / "backup_20260614_1645.raw"
+            raw.write_bytes(b"$GPGGA")
+            record = MissionSessionRecord(
+                started_mono=0.0,
+                ended_mono=1.0,
+                duration_s=1.0,
+                backup_path=str(raw),
+                total_bytes=raw.stat().st_size,
+                total_dropped=0,
+                avg_hz_up=0.0,
+            )
+            self.assertEqual(resolve_session_backup_path(record), raw)
+
+    def test_export_session_backup_copy_to_log(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "backup.nmea"
+            source.write_bytes(b"$GPRMC,1,2,3*11\r\n")
+            record = MissionSessionRecord(
+                started_mono=0.0,
+                ended_mono=1.0,
+                duration_s=1.0,
+                backup_path=str(source),
+                total_bytes=source.stat().st_size,
+                total_dropped=0,
+                avg_hz_up=0.0,
+            )
+            dest = Path(tmp) / "handoff.log"
+            out = export_session_backup_copy(source, dest)
+            self.assertEqual(out, dest)
+            self.assertEqual(dest.read_bytes(), source.read_bytes())
+            suggested = suggest_quick_export_path(record, dest_dir=Path(tmp))
+            self.assertTrue(str(suggested).endswith(".nmea"))
 
 
 if __name__ == "__main__":

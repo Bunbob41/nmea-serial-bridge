@@ -84,6 +84,9 @@ QFrame#modernGlobalHeader {{
     border-bottom: 2px solid rgba(59, 130, 246, 0.35);
     min-height: 40px;
 }}
+QFrame#modernGlobalHeader[toolsChipsEmbedded="true"] {{
+    min-height: 42px;
+}}
 QFrame#modernGlobalHeader[sessionMode="true"] {{
     min-height: 34px;
     border-bottom-width: 1px;
@@ -99,6 +102,12 @@ QFrame#modernGlobalHeader[sessionMode="true"] QFrame#modernStatusBanner {{
     max-width: none;
 }}
 QWidget#modernHeaderStatusContainer {{
+    min-width: 80px;
+}}
+QWidget#modernHeaderStatusContainer[headerCompact="true"] {{
+    max-width: 220px;
+}}
+QWidget#modernHeaderChipHost {{
     min-width: 0;
 }}
 QToolButton#modernHeaderQrBtn {{
@@ -120,7 +129,7 @@ QToolButton#modernHeaderChipBtn {{
     border-radius: 6px;
     font-size: 8.5pt;
     font-weight: 600;
-    padding: 2px 6px;
+    padding: 2px 10px;
     min-height: 24px;
     max-height: 26px;
 }}
@@ -139,6 +148,19 @@ QFrame#modernFooterSep {{
     max-width: 1px;
     min-width: 1px;
     margin: 5px 2px;
+}}
+QSplitter#modernHeaderSplitter::handle:horizontal {{
+    background-color: {MODERN_BORDER};
+    width: 1px;
+    margin: 5px 1px;
+}}
+QSplitter#modernHeaderSplitter[resizeUnlocked="true"]::handle:horizontal {{
+    background-color: {MODERN_BORDER};
+    width: 6px;
+    margin: 4px 0px;
+}}
+QSplitter#modernHeaderSplitter[resizeUnlocked="true"]::handle:horizontal:hover {{
+    background-color: {MODERN_ACCENT};
 }}
 
 /* Version label in the global header */
@@ -206,8 +228,10 @@ QWidget#modernHeaderNav QFrame#topBarChip {{
     background-color: {MODERN_SURFACE_ALT};
     border: 1px solid {MODERN_BORDER};
     border-radius: 6px;
-    max-width: 88px;
-    min-width: 48px;
+    min-width: 52px;
+}}
+QWidget#modernHeaderNav QFrame#topBarChip[chipKey="ui_switch"] {{
+    min-width: 98px;
 }}
 QWidget#modernHeaderNav QFrame#topBarChip:hover {{
     border-color: {MODERN_ACCENT};
@@ -221,7 +245,7 @@ QWidget#modernHeaderNav QToolButton#surveyQuickBtn {{
     background-color: transparent;
     color: {MODERN_TEXT};
     border: none;
-    padding: 2px 6px;
+    padding: 2px 10px;
     font-size: 9pt;
     font-weight: 600;
 }}
@@ -238,7 +262,15 @@ QFrame#modernStatusBanner {{
     border: none;
     border-left: 3px solid {MODERN_BORDER};
     padding: 0px 8px;
-    min-width: 60px;
+    min-width: 72px;
+}}
+QFrame#modernStatusBanner[headerCompact="true"] {{
+    background-color: rgba(30, 41, 59, 0.55);
+    border-radius: 8px;
+    padding: 2px 10px;
+}}
+QFrame#modernStatusBanner[headerCompact="true"][clickable="true"]:hover {{
+    background-color: {MODERN_SURFACE_ALT};
 }}
 QFrame#modernStatusBanner[clickable="true"]:hover {{
     background-color: {MODERN_SURFACE_ALT};
@@ -255,7 +287,7 @@ QLabel#modernStatusBannerText {{
     font-size: 9pt;
     font-weight: 600;
     background: transparent;
-    min-width: 0;
+    min-width: 56px;
 }}
 QMenu#viewLayoutMenu {{
     min-width: 280px;
@@ -500,6 +532,96 @@ QFrame#modernControlFormCard QPushButton:hover {{
     color: #ffffff;
     background-color: #1e3a5f;
 }}
+QFrame#modernComFieldWrap {{
+    background-color: {MODERN_BG};
+    border: 1px solid rgba(71, 85, 105, 0.75);
+    border-radius: 8px;
+}}
+QFrame#modernComFieldWrap QComboBox#connectComCombo {{
+    border: none;
+    background: transparent;
+    padding: 7px 6px 7px 11px;
+    min-height: 34px;
+}}
+QFrame#modernComFieldWrap QComboBox#connectComCombo::drop-down {{
+    subcontrol-origin: padding;
+    subcontrol-position: top right;
+    width: 20px;
+    border: none;
+}}
+QPushButton#modernComRefreshBtn {{
+    border: none;
+    border-left: 1px solid rgba(71, 85, 105, 0.55);
+    border-top-right-radius: 8px;
+    border-bottom-right-radius: 8px;
+    background: transparent;
+    color: {MODERN_ACCENT_BRIGHT};
+    font-size: 15pt;
+    font-weight: 600;
+    padding: 0;
+    margin: 0;
+    min-width: 34px;
+    max-width: 34px;
+}}
+QPushButton#modernComRefreshBtn:hover {{
+    background: rgba(59, 130, 246, 0.15);
+    color: {MODERN_ACCENT_BRIGHT};
+}}
+QPushButton#modernComRefreshBtn:pressed {{
+    background: rgba(59, 130, 246, 0.28);
+}}
+QFrame#modernControlIndentRule {{
+    background-color: rgba(59, 130, 246, 0.45);
+    border-radius: 2px;
+    min-height: 36px;
+    max-width: 3px;
+}}
+QWidget#modernControlNestedRow QCheckBox {{
+    color: {MODERN_TEXT_MUTED};
+}}
+QLabel#modernSessionPulse {{
+    background-color: #4ade80;
+    border-radius: 4px;
+    min-width: 8px;
+    max-width: 8px;
+    min-height: 8px;
+    max-height: 8px;
+}}
+QLabel#modernSessionPulse[pulseOn="false"] {{
+    background-color: #166534;
+}}
+QFrame#modernLoggingIndicator {{
+    background: transparent;
+    border: none;
+}}
+QFrame#modernLoggingIndicator[clickable="true"]:hover {{
+    background-color: {MODERN_SURFACE_ALT};
+    border-radius: 6px;
+}}
+QFrame#modernLoggingIndicator[clickable="true"]:hover QLabel#modernLoggingLabel {{
+    color: {MODERN_ACCENT_BRIGHT};
+}}
+QLabel#modernLoggingPulse {{
+    background-color: #f87171;
+    border-radius: 4px;
+    min-width: 8px;
+    max-width: 8px;
+    min-height: 8px;
+    max-height: 8px;
+}}
+QLabel#modernLoggingPulse[pulseOn="false"] {{
+    background-color: #991b1b;
+}}
+QLabel#modernLoggingLabel {{
+    color: {MODERN_TEXT};
+    font-size: 9pt;
+    font-weight: 600;
+    background: transparent;
+    padding: 0px;
+}}
+QWidget#modernSessionRunCluster {{
+    spacing: 6px;
+}}
 QFrame#modernControlPresetBar {{
     background: transparent;
     border: none;
@@ -665,6 +787,117 @@ QWidget#modernHubTab QPushButton:hover {{
     background-color: #1e3a5f;
     color: #ffffff;
 }}
+QWidget#modernFleetTab {{
+    background-color: {MODERN_BG};
+}}
+QWidget#modernFleetTab QLabel {{ color: {MODERN_TEXT}; }}
+QTableWidget#modernFleetTable {{
+    background-color: {MODERN_SURFACE};
+    color: {MODERN_TEXT};
+    border: 1px solid {MODERN_BORDER};
+    gridline-color: {MODERN_BORDER};
+}}
+QTableWidget#modernFleetTable::item {{
+    padding: 1px 6px;
+}}
+QTableWidget#modernFleetTable QHeaderView::section {{
+    background-color: {MODERN_SURFACE_ALT};
+    color: #e2e8f0;
+    font-weight: 700;
+    font-size: 9pt;
+    padding: 4px 8px;
+    border: none;
+    border-bottom: 1px solid {MODERN_BORDER};
+}}
+QPushButton#fleetRowActionBtn {{
+    background-color: {MODERN_SURFACE_ALT};
+    color: {MODERN_TEXT};
+    border: 1px solid {MODERN_BORDER};
+    border-radius: 5px;
+    font-size: 9pt;
+    font-weight: 700;
+    padding: 0;
+    min-height: 20px;
+    max-height: 22px;
+}}
+QPushButton#fleetRowActionBtn:hover {{
+    border-color: {MODERN_ACCENT};
+    color: {MODERN_ACCENT_BRIGHT};
+}}
+QFrame#modernPresetListCard {{
+    background-color: {MODERN_SURFACE};
+    border: 1px solid rgba(51, 65, 85, 0.45);
+    border-radius: 10px;
+}}
+QWidget#modernPresetRightPanel QLineEdit,
+QWidget#modernPresetRightPanel QPlainTextEdit {{
+    background-color: {MODERN_BG};
+    color: {MODERN_TEXT};
+    border: 1px solid {MODERN_BORDER};
+    border-radius: 6px;
+    padding: 6px 8px;
+}}
+QListWidget#presetList {{
+    background-color: {MODERN_BG};
+    border: 1px solid rgba(71, 85, 105, 0.45);
+    border-radius: 8px;
+    padding: 4px;
+}}
+QTableWidget#modernFleetTable::item:selected {{
+    background-color: #1e3a5f;
+}}
+QLabel#modernFleetStatus {{
+    color: {MODERN_TEXT_MUTED};
+    font-size: 9pt;
+}}
+QDialog#fleetStreamEditDialog QLineEdit {{
+    background-color: {MODERN_SURFACE_ALT};
+    color: {MODERN_TEXT};
+    border: 1px solid {MODERN_BORDER};
+    border-radius: 5px;
+    padding: 5px 8px;
+    min-height: 28px;
+}}
+QDialog#fleetStreamEditDialog QComboBox#fleetStreamComCombo,
+QDialog#fleetStreamEditDialog QComboBox#connectBaudCombo,
+QDialog#fleetStreamEditDialog QComboBox#fleetStreamSelectCombo {{
+    background-color: {MODERN_SURFACE_ALT};
+    color: {MODERN_TEXT};
+    border: 1px solid {MODERN_BORDER};
+    border-radius: 5px;
+    padding: 5px 28px 5px 8px;
+    min-height: 32px;
+}}
+QDialog#fleetStreamEditDialog QComboBox#fleetStreamComCombo:focus,
+QDialog#fleetStreamEditDialog QComboBox#connectBaudCombo:focus,
+QDialog#fleetStreamEditDialog QComboBox#fleetStreamSelectCombo:focus {{
+    border-color: {MODERN_ACCENT};
+}}
+QDialog#fleetStreamEditDialog QComboBox::drop-down {{
+    subcontrol-origin: padding;
+    subcontrol-position: top right;
+    width: 24px;
+    border: none;
+}}
+QDialog#fleetStreamEditDialog QComboBox QAbstractItemView {{
+    background-color: {MODERN_SURFACE};
+    color: {MODERN_TEXT};
+    selection-background-color: #1d4ed8;
+    selection-color: #ffffff;
+    border: 1px solid #64748b;
+}}
+QDialog#fleetStreamEditDialog QSpinBox#fleetStreamPortSpin {{
+    background-color: {MODERN_SURFACE_ALT};
+    color: {MODERN_TEXT};
+    border: 1px solid {MODERN_BORDER};
+    border-radius: 5px;
+    padding: 5px 8px;
+    min-height: 28px;
+}}
+QDialog#fleetStreamEditDialog QSpinBox#fleetStreamPortSpin {{
+    min-width: 140px;
+    padding-right: 22px;
+}}
 QWidget#modernHubTab QScrollArea#connectionHubCardScroll,
 QWidget#modernHubTab QScrollArea#connectionHubCardScroll > QWidget > QWidget#connectionHubCardScrollViewport,
 QWidget#modernHubTab QWidget#connectionHubCardsPane,
@@ -766,7 +999,7 @@ QLabel#modernSettingsNavGroup {{
     font-size: 7pt;
     font-weight: 700;
     letter-spacing: 1.2px;
-    padding: 10px 14px 4px 14px;
+    padding: 6px 14px 2px 14px;
 }}
 QPushButton#modernSettingsNavBtn {{
     background-color: transparent;
@@ -806,6 +1039,18 @@ QScrollArea#modernToolsChipScroll {{
     background: transparent;
     border: none;
 }}
+QScrollArea#modernToolsChipScroll QScrollBar:horizontal {{
+    height: 0px;
+    margin: 0;
+    background: transparent;
+}}
+QScrollArea#modernToolsChipScroll QScrollBar::handle:horizontal,
+QScrollArea#modernToolsChipScroll QScrollBar::add-line:horizontal,
+QScrollArea#modernToolsChipScroll QScrollBar::sub-line:horizontal {{
+    height: 0px;
+    width: 0px;
+    background: transparent;
+}}
 QWidget#modernToolsChipInner {{
     background: transparent;
 }}
@@ -813,6 +1058,52 @@ QFrame#modernToolsChipSep {{
     color: {MODERN_BORDER};
     background-color: {MODERN_BORDER};
     margin: 0 4px;
+}}
+QPushButton#modernToolsNavChip[headerCompact="true"] {{
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-size: 8pt;
+    min-height: 0;
+    max-height: 30px;
+}}
+QPushButton#modernToolsNavChip[headerIconOnly="true"] {{
+    padding: 2px 4px;
+    border-radius: 8px;
+    font-size: 10pt;
+    min-width: 28px;
+    max-width: 32px;
+}}
+QToolButton#modernToolsNavChipMenu[headerCompact="true"] {{
+    padding: 2px 10px 2px 8px;
+    border-radius: 12px;
+    font-size: 8pt;
+    min-height: 0;
+    max-height: 30px;
+}}
+QToolButton#modernToolsNavChipMenu[headerCompact="true"]::menu-button {{
+    background-color: transparent;
+    border: none;
+    border-left: none;
+    border-top-right-radius: 12px;
+    border-bottom-right-radius: 12px;
+    width: 18px;
+    padding: 0;
+    margin: 0;
+}}
+QToolButton#modernToolsNavChipMenu[headerCompact="true"]::menu-button:hover,
+QToolButton#modernToolsNavChipMenu[headerCompact="true"]::menu-button:pressed {{
+    background-color: transparent;
+    border: none;
+}}
+QToolButton#modernToolsNavChipMenu[headerIconOnly="true"] {{
+    padding: 2px 4px 2px 6px;
+    border-radius: 8px;
+    font-size: 10pt;
+    min-width: 32px;
+    max-width: 38px;
+}}
+QToolButton#modernToolsNavChipMenu[headerIconOnly="true"]::menu-button {{
+    width: 14px;
 }}
 QPushButton#modernToolsNavChip {{
     background-color: {MODERN_SURFACE_ALT};
@@ -846,17 +1137,35 @@ QToolButton#modernToolsNavChipMenu {{
     color: {MODERN_TEXT_MUTED};
     border: 1px solid {MODERN_BORDER};
     border-radius: 16px;
-    padding: 2px 20px 2px 12px;
+    padding: 2px 12px;
     font-size: 8.5pt;
     font-weight: 600;
     min-height: 0;
     max-height: 32px;
 }}
+QToolButton#modernToolsNavChipMenu::menu-button {{
+    background-color: transparent;
+    border: none;
+    border-left: none;
+    border-top-right-radius: 16px;
+    border-bottom-right-radius: 16px;
+    width: 22px;
+    padding: 0;
+    margin: 0;
+}}
+QToolButton#modernToolsNavChipMenu::menu-button:hover,
+QToolButton#modernToolsNavChipMenu::menu-button:pressed {{
+    background-color: transparent;
+    border: none;
+}}
 QToolButton#modernToolsNavChipMenu::menu-indicator {{
-    subcontrol-origin: padding;
-    subcontrol-position: center right;
-    right: 8px;
-    width: 10px;
+    image: none;
+    width: 0;
+    height: 0;
+    border: none;
+    background: transparent;
+    padding: 0;
+    margin: 0;
 }}
 QToolButton#modernToolsNavChipMenu:hover {{
     background-color: {MODERN_BG};
@@ -1330,6 +1639,10 @@ QFrame#modernNmeaModeCard {{
     border: 1px solid {MODERN_BORDER};
     border-radius: 10px;
 }}
+QFrame#modernNmeaModeCard:hover {{
+    border-color: rgba(59, 130, 246, 0.45);
+    background-color: rgba(30, 41, 59, 0.55);
+}}
 QFrame#modernNmeaModeCard[modeCard="active"] {{
     border-color: {MODERN_ACCENT};
     background-color: rgba(59, 130, 246, 0.12);
@@ -1559,6 +1872,23 @@ QListWidget#presetList::item:selected {{
 QListWidget#presetList::item:hover:!selected {{
     background-color: {MODERN_SURFACE_ALT};
 }}
+QListWidget#presetList QScrollBar:vertical {{
+    background: transparent;
+    width: 8px;
+    margin: 2px 0;
+}}
+QListWidget#presetList QScrollBar::handle:vertical {{
+    background: {MODERN_BORDER};
+    border-radius: 4px;
+    min-height: 24px;
+}}
+QListWidget#presetList QScrollBar::add-line:vertical,
+QListWidget#presetList QScrollBar::sub-line:vertical,
+QListWidget#presetList QScrollBar::add-page:vertical,
+QListWidget#presetList QScrollBar::sub-page:vertical {{
+    background: none;
+    height: 0;
+}}
 
 /* Preset action buttons */
 QPushButton#btnPresetLoad {{
@@ -1607,6 +1937,13 @@ QLabel#webPortStatus, QLabel#webListenStatus {{
     color: {MODERN_ACCENT_GREEN};
     font-size: 8.5pt;
     font-weight: 600;
+}}
+QLabel#webTokenQr {{
+    background-color: #ffffff;
+    border: 1px solid {MODERN_BORDER};
+    border-radius: 8px;
+    padding: 10px;
+    margin: 4px 0 8px 0;
 }}
 QScrollArea#phoneDashboardScroll,
 QScrollArea#phoneDashboardScroll > QWidget > QWidget {{
@@ -1745,10 +2082,10 @@ QPushButton#wireSegBtn {{
     color: {MODERN_TEXT_MUTED};
     border: none;
     border-right: 1px solid {MODERN_BORDER};
-    padding: 3px 11px;
+    padding: 3px 14px;
     font-size: 8.5pt;
     font-weight: 600;
-    min-width: 52px;
+    min-width: 68px;
     border-radius: 0px;
 }}
 QPushButton#wireSegBtn[segmentEdge="left"] {{
@@ -1911,16 +2248,45 @@ QPlainTextEdit#wireTerminalView {{
     border: none;
     font-family: {_ff};
     font-size: 9.5pt;
-    padding: 8px;
+    padding: 8px 10px;
+    line-height: 140%;
     selection-background-color: #1d4ed8;
+}}
+QWidget#wireToolbarActions {{
+    spacing: 8px;
 }}
 
 /* ═══ Mission Review ══════════════════════════════════════════════════════ */
 QWidget#modernMissionReview {{ background-color: {MODERN_BG}; }}
+QWidget#missionReviewBody {{
+    background-color: transparent;
+}}
+QFrame#missionMetricChip {{
+    background-color: {MODERN_SURFACE};
+    border: 1px solid {MODERN_BORDER};
+    border-radius: 10px;
+    min-width: 108px;
+}}
+QLabel#missionMetricValue {{
+    color: #e0f2fe;
+    font-size: 14pt;
+    font-weight: 700;
+}}
+QLabel#missionMetricLabel {{
+    color: {MODERN_TEXT_MUTED};
+    font-size: 7pt;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+}}
+QFrame#missionChartsRow {{
+    background-color: transparent;
+    border: none;
+}}
 QWidget#missionThroughputChart,
 QWidget#missionHealthTimeline {{
     border: 1px solid {MODERN_BORDER};
-    border-radius: 8px;
+    border-radius: 10px;
+    background-color: #050a12;
 }}
 QLabel#missionSessionPathValue {{
     color: {MODERN_TEXT};
@@ -1981,4 +2347,82 @@ QWidget#BridgeRoot[uiMode="modern"] QScrollBar::handle:horizontal {{
 QWidget#BridgeRoot[uiMode="modern"] QScrollBar::handle:horizontal:hover {{
     background: #94a3b8;
 }}
+QWidget#toolTabScrollHost[themeStudio="true"] QLabel#themeStudioHint,
+QWidget#toolTabScrollHost[themeStudio="true"] QLabel#themeStudioTip {{
+    color: {MODERN_TEXT_MUTED};
+}}
+QWidget#toolTabScrollHost[themeStudio="true"] QGroupBox#themeStudioCard {{
+    color: {MODERN_TEXT};
+    border: 1px solid {MODERN_BORDER};
+    border-radius: 8px;
+    margin-top: 10px;
+    padding-top: 8px;
+}}
+QWidget#toolTabScrollHost[themeStudio="true"] QLabel#themeStudioZoneLabel,
+QWidget#toolTabScrollHost[themeStudio="true"] QLabel#themeStudioZoneHex {{
+    color: {MODERN_TEXT};
+    font-family: "Maple Mono", "Cascadia Mono", "Consolas", monospace;
+    font-size: 9pt;
+    font-weight: 600;
+    padding: 0 4px;
+}}
+QWidget#toolTabScrollHost[themeStudio="true"] QPushButton#themeStudioZoneSwatch {{
+    min-height: 22px;
+    border-radius: 4px;
+}}
 """
+
+
+def _brighten_hex(color: str, *, lift: float = 0.14) -> str:
+    import colorsys
+
+    c = str(color or "").strip().lstrip("#")
+    if len(c) != 6:
+        return MODERN_ACCENT_BRIGHT
+    try:
+        r = int(c[0:2], 16) / 255.0
+        g = int(c[2:4], 16) / 255.0
+        b = int(c[4:6], 16) / 255.0
+    except ValueError:
+        return MODERN_ACCENT_BRIGHT
+    h, lightness, s = colorsys.rgb_to_hls(r, g, b)
+    lightness = min(1.0, lightness + lift)
+    r2, g2, b2 = colorsys.hls_to_rgb(h, lightness, s)
+    return f"#{int(r2 * 255):02x}{int(g2 * 255):02x}{int(b2 * 255):02x}"
+
+
+def apply_modern_theme_colors(zone_colors: dict[str, str] | None = None) -> str:
+    """Map Tools → Theme zone colors onto Modern QSS tokens."""
+    from ui.theme_palette import DEFAULT_ZONE_COLORS
+
+    zones = dict(DEFAULT_ZONE_COLORS)
+    if zone_colors:
+        for key, val in zone_colors.items():
+            v = str(val or "").strip().lower()
+            if len(v) == 7 and v.startswith("#"):
+                zones[key] = v
+    accent_bright = _brighten_hex(zones["accent"])
+    replacements = {
+        MODERN_BG: zones["background"],
+        MODERN_SURFACE: zones["topbar"],
+        MODERN_TABBAR_BG: zones["tabs"],
+        MODERN_SURFACE_ALT: zones["buttons"],
+        MODERN_TERMINAL_BG: zones["logs"],
+        MODERN_ACCENT: zones["accent"],
+        MODERN_ACCENT_BRIGHT: accent_bright,
+        MODERN_ACCENT_AMBER: zones["accent"],
+    }
+    inputs = zones.get("inputs")
+    if inputs and inputs != zones["buttons"]:
+        out = modern_stylesheet()
+        for old, new in sorted(replacements.items(), key=lambda kv: len(kv[0]), reverse=True):
+            if old != new:
+                out = out.replace(old, new)
+        # Second pass for input fields that share SURFACE_ALT with buttons in the base sheet.
+        out = out.replace(zones["buttons"], inputs, 1)
+        return out
+    out = modern_stylesheet()
+    for old, new in sorted(replacements.items(), key=lambda kv: len(kv[0]), reverse=True):
+        if old != new:
+            out = out.replace(old, new)
+    return out

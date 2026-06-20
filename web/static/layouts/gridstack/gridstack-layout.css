@@ -1,6 +1,6 @@
 /* GridStack beta — same API/dashboard.js; different shell layout */
 body.layout-gridstack {
-  background: var(--bg, #0f1419);
+  background: var(--bg);
 }
 
 /* Cached pages may still ship the old banner node — hide/remove via JS too */
@@ -44,9 +44,9 @@ body.layout-gridstack .layout-gridstack-main.dashboard {
 .grid-stack-item-content {
   height: 100%;
   overflow: hidden;
-  border-radius: 10px;
-  background: var(--card-bg, #1a2332);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+  border-radius: var(--radius, 6px);
+  background: var(--card-bg);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
   z-index: 1;
 }
 

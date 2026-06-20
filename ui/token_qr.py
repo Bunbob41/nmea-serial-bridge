@@ -26,7 +26,7 @@ def make_token_qr_pixmap(
             version=None,
             error_correction=ERROR_CORRECT_M,
             box_size=8,
-            border=2,
+            border=4,
         )
         qr.add_data(text)
         qr.make(fit=True)

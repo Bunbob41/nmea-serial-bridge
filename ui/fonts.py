@@ -1,6 +1,8 @@
 """Application fonts — bundled Maple Mono with safe fallbacks."""
 from __future__ import annotations
 
+import os
+import shutil
 import sys
 from pathlib import Path
 
@@ -28,7 +30,16 @@ _UNUSABLE_FIXED_FAMILIES = frozenset(
 _WIN_MONO_FALLBACKS = (PRIMARY_FONT_FAMILY, "Cascadia Mono", "Consolas", "Courier New", "Lucida Console")
 _UNIX_MONO_FALLBACKS = (PRIMARY_FONT_FAMILY, "Menlo", "Monaco", "DejaVu Sans Mono", "Courier New", "monospace")
 
+# Qt 6 no longer ships fonts inside PySide6 — point QPA at our bundle before QApplication.
+_QT_BASELINE_SEED: tuple[tuple[str, str], ...] = (
+    ("DejaVuSans.ttf", "DejaVuSans.ttf"),
+    ("DejaVuSansMono.ttf", "DejaVuSansMono.ttf"),
+    ("SegoeUI.ttf", "segoeui.ttf"),
+    ("Consolas.ttf", "consola.ttf"),
+)
+
 _BUNDLED_LOADED = False
+_QT_FONT_ENV_CONFIGURED = False
 
 
 def _fonts_dir() -> Path:
@@ -40,11 +51,56 @@ def _fonts_dir() -> Path:
     return Path(__file__).resolve().parents[1] / "assets" / "fonts"
 
 
+def _windows_fonts_dir() -> Path | None:
+    if sys.platform != "win32":
+        return None
+    windir = os.environ.get("WINDIR", "C:/Windows")
+    candidate = Path(windir) / "Fonts"
+    return candidate if candidate.is_dir() else None
+
+
+def _seed_qt_baseline_fonts(fonts_dir: Path) -> None:
+    """Ensure Qt has at least one sans + mono TTF (Qt 6 dropped bundled fonts)."""
+    fonts_dir.mkdir(parents=True, exist_ok=True)
+    have_sans = any(fonts_dir.glob("DejaVuSans.ttf")) or any(fonts_dir.glob("SegoeUI.ttf"))
+    have_mono = any(fonts_dir.glob("DejaVuSansMono.ttf")) or any(
+        fonts_dir.glob("MapleMono-*.ttf")
+    ) or any(fonts_dir.glob("Consolas.ttf"))
+    if have_sans and have_mono:
+        return
+
+    win_fonts = _windows_fonts_dir()
+    for dest_name, src_name in _QT_BASELINE_SEED:
+        dest = fonts_dir / dest_name
+        if dest.is_file():
+            continue
+        if win_fonts is not None:
+            src = win_fonts / src_name
+            if src.is_file():
+                try:
+                    shutil.copy2(src, dest)
+                except OSError:
+                    pass
+
+
+def configure_qt_font_environment() -> Path:
+    """Set QT_QPA_FONTDIR before QGuiApplication — silences missing PySide6/lib/fonts."""
+    global _QT_FONT_ENV_CONFIGURED
+    fonts_dir = _fonts_dir()
+    _seed_qt_baseline_fonts(fonts_dir)
+    resolved = str(fonts_dir.resolve())
+    os.environ.setdefault("QT_QPA_FONTDIR", resolved)
+    _QT_FONT_ENV_CONFIGURED = True
+    return fonts_dir
+
+
 def ensure_bundled_fonts() -> None:
     """Load Maple Mono from assets/fonts (dev + frozen bundle). Idempotent."""
     global _BUNDLED_LOADED
     if _BUNDLED_LOADED:
         return
+    if not _QT_FONT_ENV_CONFIGURED:
+        configure_qt_font_environment()
     fonts_dir = _fonts_dir()
     if fonts_dir.is_dir():
         for path in sorted(fonts_dir.glob("*.ttf")):

@@ -7,42 +7,35 @@ from PySide6 import QtWidgets
 
 from version import __version__
 
-UI_STANDARD = "standard"
+UI_STANDARD = "standard"  # legacy id → field (removed layout)
 UI_FIELD = "field"
 UI_MODERN = "modern"
 UI_MINIMAL = "minimal"
 UI_LOGFIRST = "logfirst"
 UI_DEFAULT = UI_FIELD
 
-# Launcher / picker choices (merged minimal + log-first → field)
 UI_LABELS: Dict[str, str] = {
-    UI_STANDARD: f"Standard — full Connect tab (v{__version__})",
     UI_FIELD: f"Field — survey log + quick bar (v{__version__})",
     UI_MODERN: f"Modern — discovery dashboard (v{__version__})",
 }
 
 UI_DESCRIPTIONS: Dict[str, str] = {
-    UI_STANDARD: (
-        "First-time setup: Connect tab (COM, UDP, advanced TCP), Presets, NMEA, Send, "
-        "Diagnostics, and a side log panel."
-    ),
     UI_FIELD: (
         "Day-to-day survey: large live log, Start/Stop strip, COM/UDP row, Tools drawer "
-        "(Presets / NMEA / Send / Diagnostics), and survey bar (Presets, Recent, Checklists, HUD). "
-        "Replaces the old Minimal and Log-first layouts."
+        "(Presets / NMEA / Send / Diagnostics / Theme), and survey bar (Presets, Recent, Checklists, HUD)."
     ),
     UI_MODERN: (
         "Focused bridge cockpit: Activity traffic view, Control setup, Hub discovery, "
-        "and Tools (logging, remote, presets, checks, and more)."
+        "and Tools (logging, theme, presets, checks, and more)."
     ),
 }
 
-UI_ORDER = [UI_STANDARD, UI_FIELD, UI_MODERN]
+UI_ORDER = [UI_FIELD, UI_MODERN]
 
-# Legacy ids still launch for saved configs / CLI; map to field on next save
 UI_LEGACY_ALIASES: Dict[str, str] = {
     UI_MINIMAL: UI_FIELD,
     UI_LOGFIRST: UI_FIELD,
+    UI_STANDARD: UI_FIELD,
 }
 
 UI_ALL_IDS = frozenset({UI_STANDARD, UI_FIELD, UI_MODERN, UI_MINIMAL, UI_LOGFIRST})
@@ -70,9 +63,9 @@ def get_window_class(ui_id: str) -> Type[QtWidgets.QWidget]:
         from ui.logfirst import BridgeWindowLogFirst
 
         return BridgeWindowLogFirst
-    from ui.standard import BridgeWindowStandard
+    from ui.field import BridgeWindowField
 
-    return BridgeWindowStandard
+    return BridgeWindowField
 
 
 def create_window(ui_id: str) -> QtWidgets.QWidget:
