@@ -7,10 +7,34 @@ HEADER_SPLIT_PANE_COUNT = 4
 HEADER_HANDLE_LOCKED = 1
 HEADER_HANDLE_UNLOCKED = 7
 
-_HEADER_RUN_MIN = 90
 _HEADER_STATUS_MIN = 72
 _HEADER_CHIPS_MIN = 56
 _STATIC_TRAIL_MIN = 240
+_SESSION_RUN_MIN_FALLBACK = 118
+
+
+def session_run_cluster_min_width() -> int:
+    """Min width for the Start/Stop cluster (one control + optional pulse dot)."""
+    app = QtWidgets.QApplication.instance()
+    if app is None:
+        return _SESSION_RUN_MIN_FALLBACK
+    font = QtGui.QFont()
+    font.setPointSizeF(9.0)
+    font.setWeight(QtGui.QFont.Weight.Bold)
+    fm = QtGui.QFontMetrics(font)
+    # Match QSS padding (15px L/R) + border slack on modernStartBtn / modernStopBtn.
+    pad = 34
+    start_w = fm.horizontalAdvance("▶  Start") + pad
+    stop_w = max(
+        fm.horizontalAdvance("■  Stop") + pad,
+        fm.horizontalAdvance("…  Starting") + pad,
+    )
+    pulse_slack = 8 + 6  # 8px dot + layout spacing when running
+    return max(_SESSION_RUN_MIN_FALLBACK, start_w, stop_w) + pulse_slack
+
+
+def header_run_min_width() -> int:
+    return session_run_cluster_min_width()
 
 
 def layout_chip_min_width() -> int:
@@ -40,16 +64,21 @@ def embedded_nav_cluster_min_width() -> int:
 
 def header_split_mins() -> tuple[int, int, int, int]:
     trail = embedded_nav_cluster_min_width()
-    return (_HEADER_RUN_MIN, _HEADER_STATUS_MIN, _HEADER_CHIPS_MIN, trail)
+    return (header_run_min_width(), _HEADER_STATUS_MIN, _HEADER_CHIPS_MIN, trail)
 
 
 def header_split_defaults() -> tuple[int, int, int, int]:
-    _run, _status, _chips, trail = header_split_mins()
-    return (130, 100, 420, max(trail, 300))
+    run_min, _status, _chips, trail = header_split_mins()
+    return (max(run_min, 130), 100, 420, max(trail, 300))
 
 
-HEADER_SPLIT_MIN = (_HEADER_RUN_MIN, _HEADER_STATUS_MIN, _HEADER_CHIPS_MIN, _STATIC_TRAIL_MIN)
-HEADER_SPLIT_DEFAULT = (130, 100, 420, 300)
+def header_split_mins_tuple() -> tuple[int, int, int, int]:
+    """Runtime mins (prefer over import-time HEADER_SPLIT_MIN)."""
+    return header_split_mins()
+
+
+HEADER_SPLIT_MIN = header_split_mins()
+HEADER_SPLIT_DEFAULT = header_split_defaults()
 
 
 class ModernHeaderSplitter(QtWidgets.QSplitter):

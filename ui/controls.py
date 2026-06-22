@@ -341,9 +341,11 @@ def create_connection_controls(parent: QtWidgets.QWidget) -> None:
     from ui.serial_mirror_fields import SerialMirrorPortPicker
 
     p.serial_mirror_ports = SerialMirrorPortPicker(p)
+    p.serial_mirror_ports.hide()
     p.chk_serial_mirror_device_tx = QtWidgets.QCheckBox(
         "Include device TX on serial mirrors"
     )
+    p.chk_serial_mirror_device_tx.hide()
     p.chk_serial_mirror_device_tx.setToolTip(
         "Also copy bytes read from the primary COM (device→network) onto mirror ports.\n"
         "Enables a full com0com monitor leg without a second bridge."

@@ -60,6 +60,15 @@ class TestUiTabs(unittest.TestCase):
         self.assertIn("Theme", labels)
         self.assertTrue(tabs.tabBar().isMovable())
 
+    def test_field_hides_orphan_serial_mirror_pickers(self) -> None:
+        from ui.field import BridgeWindowField
+
+        win = BridgeWindowField()
+        win.show()
+        self._app.processEvents()
+        self.assertFalse(win.serial_mirror_ports.isVisible())
+        self.assertFalse(win.chk_serial_mirror_device_tx.isVisible())
+
     def test_preset_list_click_selects_without_loading_connect(self) -> None:
         from ui.field import BridgeWindowField
 
@@ -485,6 +494,56 @@ class TestUiTabs(unittest.TestCase):
             self.assertIn(label, btn.text())
             self.assertEqual(str(btn.property("headerIconOnly")).lower(), "false")
 
+    def test_modern_header_chip_display_mode_icons_only(self) -> None:
+        from ui.modern import BridgeWindowModern
+
+        win = BridgeWindowModern()
+        win._wire_modern_tools_nav_mode_menu()
+        win._apply_modern_tools_nav_mode("top_chips", persist=False)
+        win._apply_header_chips_icon_mode("icons", persist=False)
+        self.assertTrue(win._header_chips_icon_only)
+        for btn in win._tools_chip_buttons:
+            label = str(btn.property("navLabel") or "").strip()
+            self.assertNotIn(label, btn.text())
+            self.assertEqual(str(btn.property("headerIconOnly")).lower(), "true")
+        win._refresh_chip_display_menu_checks("icons")
+        checked = [
+            act
+            for act in (
+                win._act_chip_mode_auto,
+                win._act_chip_mode_icons,
+                win._act_chip_mode_labels,
+            )
+            if act.isChecked()
+        ]
+        self.assertEqual(len(checked), 1)
+        self.assertIs(checked[0], win._act_chip_mode_icons)
+
+    def test_modern_header_chip_display_mode_labels_only(self) -> None:
+        from ui.modern import BridgeWindowModern
+
+        win = BridgeWindowModern()
+        win._wire_modern_tools_nav_mode_menu()
+        win._apply_modern_tools_nav_mode("top_chips", persist=False)
+        win._apply_header_chips_icon_mode("labels", persist=False)
+        self.assertFalse(win._header_chips_icon_only)
+        for btn in win._tools_chip_buttons:
+            label = str(btn.property("navLabel") or "").strip()
+            self.assertIn(label, btn.text())
+            self.assertEqual(str(btn.property("headerIconOnly")).lower(), "false")
+        win._refresh_chip_display_menu_checks("labels")
+        checked = [
+            act
+            for act in (
+                win._act_chip_mode_auto,
+                win._act_chip_mode_icons,
+                win._act_chip_mode_labels,
+            )
+            if act.isChecked()
+        ]
+        self.assertEqual(len(checked), 1)
+        self.assertIs(checked[0], win._act_chip_mode_labels)
+
     def test_logging_indicator_reserves_header_trail_width(self) -> None:
         from ui.modern import BridgeWindowModern
 
@@ -638,7 +697,8 @@ class TestUiTabs(unittest.TestCase):
             btn.property("navLabel")
             for btn in getattr(win, "_tools_chip_buttons", [])
         ]
-        self.assertEqual(labels, ["NMEA", "Hub", "Control", "Presets"])
+        wanted = ["NMEA", "Hub", "Control", "Presets"]
+        self.assertEqual([lbl for lbl in labels if lbl in wanted], wanted)
 
     def test_modern_ui_editor_apply_keeps_chip_rail(self) -> None:
         from ui.modern import BridgeWindowModern
@@ -661,6 +721,8 @@ class TestUiTabs(unittest.TestCase):
             len(win._tools_chip_buttons) + len(win._tools_chip_dropdowns),
             0,
         )
+        leaf_labels = [btn.property("navLabel") for btn in win._tools_chip_buttons]
+        self.assertEqual(leaf_labels[:3], ["NMEA", "Hub", "Control"])
 
     def test_modern_open_full_map_handler(self) -> None:
         from unittest.mock import patch

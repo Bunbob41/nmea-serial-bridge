@@ -20,18 +20,33 @@ def split_status_title_detail(text: str) -> tuple[str, str]:
     return raw, ""
 
 
+def _safe_widget_width(widget: QtWidgets.QWidget) -> int:
+    try:
+        return max(0, widget.width())
+    except RuntimeError:
+        return 0
+
+
 class ElidedStatusLabel(QtWidgets.QLabel):
     """Header status line with trailing ellipsis when space is tight."""
 
     def __init__(self, parent: QtWidgets.QWidget | None = None) -> None:
         super().__init__(parent)
         self._full_text = ""
+        self._elide_refresh_depth = 0
         self.setWordWrap(False)
         self.setSizePolicy(
             QtWidgets.QSizePolicy.Policy.MinimumExpanding,
             QtWidgets.QSizePolicy.Policy.Fixed,
         )
         self.setMinimumWidth(0)
+        self._defer_elide_timer = QtCore.QTimer(self)
+        self._defer_elide_timer.setSingleShot(True)
+        self._defer_elide_timer.timeout.connect(self.refresh_elide)
+        self._defer_elide_late_timer = QtCore.QTimer(self)
+        self._defer_elide_late_timer.setSingleShot(True)
+        self._defer_elide_late_timer.setInterval(120)
+        self._defer_elide_late_timer.timeout.connect(self.refresh_elide)
         self._apply_title_min_width()
 
     def _apply_title_min_width(self) -> None:
@@ -43,43 +58,64 @@ class ElidedStatusLabel(QtWidgets.QLabel):
         self.setToolTip(self._full_text if self._full_text else "")
         self.refresh_elide()
         if self._full_text:
-            QtCore.QTimer.singleShot(0, self.refresh_elide)
-            QtCore.QTimer.singleShot(120, self.refresh_elide)
+            self._defer_elide_timer.start(0)
+            self._defer_elide_late_timer.start()
 
     def full_text(self) -> str:
         return self._full_text
 
     def resizeEvent(self, event: QtGui.QResizeEvent) -> None:
         super().resizeEvent(event)
-        self.refresh_elide()
+        if event.size().width() == event.oldSize().width():
+            return
+        if not self._defer_elide_timer.isActive():
+            self._defer_elide_timer.start(0)
 
     def _container_width(self) -> int:
         width = 0
         node: QtWidgets.QWidget | None = self.parentWidget()
         while node is not None:
-            name = node.objectName() or ""
-            if name == "modernHeaderStatusContainer":
-                return max(width, node.width() - 8)
-            if name == "modernStatusBanner":
-                width = max(width, node.width() - 12)
-            node = node.parentWidget()
+            try:
+                name = node.objectName() or ""
+                if name == "modernHeaderStatusContainer":
+                    return max(width, _safe_widget_width(node) - 8)
+                if name == "modernStatusBanner":
+                    width = max(width, _safe_widget_width(node) - 12)
+                node = node.parentWidget()
+            except RuntimeError:
+                break
         return width
 
     def _elide_width(self) -> int:
-        label_w = max(0, self.contentsRect().width())
+        try:
+            label_w = max(0, self.contentsRect().width())
+        except RuntimeError:
+            return 24
         if label_w > 32:
             return label_w
         banner_w = 0
         node: QtWidgets.QWidget | None = self.parentWidget()
         while node is not None:
-            if (node.objectName() or "") == "modernStatusBanner":
-                banner_w = max(0, node.width() - 16)
+            try:
+                if (node.objectName() or "") == "modernStatusBanner":
+                    banner_w = max(0, _safe_widget_width(node) - 16)
+                    break
+                node = node.parentWidget()
+            except RuntimeError:
                 break
-            node = node.parentWidget()
         container_w = self._container_width()
         return max(24, label_w, banner_w, container_w)
 
     def refresh_elide(self) -> None:
+        if self._elide_refresh_depth > 0:
+            return
+        self._elide_refresh_depth += 1
+        try:
+            self._refresh_elide_impl()
+        finally:
+            self._elide_refresh_depth -= 1
+
+    def _refresh_elide_impl(self) -> None:
         if not self._full_text:
             self.setText("")
             return

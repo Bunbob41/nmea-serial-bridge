@@ -7,6 +7,12 @@ from nmea_codec import (
     format_binary_log_preview,
     log_line_matches_sentence_filter,
 )
+from ui.log_view import (
+    LogViewState,
+    PRESET_OPS,
+    format_wire_tap_live_log_line,
+    log_line_allowed,
+)
 
 
 class TestFormatBinaryLogPreview(unittest.TestCase):
@@ -58,6 +64,22 @@ class TestBridgeRawHexLog(unittest.TestCase):
             self.assertIn("02 00 a0 14 (4 B)", lines[0])
         finally:
             loop.close()
+
+
+class TestWireTapLiveLogLine(unittest.TestCase):
+    def test_com_net_hex_preview(self) -> None:
+        line = format_wire_tap_live_log_line(
+            "com→net",
+            b"\xfd\x09\x00",
+            hex_mode=True,
+        )
+        self.assertIn("SER→NET", line)
+        self.assertIn("fd 09 00", line)
+
+    def test_ops_preset_allows_hex_wire_line(self) -> None:
+        line = format_wire_tap_live_log_line("com→net", b"\xfd\x09", hex_mode=True)
+        state = LogViewState(preset=PRESET_OPS, verbose=False)
+        self.assertTrue(log_line_allowed(line, state))
 
 
 if __name__ == "__main__":

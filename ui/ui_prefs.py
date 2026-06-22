@@ -631,6 +631,9 @@ def load_modern_layout_prefs() -> dict[str, Any]:
         "control_map_collapsed": True,
         "tools_nav_mode": "sidebar",
         "header_split_locked": False,
+        "header_auto_arrange": True,
+        "header_chips_icon_mode": "auto",
+        "header_chip_icons": {},
         **{k: list(v) for k, v in _MODERN_SPLIT_DEFAULTS.items()},
     }
     if not isinstance(raw, dict):
@@ -649,6 +652,18 @@ def load_modern_layout_prefs() -> dict[str, Any]:
         out["control_map_collapsed"] = bool(raw.get("control_map_collapsed"))
     mode = str(raw.get("tools_nav_mode") or "sidebar").strip().lower()
     out["tools_nav_mode"] = "top_chips" if mode == "top_chips" else "sidebar"
+    if "header_auto_arrange" in raw:
+        out["header_auto_arrange"] = bool(raw.get("header_auto_arrange"))
+    mode_icons = str(raw.get("header_chips_icon_mode") or "auto").strip().lower()
+    if mode_icons in ("auto", "icons", "labels"):
+        out["header_chips_icon_mode"] = mode_icons
+    icons_raw = raw.get("header_chip_icons")
+    if isinstance(icons_raw, dict):
+        out["header_chip_icons"] = {
+            str(k).strip().lower(): str(v).strip()
+            for k, v in icons_raw.items()
+            if str(k).strip() and str(v).strip()
+        }
     for key, default in _MODERN_SPLIT_DEFAULTS.items():
         val = raw.get(key)
         if isinstance(val, list) and len(val) >= len(default):
@@ -686,6 +701,9 @@ def save_modern_layout_prefs(
     sidebar_collapsed: bool | None = None,
     control_map_collapsed: bool | None = None,
     tools_nav_mode: str | None = None,
+    header_auto_arrange: bool | None = None,
+    header_chips_icon_mode: str | None = None,
+    header_chip_icons: dict[str, str] | None = None,
 ) -> None:
     data = _read_json()
     prev = data.get("modern_layout")
@@ -709,6 +727,15 @@ def save_modern_layout_prefs(
     if tools_nav_mode is not None:
         mode = str(tools_nav_mode).strip().lower()
         payload["tools_nav_mode"] = "top_chips" if mode == "top_chips" else "sidebar"
+    if header_auto_arrange is not None:
+        payload["header_auto_arrange"] = bool(header_auto_arrange)
+    if header_chips_icon_mode is not None:
+        mode_i = str(header_chips_icon_mode).strip().lower()
+        payload["header_chips_icon_mode"] = (
+            mode_i if mode_i in ("auto", "icons", "labels") else "auto"
+        )
+    if header_chip_icons is not None:
+        payload["header_chip_icons"] = {str(k): str(v) for k, v in header_chip_icons.items()}
     data["modern_layout"] = payload
     _write_json(data)
 

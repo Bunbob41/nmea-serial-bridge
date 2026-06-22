@@ -23,6 +23,8 @@ from ui.mission_review import create_mission_review_tab, hide_mission_review_tab
 from ui.modern_header_split import (
     HEADER_SPLIT_MIN,
     ModernHeaderSplitter,
+    header_split_mins,
+    session_run_cluster_min_width,
     wrap_header_pane,
 )
 from ui.modern_styles import MODERN_TEXT, apply_modern_theme_colors
@@ -195,9 +197,17 @@ class BridgeWindowModern(BridgeLogicMixin, QtWidgets.QWidget):
         self.start_btn.setObjectName("modernStartBtn")
         self.start_btn.setText("▶  Start")
         self.start_btn.setFixedHeight(28)
+        self.start_btn.setSizePolicy(
+            QtWidgets.QSizePolicy.Policy.Fixed,
+            QtWidgets.QSizePolicy.Policy.Fixed,
+        )
         self.stop_btn.setObjectName("modernStopBtn")
         self.stop_btn.setText("■  Stop")
         self.stop_btn.setFixedHeight(28)
+        self.stop_btn.setSizePolicy(
+            QtWidgets.QSizePolicy.Policy.Fixed,
+            QtWidgets.QSizePolicy.Policy.Fixed,
+        )
         self._session_pulse_timer = QtCore.QTimer(self)
         self._session_pulse_timer.setInterval(650)
         self._session_pulse_timer.timeout.connect(self._tick_session_pulse)
@@ -257,10 +267,18 @@ class BridgeWindowModern(BridgeLogicMixin, QtWidgets.QWidget):
         shell.addWidget(footer, 0)
 
         self._finalize_ui()
+        self._load_header_bar_prefs()
+        self._header_auto_arrange_timer = QtCore.QTimer(self)
+        self._header_auto_arrange_timer.setSingleShot(True)
+        self._header_auto_arrange_timer.setInterval(120)
+        self._header_auto_arrange_timer.timeout.connect(self._auto_arrange_modern_header_split)
         self._sync_modern_run_chrome()
 
         nav_mode = str(load_modern_layout_prefs().get("tools_nav_mode", "sidebar"))
         self._apply_modern_tools_nav_mode(nav_mode, persist=False)
+        self._apply_header_chips_icon_mode(
+            getattr(self, "_header_chips_icon_mode", "auto"), persist=False
+        )
         QtCore.QTimer.singleShot(0, self._restore_modern_header_split)
         QtCore.QTimer.singleShot(0, self._sync_modern_header_chip_compression)
         self._wire_modern_tools_nav_mode_menu()
@@ -285,7 +303,7 @@ class BridgeWindowModern(BridgeLogicMixin, QtWidgets.QWidget):
         self._session_run_cluster = QtWidgets.QWidget()
         self._session_run_cluster.setObjectName("modernSessionRunCluster")
         cluster_lay = QtWidgets.QHBoxLayout(self._session_run_cluster)
-        cluster_lay.setContentsMargins(0, 0, 0, 0)
+        cluster_lay.setContentsMargins(0, 0, 4, 0)
         cluster_lay.setSpacing(6)
         cluster_lay.addWidget(self.start_btn)
         cluster_lay.addWidget(self.stop_btn)
@@ -402,20 +420,21 @@ class BridgeWindowModern(BridgeLogicMixin, QtWidgets.QWidget):
         )
 
         self._header_splitter = ModernHeaderSplitter(hdr)
+        split_mins = header_split_mins()
         self._header_pane_run = wrap_header_pane(
             self._session_run_cluster,
             object_name="modernHeaderPaneRun",
-            min_width=HEADER_SPLIT_MIN[0],
+            min_width=split_mins[0],
         )
         self._header_pane_status = wrap_header_pane(
             self._header_status_container,
             object_name="modernHeaderPaneStatus",
-            min_width=HEADER_SPLIT_MIN[1],
+            min_width=split_mins[1],
         )
         self._header_pane_chips = wrap_header_pane(
             self._header_chip_host,
             object_name="modernHeaderPaneChips",
-            min_width=HEADER_SPLIT_MIN[2],
+            min_width=split_mins[2],
             stretch=True,
         )
         for pane in (
@@ -568,6 +587,7 @@ class BridgeWindowModern(BridgeLogicMixin, QtWidgets.QWidget):
         splitter.set_clamped_sizes(sizes)
         QtCore.QTimer.singleShot(0, self._sync_modern_header_chip_compression)
         QtCore.QTimer.singleShot(0, self._sync_modern_header_chip_scroll)
+        self._schedule_header_auto_arrange()
 
     def _persist_modern_header_split(self) -> None:
         splitter = getattr(self, "_header_splitter", None)
@@ -594,6 +614,7 @@ class BridgeWindowModern(BridgeLogicMixin, QtWidgets.QWidget):
             if persist:
                 save_modern_layout_prefs(header_split_locked=True)
             QtCore.QTimer.singleShot(0, self._sync_modern_embedded_topbar_chrome)
+            self._schedule_header_auto_arrange()
         elif persist:
             save_modern_layout_prefs(header_split_locked=False)
 
@@ -1293,7 +1314,7 @@ class BridgeWindowModern(BridgeLogicMixin, QtWidgets.QWidget):
         from ui.modern_tools_chips import apply_embedded_header_dropdown_style
 
         compact = getattr(self, "_modern_tools_nav_mode", "sidebar") == "top_chips"
-        icon_only = False
+        icon_only = self._resolve_header_chips_icon_only()
         for btn in getattr(self, "_tools_chip_dropdowns", []):
             child_sids = btn.property("navChildSids")
             if not isinstance(child_sids, list):
@@ -1452,20 +1473,113 @@ class BridgeWindowModern(BridgeLogicMixin, QtWidgets.QWidget):
             spacing=spacing,
         )
 
+    def _resolve_header_chips_icon_only(self) -> bool:
+        mode = getattr(self, "_header_chips_icon_mode", "auto")
+        if mode == "icons":
+            return True
+        if mode == "labels":
+            return False
+        from ui.modern_tools_chips import should_use_header_icon_only
+
+        avail = self._header_chips_avail_width()
+        labeled = self._header_chips_labeled_width()
+        return should_use_header_icon_only(
+            avail,
+            labeled,
+            currently_icon_only=bool(getattr(self, "_header_chips_icon_only", False)),
+        )
+
+    def _header_status_width_needed(self) -> int:
+        label = self.status_banner_text
+        if isinstance(label, ElidedStatusLabel):
+            text = label.full_text() or "Stopped"
+        else:
+            text = str(label.text() or "Stopped")
+        fm = label.fontMetrics()
+        text_w = fm.horizontalAdvance(str(text).strip() or "Stopped")
+        return min(
+            MODERN_COMPACT_STATUS_MAX_W,
+            max(MODERN_COMPACT_STATUS_MIN_W, text_w + MODERN_COMPACT_STATUS_PAD),
+        )
+
+    def _load_header_bar_prefs(self) -> None:
+        from ui.header_bar_prefs import normalize_header_chips_icon_mode
+
+        prefs = load_modern_layout_prefs()
+        self._header_auto_arrange = bool(prefs.get("header_auto_arrange", True))
+        self._header_chips_icon_mode = normalize_header_chips_icon_mode(
+            prefs.get("header_chips_icon_mode")
+        )
+        raw_icons = prefs.get("header_chip_icons")
+        self._header_chip_icons = (
+            {str(k): str(v) for k, v in raw_icons.items()}
+            if isinstance(raw_icons, dict)
+            else {}
+        )
+
+    def _schedule_header_auto_arrange(self) -> None:
+        if not getattr(self, "_header_auto_arrange", True):
+            return
+        if getattr(self, "_header_split_unlocked", False):
+            return
+        timer = getattr(self, "_header_auto_arrange_timer", None)
+        if timer is not None:
+            timer.start()
+
+    def _auto_arrange_modern_header_split(self) -> None:
+        if not getattr(self, "_header_auto_arrange", True):
+            return
+        if getattr(self, "_header_split_unlocked", False):
+            return
+        if getattr(self, "_modern_tools_nav_mode", "sidebar") != "top_chips":
+            return
+        splitter = getattr(self, "_header_splitter", None)
+        if splitter is None or splitter.width() <= 80:
+            return
+
+        self._sync_modern_header_chip_compression()
+
+        from ui.modern_header_split import embedded_nav_cluster_min_width, header_split_mins
+
+        mins = header_split_mins()
+        total = splitter.width()
+        run_w = max(mins[0], self._session_run_cluster.minimumWidth())
+        status_w = self._header_status_width_needed()
+        trail_w = embedded_nav_cluster_min_width()
+
+        icon_only = bool(getattr(self, "_header_chips_icon_only", False))
+        from ui.modern_tools_chips import estimate_embedded_chips_row_width
+
+        buttons = getattr(self, "_tools_chip_buttons", [])
+        dropdowns = getattr(self, "_tools_chip_dropdowns", [])
+        chips_need = estimate_embedded_chips_row_width(buttons, dropdowns, icon_only=icon_only)
+        handles = 3 * max(1, splitter.handleWidth())
+        slack = handles + 8
+        chips_w = max(mins[2], min(chips_need, total - run_w - status_w - trail_w - slack))
+
+        splitter.set_clamped_sizes([run_w, status_w, chips_w, trail_w])
+        self._sync_modern_header_chip_scroll()
+        self._sync_header_chip_fade_edges()
+
     def _sync_modern_header_chip_compression(self) -> None:
-        """Top chips always keep labels; horizontal scroll handles overflow."""
+        """Top chips: auto icons-only when tight unless View overrides."""
         if getattr(self, "_modern_tools_nav_mode", "sidebar") != "top_chips":
             if getattr(self, "_header_chips_icon_only", False):
                 self._header_chips_icon_only = False
                 self._apply_embedded_header_chip_styles()
             return
-        if getattr(self, "_header_chips_icon_only", False):
-            self._header_chips_icon_only = False
+
+        want_icon_only = self._resolve_header_chips_icon_only()
+        mode = getattr(self, "_header_chips_icon_mode", "auto")
+        force_apply = mode in ("icons", "labels")
+        if force_apply or want_icon_only != bool(getattr(self, "_header_chips_icon_only", False)):
+            self._header_chips_icon_only = want_icon_only
             self._apply_embedded_header_chip_styles()
             stack = getattr(self, "_tools_stack", None)
             if stack is not None:
                 self._sync_modern_nav_highlight(stack.currentIndex())
         self._sync_modern_header_chip_scroll()
+        self._schedule_header_auto_arrange()
 
     def _sync_modern_header_chip_scroll(self, *, follow_active: bool = False) -> None:
         """Keep chip row at natural width; scroll the viewport when the pane is narrower."""
@@ -1562,7 +1676,7 @@ class BridgeWindowModern(BridgeLogicMixin, QtWidgets.QWidget):
         )
 
         compact = getattr(self, "_modern_tools_nav_mode", "sidebar") == "top_chips"
-        icon_only = False
+        icon_only = bool(getattr(self, "_header_chips_icon_only", False))
         for btn in getattr(self, "_tools_chip_buttons", []):
             apply_embedded_header_chip_style(
                 btn, compact=compact, icon_only=icon_only
@@ -1652,6 +1766,8 @@ class BridgeWindowModern(BridgeLogicMixin, QtWidgets.QWidget):
                 status_container.style().unpolish(status_container)
                 status_container.style().polish(status_container)
                 status_lay = status_container.layout()
+                if status_lay is not None:
+                    status_lay.setContentsMargins(6, 0, 0, 0)
                 if status_lay is not None and status_banner is not None:
                     status_lay.setStretch(status_lay.indexOf(status_banner), 0)
             if status_banner is not None:
@@ -1702,6 +1818,8 @@ class BridgeWindowModern(BridgeLogicMixin, QtWidgets.QWidget):
                 status_container.style().unpolish(status_container)
                 status_container.style().polish(status_container)
                 status_lay = status_container.layout()
+                if status_lay is not None:
+                    status_lay.setContentsMargins(0, 0, 0, 0)
                 if status_lay is not None and status_banner is not None:
                     status_lay.setStretch(status_lay.indexOf(status_banner), 1)
             if status_banner is not None:
@@ -1791,11 +1909,62 @@ class BridgeWindowModern(BridgeLogicMixin, QtWidgets.QWidget):
         group.addAction(self._act_tools_nav_top_chips)
         menu.addSeparator()
         add_view_menu_section_header(menu, "Header bar")
-        self._act_header_resize = QtGui.QAction("Resize header sections", self)
+        self._act_header_auto_arrange = QtGui.QAction("Auto-arrange header", self)
+        self._act_header_auto_arrange.setCheckable(True)
+        self._act_header_auto_arrange.setToolTip(
+            "Automatically resize Start, status, chips, and View/HUD/Layout when the "
+            "window changes or the bridge starts/stops. Turn off to use manual splits."
+        )
+        self._act_header_auto_arrange.triggered.connect(self._on_header_auto_arrange_toggled)
+        menu.addAction(self._act_header_auto_arrange)
+
+        chip_menu = menu.addMenu("Chip display")
+        chip_menu.setObjectName("modernHeaderChipDisplayMenu")
+        self._act_chip_mode_auto = QtGui.QAction("Auto (labels, icons when tight)", self)
+        self._act_chip_mode_icons = QtGui.QAction("Icons only (no labels)", self)
+        self._act_chip_mode_labels = QtGui.QAction("Labels only (scroll when tight)", self)
+        for act in (
+            self._act_chip_mode_auto,
+            self._act_chip_mode_icons,
+            self._act_chip_mode_labels,
+        ):
+            act.setCheckable(True)
+            chip_menu.addAction(act)
+        self._chip_mode_group = QtGui.QActionGroup(self)
+        self._chip_mode_group.setExclusive(True)
+        for act in (
+            self._act_chip_mode_auto,
+            self._act_chip_mode_icons,
+            self._act_chip_mode_labels,
+        ):
+            self._chip_mode_group.addAction(act)
+        self._act_chip_mode_auto.triggered.connect(
+            lambda checked: checked
+            and self._apply_header_chips_icon_mode("auto", persist=True)
+        )
+        self._act_chip_mode_icons.triggered.connect(
+            lambda checked: checked
+            and self._apply_header_chips_icon_mode("icons", persist=True)
+        )
+        self._act_chip_mode_labels.triggered.connect(
+            lambda checked: checked
+            and self._apply_header_chips_icon_mode("labels", persist=True)
+        )
+        chip_menu.aboutToShow.connect(self._refresh_chip_display_menu_checks)
+
+        self._act_customize_chip_icons = QtGui.QAction("Customize chip icons…", self)
+        self._act_customize_chip_icons.triggered.connect(self._open_header_chip_icon_dialog)
+        menu.addAction(self._act_customize_chip_icons)
+        self._act_reset_chip_icons = QtGui.QAction("Reset chip icons to defaults", self)
+        self._act_reset_chip_icons.triggered.connect(self._reset_header_chip_icons)
+        menu.addAction(self._act_reset_chip_icons)
+
+        menu.addSeparator()
+        self._act_header_resize = QtGui.QAction("Resize header sections (manual)", self)
         self._act_header_resize.setCheckable(True)
         self._act_header_resize.setToolTip(
-            "Check to drag the white dividers between Start, status, tool chips, and "
-            "View/HUD/Layout. Uncheck to lock widths."
+            "Check to drag dividers between Start, status, tool chips, and "
+            "View/HUD/Layout. Disables auto-arrange while active."
         )
         self._act_header_resize.triggered.connect(self._on_header_resize_unlock_toggled)
         menu.addAction(self._act_header_resize)
@@ -1825,6 +1994,80 @@ class BridgeWindowModern(BridgeLogicMixin, QtWidgets.QWidget):
                 resize_act.setChecked(bool(getattr(self, "_header_split_unlocked", False)))
             finally:
                 resize_act.blockSignals(False)
+        auto_act = getattr(self, "_act_header_auto_arrange", None)
+        if auto_act is not None:
+            auto_act.blockSignals(True)
+            try:
+                auto_act.setChecked(bool(getattr(self, "_header_auto_arrange", True)))
+            finally:
+                auto_act.blockSignals(False)
+        mode = getattr(self, "_header_chips_icon_mode", "auto")
+        self._refresh_chip_display_menu_checks(mode)
+
+    def _refresh_chip_display_menu_checks(
+        self, mode: str | None = None
+    ) -> None:
+        mode = mode or getattr(self, "_header_chips_icon_mode", "auto")
+        mode_map = {
+            "auto": getattr(self, "_act_chip_mode_auto", None),
+            "icons": getattr(self, "_act_chip_mode_icons", None),
+            "labels": getattr(self, "_act_chip_mode_labels", None),
+        }
+        acts = [a for a in mode_map.values() if a is not None]
+        for act in acts:
+            act.blockSignals(True)
+        try:
+            for act in acts:
+                act.setChecked(False)
+            pick = mode_map.get(mode) or getattr(self, "_act_chip_mode_auto", None)
+            if pick is not None:
+                pick.setChecked(True)
+        finally:
+            for act in acts:
+                act.blockSignals(False)
+
+    def _on_header_auto_arrange_toggled(self, checked: bool) -> None:
+        self._header_auto_arrange = bool(checked)
+        save_modern_layout_prefs(header_auto_arrange=self._header_auto_arrange)
+        if self._header_auto_arrange:
+            self._schedule_header_auto_arrange()
+
+    def _apply_header_chips_icon_mode(self, mode: str, *, persist: bool) -> None:
+        from ui.header_bar_prefs import normalize_header_chips_icon_mode
+
+        self._header_chips_icon_mode = normalize_header_chips_icon_mode(mode)
+        if persist:
+            save_modern_layout_prefs(header_chips_icon_mode=self._header_chips_icon_mode)
+        if self._header_chips_icon_mode == "icons":
+            self._header_chips_icon_only = True
+        elif self._header_chips_icon_mode == "labels":
+            self._header_chips_icon_only = False
+        else:
+            self._header_chips_icon_only = self._resolve_header_chips_icon_only()
+        self._apply_embedded_header_chip_styles()
+        stack = getattr(self, "_tools_stack", None)
+        if stack is not None:
+            self._sync_modern_nav_highlight(stack.currentIndex())
+        self._sync_modern_header_chip_scroll()
+        self._schedule_header_auto_arrange()
+        self._refresh_chip_display_menu_checks(self._header_chips_icon_mode)
+
+    def _open_header_chip_icon_dialog(self) -> None:
+        from ui.header_icon_dialog import HeaderChipIconDialog
+
+        dlg = HeaderChipIconDialog(getattr(self, "_header_chip_icons", {}), self)
+        if dlg.exec() != QtWidgets.QDialog.DialogCode.Accepted:
+            return
+        self._header_chip_icons = dlg.icons()
+        save_modern_layout_prefs(header_chip_icons=self._header_chip_icons)
+        self._rebuild_modern_tools_nav_from_state()
+        self._schedule_header_auto_arrange()
+
+    def _reset_header_chip_icons(self) -> None:
+        self._header_chip_icons = {}
+        save_modern_layout_prefs(header_chip_icons={})
+        self._rebuild_modern_tools_nav_from_state()
+        self._schedule_header_auto_arrange()
 
     def _apply_modern_sidebar_collapsed(self, collapsed: bool, *, persist: bool) -> None:
         self._modern_sidebar_collapsed = collapsed
@@ -2009,6 +2252,7 @@ class BridgeWindowModern(BridgeLogicMixin, QtWidgets.QWidget):
         mirror_row.setSpacing(8)
         mirror_row.addWidget(self._control_form_label("Serial mirrors"), 0)
         self.serial_mirror_ports.setMinimumHeight(32)
+        self.serial_mirror_ports.show()
         mirror_row.addWidget(self.serial_mirror_ports, 1)
         body.addLayout(mirror_row)
         mirror_tx_wrap = QtWidgets.QWidget()
@@ -2016,6 +2260,7 @@ class BridgeWindowModern(BridgeLogicMixin, QtWidgets.QWidget):
         mirror_tx_lay = QtWidgets.QHBoxLayout(mirror_tx_wrap)
         mirror_tx_lay.setContentsMargins(12, 0, 0, 0)
         mirror_tx_lay.setSpacing(0)
+        self.chk_serial_mirror_device_tx.show()
         mirror_tx_lay.addWidget(self.chk_serial_mirror_device_tx)
         body.addWidget(mirror_tx_wrap)
         body.addWidget(self.chk_tcp_sink_enable)
@@ -2164,6 +2409,8 @@ class BridgeWindowModern(BridgeLogicMixin, QtWidgets.QWidget):
                 out.append((sid, lbl, icon, idx))
             return out
 
+        from ui.header_bar_prefs import merge_chip_icon
+
         nav_leaves, nav_dropdowns = build_modern_tools_nav_tiers()
         from ui.tool_tabs import sort_modern_nav_by_saved_order
 
@@ -2175,6 +2422,7 @@ class BridgeWindowModern(BridgeLogicMixin, QtWidgets.QWidget):
         for sid, lbl, icon in nav_leaves:
             if sid in MODERN_HEADER_NAV_SIDS or lbl not in visible_set:
                 continue
+            icon = merge_chip_icon(sid, icon, getattr(self, "_header_chip_icons", None))
             idx = section_index.get(sid, 0)
             btn = self._modern_tools_chip_button(lbl, icon, idx, stack)
             chip_buttons.append(btn)
@@ -2189,6 +2437,9 @@ class BridgeWindowModern(BridgeLogicMixin, QtWidgets.QWidget):
                 )
             if not child_items:
                 continue
+            tier_icon = merge_chip_icon(
+                _tier_key, tier_icon, getattr(self, "_header_chip_icons", None)
+            )
             utilities = None
             if _tier_key == "bench_tools":
                 utilities = [("Bench pair setup…", "🔧", self._open_bench_pair_setup)]
@@ -2254,9 +2505,8 @@ class BridgeWindowModern(BridgeLogicMixin, QtWidgets.QWidget):
 
         from ui.tool_tabs import build_modern_tools_nav_groups, order_modern_tools_nav_names
 
-        visible_names = order_modern_tools_nav_names(
-            self._visible_tools_tab_names(key)
-        )
+        saved_visible = self._visible_tools_tab_names(key)
+        visible_names = order_modern_tools_nav_names(saved_visible)
         cur_w = stack.currentWidget()
         prev_sid = ""
         for lbl, (widget, _tip) in catalog.items():
@@ -2380,7 +2630,7 @@ class BridgeWindowModern(BridgeLogicMixin, QtWidgets.QWidget):
             self._tools_nav_select(pick)
 
         self._rebuild_modern_tools_chip_rail(
-            visible_names,
+            saved_visible,
             sid_by_label=sid_by_label,
             icon_by_label=icon_by_label,
             stack=stack,
@@ -2494,36 +2744,55 @@ class BridgeWindowModern(BridgeLogicMixin, QtWidgets.QWidget):
         self._sync_modern_session_chrome()
         self._sync_modern_run_chrome()
         QtCore.QTimer.singleShot(0, self._sync_modern_status_banner_width)
+        self._schedule_header_auto_arrange()
 
     def _sync_modern_status_banner_width(self) -> None:
         """Refresh elided status text inside the header status pane."""
-        label = self.status_banner_text
-        if isinstance(label, ElidedStatusLabel):
-            label.refresh_elide()
-        if getattr(self, "_header_splitter", None) is not None:
+        if getattr(self, "_syncing_status_banner_width", False):
             return
+        self._syncing_status_banner_width = True
+        try:
+            label = self.status_banner_text
+            if isinstance(label, ElidedStatusLabel):
+                label.refresh_elide()
+            if getattr(self, "_header_splitter", None) is not None:
+                self._schedule_header_auto_arrange()
+                return
 
-        container = getattr(self, "_header_status_container", None)
-        banner = getattr(self, "status_banner", None)
-        if container is None or banner is None or label is None:
-            return
+            container = getattr(self, "_header_status_container", None)
+            banner = getattr(self, "status_banner", None)
+            if container is None or banner is None or label is None:
+                return
 
-        if getattr(self, "_modern_tools_nav_mode", "sidebar") != "top_chips":
-            return
-        if str(container.property("headerCompact") or "").lower() != "true":
-            return
+            if getattr(self, "_modern_tools_nav_mode", "sidebar") != "top_chips":
+                return
+            if str(container.property("headerCompact") or "").lower() != "true":
+                return
 
-        fm = label.fontMetrics()
-        shown = str(label.text() or "").strip() or "Stopped"
-        text_w = fm.horizontalAdvance(shown)
-        target = min(
-            MODERN_COMPACT_STATUS_MAX_W,
-            max(MODERN_COMPACT_STATUS_MIN_W, text_w + MODERN_COMPACT_STATUS_PAD),
-        )
-        container.setMinimumWidth(target)
-        container.setMaximumWidth(target)
-        banner.setMinimumWidth(max(MODERN_COMPACT_STATUS_MIN_W - 4, target - 4))
-        banner.setMaximumWidth(target)
+            fm = label.fontMetrics()
+            shown = str(label.text() or "").strip() or "Stopped"
+            text_w = fm.horizontalAdvance(shown)
+            target = min(
+                MODERN_COMPACT_STATUS_MAX_W,
+                max(MODERN_COMPACT_STATUS_MIN_W, text_w + MODERN_COMPACT_STATUS_PAD),
+            )
+            container.setMinimumWidth(target)
+            container.setMaximumWidth(target)
+            banner.setMinimumWidth(max(MODERN_COMPACT_STATUS_MIN_W - 4, target - 4))
+            banner.setMaximumWidth(target)
+        finally:
+            self._syncing_status_banner_width = False
+
+    def _sync_session_run_cluster_width(self) -> None:
+        """Keep the run splitter pane wide enough for the visible Start/Stop control."""
+        cluster = getattr(self, "_session_run_cluster", None)
+        if cluster is None:
+            return
+        active = self.start_btn if self.start_btn.isVisible() else self.stop_btn
+        active_w = max(active.sizeHint().width(), active.minimumSizeHint().width())
+        pulse = getattr(self, "_session_pulse", None)
+        pulse_w = (pulse.width() + 6) if pulse is not None and pulse.isVisible() else 0
+        cluster.setMinimumWidth(max(session_run_cluster_min_width(), active_w + pulse_w + 4))
 
     def _sync_modern_run_chrome(self) -> None:
         """Single run control: Start when idle, Stop + pulse when running."""
@@ -2536,6 +2805,10 @@ class BridgeWindowModern(BridgeLogicMixin, QtWidgets.QWidget):
             self.stop_btn.setText("…  Starting")
         else:
             self.stop_btn.setText("■  Stop")
+        self._sync_session_run_cluster_width()
+        pane_run = getattr(self, "_header_pane_run", None)
+        if pane_run is not None:
+            pane_run.setMinimumWidth(header_split_mins()[0])
         pulse = getattr(self, "_session_pulse", None)
         timer = getattr(self, "_session_pulse_timer", None)
         if pulse is not None:
@@ -2805,6 +3078,7 @@ class BridgeWindowModern(BridgeLogicMixin, QtWidgets.QWidget):
         from ui.tool_tabs import apply_phone_dashboard_responsive
 
         apply_phone_dashboard_responsive(self, self._modern_tools_content_width())
+        self._schedule_header_auto_arrange()
 
     def showEvent(self, event: QtGui.QShowEvent) -> None:
         super().showEvent(event)

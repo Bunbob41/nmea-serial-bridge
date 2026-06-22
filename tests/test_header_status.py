@@ -5,7 +5,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from PySide6 import QtWidgets
+from PySide6 import QtCore, QtWidgets
 
 from ui.header_status import ElidedStatusLabel
 from ui.mixin import BridgeLogicMixin
@@ -74,6 +74,16 @@ class TestElidedStatusLabel(unittest.TestCase):
         lbl.resize(900, 24)
         lbl.refresh_elide()
         self.assertEqual(lbl.text(), msg)
+
+    def test_deferred_elide_timers_cancel_on_delete(self) -> None:
+        lbl = ElidedStatusLabel()
+        lbl.set_full_text("Stopped · Pick a COM port and UDP settings, then Start.")
+        lbl.deleteLater()
+        QtWidgets.QApplication.processEvents()
+        loop = QtCore.QEventLoop()
+        QtCore.QTimer.singleShot(150, loop.quit)
+        loop.exec()
+        QtWidgets.QApplication.processEvents()
 
 
 class TestFileLogLocation(unittest.TestCase):

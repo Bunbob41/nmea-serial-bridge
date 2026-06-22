@@ -223,6 +223,32 @@ def classify_log_line(txt: str) -> tuple[bool, bool, bool]:
     return is_warn, is_rx, is_tx
 
 
+def format_wire_tap_live_log_line(
+    direction: str,
+    data: bytes,
+    *,
+    hex_mode: bool,
+) -> str:
+    """Format a bridge wire-tap chunk for Field/legacy ``log_view`` panes."""
+    if direction == "reject":
+        try:
+            reason = bytes(data).decode("utf-8", errors="replace").strip()
+        except Exception:
+            reason = repr(data)
+        return f"[REJECT] {reason}"
+    dir_label = {
+        "net→com": "NET→COM",
+        "com→net": "SER→NET",
+    }.get(direction, direction.upper())
+    if hex_mode:
+        from nmea_codec import format_binary_log_preview
+
+        preview = format_binary_log_preview(data)
+    else:
+        preview = bytes(data).decode("utf-8", errors="replace").rstrip("\r\n")
+    return f"{dir_label} | gps=— | {preview}"
+
+
 def log_line_allowed(txt: str, state: LogViewState) -> bool:
     """Whether a line may be appended to the live log under the current view."""
     if state.verbose and not log_line_matches_sentence_filter(txt, state.sentence_filter_key()):

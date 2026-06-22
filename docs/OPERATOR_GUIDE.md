@@ -509,6 +509,7 @@ If **drops** or **rejects** climb under load, serial consumer may be slow or fil
 | Symptom                        | Likely cause                            | Fix                                                        |
 | ------------------------------ | --------------------------------------- | ---------------------------------------------------------- |
 | Start fails: COM in use        | Tera Term, another serial app, old bridge | Close other app; **Stop**; run **Bench checklist**       |
+| BT sonar LED flashing, no data | Opened **incoming** COM only; outgoing leg not dialed | See **`docs/BLUETOOTH_SPP_WINDOWS.md`** — may need outgoing “SPP Dev” port to establish link |
 | Start fails: UDP in use        | NMEA Simulator “listening” on same port | Quit simulator; bridge must **listen** first               |
 | No UDP in log                  | Nothing sending to PC:port              | Point simulator/INS to correct IP:port; **Bench checklist** |
 | No serial in Tera Term         | Wrong COM (opened bridge port)          | Use **paired** com0com port                                |

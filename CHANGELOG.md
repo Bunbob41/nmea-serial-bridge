@@ -5,6 +5,35 @@ High-level notes for **this fork / branch** (`2034-ui-journey-modernization` and
 
 ---
 
+## v1.40.20
+
+- **Header status elision** — child-owned defer timers, reentrancy guards, and safe teardown so full unittest runs no longer recurse or crash Qt shutdown on Windows.
+- **Bluetooth SPP (docs)** — bookmark `docs/BLUETOOTH_SPP_WINDOWS.md` for Windows incoming/outgoing COM pair behavior (Sonarmite field note; companion-outgoing feature deferred).
+
+## v1.40.19
+
+- **Field layout raw / MAVLink log** — live log now shows binary wire traffic (hex) in Raw mode; fixes thread-unsafe verbose check that suppressed all traffic lines on Field.
+
+## v1.40.18
+
+- **Field layout launch** — hide orphan serial-mirror COM pickers that floated over the top-left View chip (only shown on Modern → Control).
+
+## v1.40.17
+
+- **UI editor chip order** — Navigation tab reorder now updates the top chip rail (sidebar still keeps group headers contiguous).
+
+## v1.40.16
+
+- **Chip display menu fix** — View → Chip display no longer shows two modes checked at once; picking Icons only / Labels only / Auto reliably applies (Qt `triggered` on uncheck was reverting the mode).
+
+## v1.40.15
+
+- **Modern header bar (View menu)** — **Auto-arrange header** sizes Start, status, chips, and View/HUD/Layout when the window or bridge state changes (no manual drag each resize). **Chip display** submenu: Auto / Icons only / Labels only. **Customize chip icons…** imports JSON per `docs/HEADER_CHIP_ICONS.md`; reset restores product defaults.
+
+## v1.40.14
+
+- **Modern header Start clip** — Run splitter pane min width now fits the Start/Stop button (was 90px); added gap before compact status pill so Start no longer overlaps the Stopped chip after resize or saved header splits.
+
 ## v1.40.13
 
 - **Repo hygiene (PR 1)** — Dated inventory at `docs/repo-hygiene-inventory.md`; removed dead `_gen_mixin.py` and `_patch_guide.py`; moved 104 `test_*.py` files to `tests/` (discover path updated in CI, `verify_all`, `run_unittests`).

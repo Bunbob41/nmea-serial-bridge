@@ -7124,10 +7124,12 @@ class BridgeLogicMixin:
             return
 
         file_log = self._file_log
+        from bridge_core import NmeaMode
+
         nmea_mode = self._selected_nmea_mode()
         nmea_filter = self._selected_nmea_filter()
-        verbose = self.chk_verbose_log.isChecked
-        log_hex = getattr(self, "chk_log_hex", None) is not None and self.chk_log_hex.isChecked()
+        bridge_verbose = bool(self._log_view_state.verbose)
+        log_hex = bool(self._log_view_state.hex) or nmea_mode == NmeaMode.RAW
         _fanout_chk = getattr(self, "chk_udp_fanout", None)
         udp_fanout = _fanout_chk is None or _fanout_chk.isChecked()
         from bridge_core import SerialMirrorConfig, TcpSinkConfig, parse_serial_mirror_ports
@@ -7166,8 +7168,8 @@ class BridgeLogicMixin:
             common = dict(
                 loop=loop,
                 ui_log=self._worker.log_msg.emit,
-                ui_log_verbose=verbose,
-                ui_log_hex=lambda: log_hex and nmea_mode == NmeaMode.RAW,
+                ui_log_verbose=lambda v=bridge_verbose: v,
+                ui_log_hex=lambda h=log_hex and nmea_mode == NmeaMode.RAW: h,
                 status_cb=self._worker.status_msg.emit,
                 stats_cb=self._worker.stats_msg.emit,
                 file_log=file_log,
@@ -7285,15 +7287,69 @@ class BridgeLogicMixin:
             "Close any app using the COM port, run python com_free.py, then try again."
         )
 
-    def _on_bridge_wire_tap(self, direction: str, data: bytes) -> None:
-        """Route wire-tap events to the bridge terminal panel (if present)."""
-        panel = getattr(self, "bridge_terminal", None)
-        if panel is None:
+    def _live_log_wire_tap_enabled(self) -> bool:
+        """Field/legacy layouts lack Activity terminal — tap into log_view when needed."""
+        if getattr(self, "_ui_mode", "") == "modern":
+            return False
+        if getattr(self, "log_view", None) is None:
+            return False
+        from bridge_core import NmeaMode
+
+        bridge = self.bridge
+        if bridge is not None and bridge.nmea_mode == NmeaMode.RAW:
+            return not bool(self._log_view_state.verbose)
+        return False
+
+    def _live_log_hex_mode(self) -> bool:
+        if self._log_view_state.hex:
+            return True
+        return bool(
+            getattr(self, "rb_nmea_raw", None) and self.rb_nmea_raw.isChecked()
+        )
+
+    def _ensure_field_raw_log_view(self, b: object) -> None:
+        """Raw/binary on Field: show hex wire traffic in the main log pane."""
+        if getattr(self, "_ui_mode", "") not in ("field", "minimal", "logfirst"):
             return
-        try:
-            panel.feed(direction, data)
-        except Exception:
-            pass
+        from bridge_core import NmeaMode
+
+        if getattr(b, "nmea_mode", None) != NmeaMode.RAW:
+            return
+        st = self._log_view_state
+        if st.verbose and st.hex:
+            return
+        updated = LogViewState(
+            **{
+                **st.to_dict(),
+                "sentence_types": frozenset(st.sentence_types),
+                "verbose": True,
+                "hex": True,
+            }
+        )
+        updated.preset = updated.detect_preset()
+        self._apply_log_view_state(updated, sync_widgets=True)
+
+    def _on_bridge_wire_tap(self, direction: str, data: bytes) -> None:
+        """Route wire-tap events to Activity terminal or Field live log."""
+        panel = getattr(self, "bridge_terminal", None)
+        if panel is not None:
+            try:
+                panel.feed(direction, data)
+            except Exception:
+                pass
+            return
+        if not self._live_log_wire_tap_enabled() or not data:
+            return
+        from ui.log_view import format_wire_tap_live_log_line
+
+        line = format_wire_tap_live_log_line(
+            direction,
+            data,
+            hex_mode=self._live_log_hex_mode(),
+        )
+        worker = getattr(self, "_worker", None)
+        if worker is not None:
+            worker.log_msg.emit(line)
 
     def _on_bridge_started(self, b: SerialNetBridge) -> None:
         self._starting = False
@@ -7306,6 +7362,7 @@ class BridgeLogicMixin:
                 panel.set_raw_mode(b.nmea_mode == NmeaMode.RAW)
             except Exception:
                 pass
+        self._ensure_field_raw_log_view(b)
         QtCore.QTimer.singleShot(0, self._ensure_web_server_running)
         self._save_hub_last_known_good()
         self._log_tab_auto_timer.start(20_000)

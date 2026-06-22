@@ -18,6 +18,10 @@ class TestModernHeaderSplit(unittest.TestCase):
     def setUpClass(cls) -> None:
         cls._app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
 
+    def test_run_pane_min_fits_start_label(self) -> None:
+        mins = header_split_mins()
+        self.assertGreaterEqual(mins[0], 110)
+
     def test_set_clamped_sizes_gives_slack_to_chips_when_bar_grows(self) -> None:
         host = QtWidgets.QWidget()
         host.resize(900, 48)
