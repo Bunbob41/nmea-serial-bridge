@@ -8,7 +8,7 @@ High-level notes for **this fork / branch** (`2034-ui-journey-modernization` and
 ## v1.40.12
 
 - **P0 frozen launch crash** — `serial-link.exe` (`console=False`) sets `sys.stderr` to `None`; startup called `stderr.isatty()` and crashed after the window appeared. Guard via `stream_isatty()` and `_should_minimize_launch_console()`.
-- **QC** — New `tools/gui_no_console_check.py` step in `verify_all.py`; regression tests in `test_bridge_gui_no_console.py`.
+- **QC** — New `tools/gui_no_console_check.py` step in `verify_all.py`; regression tests in `test_bridge_gui_no_console.py`. Release builds run `tools/frozen_gui_smoke.py` on `serial-link.exe` before zipping.
 
 ## v1.40.11
 

@@ -69,6 +69,16 @@ if ($PublishOnly) {
         throw "check_frozen_bundle failed - Web dashboard will not work in the zip"
     }
 
+    $builtExe = Join-Path $distDir "serial-link.exe"
+    Write-Host "Frozen GUI smoke (serial-link.exe startup)..." -ForegroundColor Cyan
+    Get-Process serial-link -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+    Get-CimInstance Win32_Process -Filter "Name='python.exe' OR Name='pythonw.exe'" |
+        Where-Object { $_.CommandLine -match 'bridge_gui' } |
+        ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+    Start-Sleep -Milliseconds 500
+    python "$PSScriptRoot\tools\frozen_gui_smoke.py" $builtExe
+    if ($LASTEXITCODE -ne 0) { throw "frozen_gui_smoke failed - do not publish" }
+
     Write-Host "Zipping -> dist\$zipName" -ForegroundColor Cyan
     if (Test-Path $zipPath) { Remove-Item $zipPath -Force }
     $zipOk = $false
@@ -185,26 +195,19 @@ if (-not $existing) {
 $notes = @"
 Windows x64 one-folder build (PyInstaller) — **v$Version**.
 
-**Hotfix (Modern / frozen builds)**
-- Header View/HUD/Layout chips: light text on dark buttons (fixes black labels on work PCs)
-- Hub: dark card grid and scroll area (fixes white tile backgrounds on Windows Fusion)
-- Status banner: keeps **Stopped** readable on Mission Review and narrow windows
+**P0 hotfix — frozen launch crash**
+- Fixed ``serial-link.exe`` crash on startup: PyInstaller ``console=False`` leaves ``sys.stderr`` as ``None``; startup no longer calls ``isatty()`` on a null stream.
+- QC: ``gui_no_console_check`` in ``verify_all`` + ``frozen_gui_smoke`` after every release build.
 
 **Modern layout (default)**
-- Chip navigation: Control · Presets · Hub · NMEA · Logging ▾ · Bench Tools ▾
-- Control tab: serial/network forms + position track map (45/55 split)
-- View → Tools navigation: **Top chips** or **Sidebar**
-- UI editor: **Header** (View/HUD/Layout) + **Navigation** (page order/visibility)
-
-**All layouts**
-- Survey HUD, presets, bridge terminal, Web dashboard, Connection Hub
-- Layout switch: View → Standard / Field / Modern
-- **Unsigned** — SmartScreen may warn. See ``docs/OPERATOR_GUIDE.md``.
+- Chip navigation: Control · Activity · Presets · Hub · Fleet · NMEA · Logging · Bench Tools
+- Fleet multi-stream; Tailscale / UDP listen host guidance (v1.40.10+)
+- Header chips: hidden scroll + edge fade when overflow
 
 **Install**
 - Unzip and run ``serial-link\serial-link.exe`` (keep the whole folder).
 - Settings persist under ``%USERPROFILE%\.cursor-udp-com-bridge\``.
-- Web dashboard: enable Web API in Dashboard, open ``http://127.0.0.1:10110/`` (port may vary).
+- **Unsigned** — SmartScreen may warn. See ``docs/OPERATOR_GUIDE.md``.
 "@
 
 $ErrorActionPreference = "SilentlyContinue"
