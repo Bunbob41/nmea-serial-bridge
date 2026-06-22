@@ -11,6 +11,9 @@ import py_interpreter
 
 
 class TestSubprocessNoConsole(unittest.TestCase):
+    def test_stream_isatty_none(self) -> None:
+        self.assertFalse(py_interpreter.stream_isatty(None))
+
     def test_returns_creationflags_on_windows(self) -> None:
         with mock.patch.object(sys, "platform", "win32"):
             with mock.patch.object(

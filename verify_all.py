@@ -141,6 +141,7 @@ def main() -> int:
 
     steps: list[tuple[str, list[str] | None]] = [
         ("compileall", None),
+        ("gui_no_console", ["tools/gui_no_console_check.py"]),
         ("app_icon", ["test_app_icon.py"]),
         ("unittest", ["tools/run_unittests.py"]),
         ("com_free", ["com_free.py"]),

@@ -21,6 +21,16 @@ def subprocess_no_console_kwargs() -> dict:
     return {"creationflags": flag}
 
 
+def stream_isatty(stream) -> bool:
+    """True when *stream* is an interactive TTY; False when missing (frozen GUI / pythonw)."""
+    if stream is None:
+        return False
+    try:
+        return bool(stream.isatty())
+    except (AttributeError, ValueError, OSError):
+        return False
+
+
 def _frozen_meipass() -> Optional[Path]:
     if not getattr(sys, "frozen", False):
         return None

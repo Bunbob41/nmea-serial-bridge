@@ -7,7 +7,7 @@ import os
 import sys
 from pathlib import Path
 
-from py_interpreter import run_frozen_helper_if_requested
+from py_interpreter import run_frozen_helper_if_requested, stream_isatty
 
 # Frozen one-folder build: run bundled Diagnostics helpers without spawning system python.exe.
 _helper_code = run_frozen_helper_if_requested()
@@ -82,6 +82,11 @@ def _minimize_launch_console() -> None:
         pass
 
 
+def _should_minimize_launch_console(*, foreground: bool) -> bool:
+    """Hide dev launcher console after GUI show; skip when stderr is missing (frozen exe)."""
+    return not foreground and sys.platform == "win32" and stream_isatty(sys.stderr)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="NMEA UDP/TCP ↔ serial bridge")
     parser.add_argument(
@@ -135,7 +140,7 @@ def main() -> None:
             "delete this lock file, then try again:\n"
             f"{lock_path}"
         )
-        if sys.stderr.isatty():
+        if stream_isatty(sys.stderr):
             print(msg, file=sys.stderr)
         _launch_log(f"LOCKED: {msg}")
         QtWidgets.QMessageBox.warning(None, "Already running", msg)
@@ -165,7 +170,7 @@ def main() -> None:
         w = create_window(ui_id)
         w.show()
         _present_main_window(w)
-        if not args.foreground and sys.platform == "win32" and sys.stderr.isatty():
+        if _should_minimize_launch_console(foreground=bool(args.foreground)):
             _minimize_launch_console()
         _launch_log(
             f"OPEN ui={ui_id} title={w.windowTitle()} geo={w.frameGeometry().getRect()}"

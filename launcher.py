@@ -8,6 +8,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+from py_interpreter import subprocess_no_console_kwargs, stream_isatty
 from ui.registry import (
     UI_DEFAULT,
     UI_DESCRIPTIONS,
@@ -102,8 +103,6 @@ def _spawn_gui(ui_arg: list[str], *, foreground: bool = False) -> None:
         exe = Path(sys.executable)
         raise SystemExit(subprocess.call([str(exe), str(script), *ui_arg], cwd=str(ROOT)))
     if sys.platform == "win32":
-        from py_interpreter import subprocess_no_console_kwargs
-
         exe = _resolve_pythonw_for_spawn()
         subprocess.Popen(
             [str(exe), str(script), *ui_arg],
@@ -113,7 +112,7 @@ def _spawn_gui(ui_arg: list[str], *, foreground: bool = False) -> None:
         return
     exe = _resolve_pythonw_for_spawn()
     subprocess.Popen([str(exe), str(script), *ui_arg], cwd=str(ROOT))
-    if sys.stdin.isatty():
+    if stream_isatty(sys.stdin):
         print(
             f"Started GUI in background ({exe.name}). "
             "If no window appears, run:\n"
@@ -172,7 +171,7 @@ def main() -> int:
             return 0
 
     if args.pick_ui:
-        _spawn_gui(["--pick-ui"], foreground=foreground or sys.stdin.isatty())
+        _spawn_gui(["--pick-ui"], foreground=foreground or stream_isatty(sys.stdin))
         return 0
 
     saved = _load_choice()
