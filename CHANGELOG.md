@@ -5,6 +5,10 @@ High-level notes for **this fork / branch** (`2034-ui-journey-modernization` and
 
 ---
 
+## v1.40.11
+
+- **GitHub repo polish** — README hero (download badge, Modern + Field layouts), CI workflow on `main`, `.gitignore` for dev scratch files, repo About metadata (description, topics, latest release link), unpinned template flag.
+
 ## v1.40.10
 
 - **Fleet UDP listen / Tailscale** — Fleet edit dialog exposes **UDP listen host** (default `0.0.0.0` for LAN + Tailscale). Port conflicts now treat `0.0.0.0` and `127.0.0.1` as overlapping on the same port. Network column tooltips and MAVLink preset copy explain remote Mission Planner (`Tailscale IP:14550`, firewall). Control ↔ Fleet UDP conflict checks use the same host-overlap rules.

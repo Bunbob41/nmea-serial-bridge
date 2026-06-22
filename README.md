@@ -1,8 +1,16 @@
 # Serial Link
 
-**Product name:** **Serial Link** (`serial-link.exe`). GitHub repo: `nmea-serial-bridge`.
+[![Release](https://img.shields.io/github/v/release/Bunbob41/nmea-serial-bridge?label=download&sort=semver)](https://github.com/Bunbob41/nmea-serial-bridge/releases/latest)
+[![License](https://img.shields.io/github/license/Bunbob41/nmea-serial-bridge)](LICENSE)
+[![CI](https://github.com/Bunbob41/nmea-serial-bridge/actions/workflows/ci.yml/badge.svg)](https://github.com/Bunbob41/nmea-serial-bridge/actions/workflows/ci.yml)
 
-**Current version:** see [`version.py`](version.py) — Windows desktop app that **bidirectionally bridges** traffic between **UDP/TCP** and a **serial COM port**. Primary use: **NMEA 0183 text** for survey / USV workflows — Ethernet GNSS or INS (e.g. Trimble R10) → bridge → physical COM destination.
+**Serial Link** (`serial-link.exe`) is a Windows desktop app that **bidirectionally bridges** traffic between **UDP/TCP** and a **serial COM port**. Built for survey / USV workflows — NMEA 0183, raw binary (RTCM / MAVLink), **Fleet** multi-stream, and **Modern** or **Field** layouts.
+
+| | |
+| --- | --- |
+| **Download** | [Latest release](https://github.com/Bunbob41/nmea-serial-bridge/releases/latest) — unzip and run `serial-link.exe` |
+| **Version** | [`version.py`](version.py) |
+| **Repo name** | `nmea-serial-bridge` (product: **Serial Link**) |
 
 **Spec Kit baseline**: [`specs/001-baseline-spec/spec.md`](specs/001-baseline-spec/spec.md) (as-built FR traceability).
 
@@ -41,15 +49,15 @@
 
 - **Diagnostics** (Tools) — collapsible cards: automated checks (`verify_all`, checklists, UDP/TCP bench tools), rotating file log, on-screen log clear, traffic legend; **Reorder cards…**
 
-- **UI layouts** — **Standard** (`Connect | Log | Tools`) and **Field** (log-first, survey bar, tools drawer). Launcher remembers choice. **UI editor** reorders Connect sections, top bar, main tabs.
+- **UI layouts** — **Modern** (header chips + tool pages) and **Field** (log-first, survey bar, tools drawer). Launcher remembers choice. **UI editor** reorders Connect sections and panel visibility.
 
-- **Survey workflow** — Survey HUD popout, **GNSS** status (GGA fix / sats / HDOP), in-app **Guide** (Tools), preflight menus, themes, recent sessions.
-- **Connection Hub (Standard Connect)** — card grid for GNSS COM + UDP listen + **LAN-discovered** hosts (Refresh discovery); **Unlock ports** for bench COM conflicts; live **QoS** on the active card; **Manual override** for TCP/advanced; optional **TCP sink mirror** (parallel egress with fan-out). Field strip adds Refresh/Unlock.
+- **Survey workflow** — Survey HUD popout, **GNSS** status (GGA fix / sats / HDOP), in-app **Guide** (Bench Tools), preflight menus, themes, recent sessions.
+- **Connection Hub (Modern Connect)** — card grid for GNSS COM + UDP listen + **LAN-discovered** hosts (Refresh discovery); **Unlock ports** for bench COM conflicts; live **QoS** on the active card; **Manual override** for TCP/advanced; optional **TCP sink mirror** (parallel egress with fan-out). Field strip adds Refresh/Unlock.
 - **Hybrid UI (v1.7+)** — Qt Designer shells; optional **Web API** + browser **operator dashboard** (`requirements-web.txt`) — status, config, discovery, start/stop, log, map, Survey monitor; optional **GridStack beta** layout — see `specs/005-hybrid-ui-webui/quickstart.md` and `specs/006-phase-b-dashboard/quickstart.md`.
-- **Connect tab (Standard)** — collapsible panels (Serial & network defaults under Run), quick log/terminal, intent hint.
-- **Log tab** — full live log with presets, pause, save.
-- **Phone tab** (Tools) — Web API, token, QR, phone dashboard setup.
-- **Guide tab** (Tools) — UDP/TCP connection workflows, links to operator docs.
+- **Connect** — collapsible panels (Serial & network defaults under Run), quick log/terminal, intent hint.
+- **Log** — full live log with presets, pause, save.
+- **Phone** (Bench Tools) — Web API, token, QR, phone dashboard setup.
+- **Guide** (Bench Tools) — UDP/TCP connection workflows, links to operator docs.
 
 ## Requirements
 
@@ -76,11 +84,12 @@ python -m pip install -r requirements.txt
 # or
 python launcher.py
 python launcher.py --ui field
+python launcher.py --ui modern
 ```
 
 | UI | Use |
 |----|-----|
-| **Standard** | Connect + Log + Tools (Presets, Phone, NMEA, Terminal, Diagnostics, Inject, Theme, Guide) |
+| **Modern** | Header chips (Connect, Log, Bench Tools, Fleet, …), card-based Connect hub |
 | **Field** | Large log, COM/UDP strip, Tools drawer, survey bar (**Presets**, **Recent**, **Checklists**, **HUD**) |
 
 Saved layout: `%USERPROFILE%\.cursor-udp-com-bridge\ui_choice.json`
@@ -89,7 +98,7 @@ Saved layout: `%USERPROFILE%\.cursor-udp-com-bridge\ui_choice.json`
 
 ### Typical workflow
 
-1. **Presets** — load bench or boat preset → confirm COM + UDP on **Connect** (Standard) or the strip (Field) → **Start** → **Running**.  
+1. **Presets** — load bench or boat preset → confirm COM + UDP on **Connect** (Modern) or the strip (Field) → **Start** → **Running**.  
 2. **NMEA** — **Passthrough** for Trimble/R10 NMEA; **Raw** only for binary RTCM or other non-NMEA streams.  
 3. **Send** — manual inject on bench (watch **paired** com0com port, not bridge COM).  
 4. **Stop** when finished.
@@ -157,7 +166,7 @@ Version: `version.py` + `CHANGELOG.md`.
 | `bridge_core.py` | Async engine (serial, UDP/TCP, queues, reconnect) |
 | `nmea_codec.py` | Line assembly, strict checksum, filters |
 | `bridge_gui.py` | GUI entry |
-| `ui/` | Standard, Field, demo, HUD, diagnostics |
+| `ui/` | Modern, Field, demo, HUD, diagnostics, Fleet |
 | `docs/GETTING_STARTED.md` | First install and walkthrough |
 | `docs/OPERATOR_GUIDE.md` | Step-by-step operator manual |
 | `docs/NORBIT_DCT.md` | NORBIT DCT operator notes |

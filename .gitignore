@@ -22,3 +22,19 @@ fleet_config.json
 test_out.txt
 test_err.txt
 unittest_full.txt
+
+# Dev / agent scratch (keep repo root clean on GitHub)
+_mhs_src.txt
+launch_test.txt
+launch_logged.py
+pythonw_min_probe.py
+launch_probe.log
+debug-*.log
+assets/_*.png
+assets/_test*.ico
+tools/_*.py
+tools/patch_*.py
+tools/restore_mhs.py
+tools/bootstrap_fleet_slice1.py
+tools/fix_*.py
+tools/_tmp_check.txt
