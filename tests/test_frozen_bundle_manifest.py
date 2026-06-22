@@ -5,10 +5,12 @@ import re
 import unittest
 from pathlib import Path
 
+from tests import REPO_ROOT
+
 
 class TestFrozenBundleManifest(unittest.TestCase):
     def test_spec_lists_bench_tcp_test_helper(self) -> None:
-        spec = (Path(__file__).resolve().parent / "nmea_serial_bridge.spec").read_text(
+        spec = (REPO_ROOT / "nmea_serial_bridge.spec").read_text(
             encoding="utf-8"
         )
         self.assertIn("bench_tcp_test.py", spec)
@@ -32,7 +34,7 @@ class TestFrozenBundleManifest(unittest.TestCase):
     def test_spec_helper_blocks_include_manifest_files(self) -> None:
         from tools.frozen_bundle_manifest import FROZEN_HELPER_FILES
 
-        spec = (Path(__file__).resolve().parent / "nmea_serial_bridge.spec").read_text(
+        spec = (REPO_ROOT / "nmea_serial_bridge.spec").read_text(
             encoding="utf-8"
         )
         for name in FROZEN_HELPER_FILES:

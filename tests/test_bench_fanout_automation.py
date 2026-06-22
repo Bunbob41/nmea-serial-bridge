@@ -18,7 +18,9 @@ class TestBenchFanoutAutomation(unittest.TestCase):
             self.assertEqual(resolve_mode("auto", 10110), "live")
 
     def test_operator_guide_mentions_fanout_automation(self) -> None:
-        text = (Path(__file__).resolve().parent / "docs" / "OPERATOR_GUIDE.md").read_text(
+        from tests import REPO_ROOT
+
+        text = (REPO_ROOT / "docs" / "OPERATOR_GUIDE.md").read_text(
             encoding="utf-8"
         )
         self.assertIn("bench_fanout_automation.py", text)

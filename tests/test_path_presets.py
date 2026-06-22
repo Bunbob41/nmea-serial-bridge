@@ -8,6 +8,7 @@ from pathlib import Path
 from unittest import mock
 
 import bench_config as bc
+from tests import REPO_ROOT
 
 
 class TestPathPresets(unittest.TestCase):
@@ -162,7 +163,7 @@ class TestPathPresets(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             (root / "bench_defaults.json").write_text(
-                (Path(__file__).resolve().parent / "bench_defaults.json").read_text(
+                (REPO_ROOT / "bench_defaults.json").read_text(
                     encoding="utf-8"
                 ),
                 encoding="utf-8",
@@ -180,7 +181,7 @@ class TestPathPresets(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             (root / "bench_defaults.json").write_text(
-                (Path(__file__).resolve().parent / "bench_defaults.json").read_text(
+                (REPO_ROOT / "bench_defaults.json").read_text(
                     encoding="utf-8"
                 ),
                 encoding="utf-8",

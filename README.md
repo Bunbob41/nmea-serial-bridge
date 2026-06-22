@@ -143,7 +143,7 @@ From project folder (not `System32`). Skips exclusive COM/UDP steps if bridge al
 ## Tests
 
 ```powershell
-python -m unittest discover -s . -p "test_*.py" -v
+python -m unittest discover -s tests -p "test_*.py" -v
 ```
 
 ## Frozen build (field PCs)
@@ -166,6 +166,7 @@ Version: `version.py` + `CHANGELOG.md`.
 | `bridge_core.py` | Async engine (serial, UDP/TCP, queues, reconnect) |
 | `nmea_codec.py` | Line assembly, strict checksum, filters |
 | `bridge_gui.py` | GUI entry |
+| `tests/` | Unit tests (`test_*.py`) + fixtures |
 | `ui/` | Modern, Field, demo, HUD, diagnostics, Fleet |
 | `docs/GETTING_STARTED.md` | First install and walkthrough |
 | `docs/OPERATOR_GUIDE.md` | Step-by-step operator manual |

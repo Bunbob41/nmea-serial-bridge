@@ -13,7 +13,7 @@ Use before tagging **`vX.Y.Z`** from `version.py`.
 ```powershell
 python tools\sync_version_info.py
 python verify_all.py
-python -m unittest discover -s . -p "test_*.py" -q
+python -m unittest discover -s tests -p "test_*.py" -q
 ```
 
 - [ ] `verify_all.py` exit 0 (stop bridge GUI if UDP :10110 is in use, or accept skipped HW steps)

@@ -5,7 +5,9 @@ import re
 import unittest
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent
+from tests import REPO_ROOT
+
+ROOT = REPO_ROOT
 
 
 def _read_version_py() -> str:

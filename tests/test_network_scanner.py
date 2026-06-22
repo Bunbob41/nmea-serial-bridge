@@ -7,7 +7,7 @@ from unittest.mock import MagicMock, patch
 
 from network_scanner import list_lan_hosts, probe_host_udp, scan_network
 
-_FIXTURE = Path(__file__).resolve().parent / "tests" / "fixtures" / "arp_sample_windows.txt"
+_FIXTURE = Path(__file__).resolve().parent / "fixtures" / "arp_sample_windows.txt"
 
 
 class TestListLanHosts(unittest.TestCase):

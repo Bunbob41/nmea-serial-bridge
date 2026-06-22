@@ -6619,7 +6619,7 @@ class BridgeLogicMixin:
             # verify_all.py runs the full unit-test tree which is not shipped in the
             # portable build.  Detect this early and tell the user instead of silently
             # failing deep inside the script.
-            test_probe = _REPO_ROOT / "test_bridge_core.py"
+            test_probe = _REPO_ROOT / "tests" / "test_bridge_core.py"
             if not test_probe.is_file():
                 self._append_diag_output(
                     "Full verify is not available in the portable (.exe) build.\n"

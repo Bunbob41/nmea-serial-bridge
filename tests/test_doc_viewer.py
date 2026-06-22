@@ -12,6 +12,7 @@ from ui.doc_viewer import (
     normalize_doc_rel,
     resolve_bundled_doc,
 )
+from tests import REPO_ROOT
 
 
 class TestDocViewerPaths(unittest.TestCase):
@@ -21,7 +22,7 @@ class TestDocViewerPaths(unittest.TestCase):
         self.assertEqual(normalize_doc_rel(""), "")
 
     def test_resolve_dev_tree(self) -> None:
-        root = Path(__file__).resolve().parent
+        root = REPO_ROOT
         with patch("ui.doc_viewer.bundle_root", return_value=root):
             path = resolve_bundled_doc("docs/GETTING_STARTED.md")
         self.assertIsNotNone(path)

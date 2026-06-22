@@ -24,9 +24,9 @@ class TestBenchNetworkAutomation(unittest.TestCase):
 
 class TestOperatorGuideBenchNetwork(unittest.TestCase):
     def test_operator_guide_mentions_network_automation(self) -> None:
-        from pathlib import Path
+        from tests import REPO_ROOT
 
-        text = (Path(__file__).resolve().parent / "docs" / "OPERATOR_GUIDE.md").read_text(
+        text = (REPO_ROOT / "docs" / "OPERATOR_GUIDE.md").read_text(
             encoding="utf-8"
         )
         self.assertIn("bench_network_automation.py", text)

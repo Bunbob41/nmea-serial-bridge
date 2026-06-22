@@ -5,6 +5,10 @@ High-level notes for **this fork / branch** (`2034-ui-journey-modernization` and
 
 ---
 
+## v1.40.13
+
+- **Repo hygiene (PR 1)** — Dated inventory at `docs/repo-hygiene-inventory.md`; removed dead `_gen_mixin.py` and `_patch_guide.py`; moved 104 `test_*.py` files to `tests/` (discover path updated in CI, `verify_all`, `run_unittests`).
+
 ## v1.40.12
 
 - **P0 frozen launch crash** — `serial-link.exe` (`console=False`) sets `sys.stderr` to `None`; startup called `stderr.isatty()` and crashed after the window appeared. Guard via `stream_isatty()` and `_should_minimize_launch_console()`.

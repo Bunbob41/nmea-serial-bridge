@@ -6,8 +6,10 @@ import unittest
 from pathlib import Path
 
 
-_GUIDE = Path(__file__).resolve().parent / "docs" / "OPERATOR_GUIDE.md"
-_GETTING = Path(__file__).resolve().parent / "docs" / "GETTING_STARTED.md"
+from tests import REPO_ROOT
+
+_GUIDE = REPO_ROOT / "docs" / "OPERATOR_GUIDE.md"
+_GETTING = REPO_ROOT / "docs" / "GETTING_STARTED.md"
 
 
 class TestOperatorGuideNetwork(unittest.TestCase):

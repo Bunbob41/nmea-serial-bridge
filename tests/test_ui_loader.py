@@ -32,13 +32,13 @@ class TestUiLoader(unittest.TestCase):
         self.assertIsNotNone(w.findChild(QtWidgets.QWidget, "statusBannerHost"))
 
     def test_fixture_minimal_shell(self) -> None:
-        fixture_dir = Path(__file__).resolve().parent / "tests" / "fixtures"
+        fixture_dir = Path(__file__).resolve().parent / "fixtures"
         with patch("ui.ui_loader.resource_dir", return_value=fixture_dir):
             w = load_widget("minimal_shell")
         self.assertIsNotNone(w.findChild(QtWidgets.QWidget, "connectPanelHost"))
 
     def test_missing_ui_raises(self) -> None:
-        empty = Path(__file__).resolve().parent / "tests" / "fixtures" / "_empty"
+        empty = Path(__file__).resolve().parent / "fixtures" / "_empty"
         empty.mkdir(parents=True, exist_ok=True)
         try:
             with patch("ui.ui_loader.resource_dir", return_value=empty):
