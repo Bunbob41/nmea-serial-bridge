@@ -192,25 +192,10 @@ if (-not $existing) {
     Write-Host "Tag $tag already exists; skipping tag create." -ForegroundColor Yellow
 }
 
-$notes = @"
-Windows x64 one-folder build (PyInstaller) — **v$Version**.
-
-**Modern UI & header (v1.40.14–1.40.20)**
-- Header auto-arrange, chip display menu fix, UI editor chip rail order
-- Customize chip icons; Field layout mirror-picker and raw/MAVLink log fixes
-- Header status elision teardown fix (clean unittest / Qt shutdown on Windows)
-
-**Bluetooth SPP (docs)**
-- ``docs/BLUETOOTH_SPP_WINDOWS.md`` — Windows incoming/outgoing COM pair notes (Sonarmite); companion-outgoing feature deferred
-
-**Repo hygiene**
-- Tests moved under ``tests/``; dead scripts removed; CI updated
-
-**Install**
-- Unzip and run ``serial-link\serial-link.exe`` (keep the whole folder).
-- Settings persist under ``%USERPROFILE%\.cursor-udp-com-bridge\``.
-- **Unsigned** — SmartScreen may warn. See ``docs/OPERATOR_GUIDE.md``.
-"@
+$notesPath = Join-Path $PSScriptRoot "dist\release-notes-v$Version.md"
+python "$PSScriptRoot\tools\release_notes.py" --version $Version --since "1.40.20" --output $notesPath
+if ($LASTEXITCODE -ne 0) { throw "release_notes.py failed" }
+if (-not (Test-Path $notesPath)) { throw "Missing release notes: $notesPath" }
 
 $ErrorActionPreference = "SilentlyContinue"
 $null = gh release view $tag 2>&1
@@ -218,12 +203,13 @@ $releaseExists = ($LASTEXITCODE -eq 0)
 $ErrorActionPreference = "Stop"
 
 if ($releaseExists) {
-    Write-Host "Release $tag exists; uploading asset..." -ForegroundColor Yellow
+    Write-Host "Release $tag exists; uploading assets and refreshing notes..." -ForegroundColor Yellow
+    gh release edit $tag --notes-file $notesPath
     gh release upload $tag $zipPath --clobber
     gh release upload $tag $manifestPath --clobber
     gh release upload $tag $envLockPath --clobber
 } else {
-    gh release create $tag $zipPath $manifestPath $envLockPath --title $tag --notes $notes
+    gh release create $tag $zipPath $manifestPath $envLockPath --title $tag --notes-file $notesPath
 }
 
 Write-Host "Published: https://github.com/Bunbob41/nmea-serial-bridge/releases/tag/$tag" -ForegroundColor Green

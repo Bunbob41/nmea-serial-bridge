@@ -12,6 +12,7 @@ jobs:
     env:
       # verify_all.py skips COM/com0com benches when GITHUB_ACTIONS is set (no COM1 on runners).
       GITHUB_ACTIONS: true
+      QT_QPA_PLATFORM: offscreen
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5

@@ -5,6 +5,10 @@ High-level notes for **this fork / branch** (`2034-ui-journey-modernization` and
 
 ---
 
+## v1.41.7
+
+- **GitHub releases** — release notes generated from `CHANGELOG.md` via UTF-8 `--notes-file` (fixes em-dash mojibake on release pages); CI installs Pillow and uses Qt offscreen for GUI smoke.
+
 ## v1.41.6
 
 - **CI verify_all** — GitHub Actions skips COM/com0com hardware benches (`com_free`, headless, stress, network, fanout); full suite still runs locally. Set `VERIFY_ALL_NO_SKIP=1` to force hardware steps.
