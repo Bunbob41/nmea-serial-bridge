@@ -50,8 +50,12 @@ if ($PublishOnly) {
             python "$PSScriptRoot\tools\make_app_icon.py"
             if ($LASTEXITCODE -ne 0) { throw "make_app_icon failed" }
         }
-        python -m PyInstaller nmea_serial_bridge.spec --noconfirm
-        if ($LASTEXITCODE -ne 0) { throw "PyInstaller failed" }
+        $prevEap = $ErrorActionPreference
+        $ErrorActionPreference = "Continue"
+        python -m PyInstaller nmea_serial_bridge.spec --noconfirm 2>&1 | ForEach-Object { Write-Host $_ }
+        $pyiCode = $LASTEXITCODE
+        $ErrorActionPreference = $prevEap
+        if ($pyiCode -ne 0) { throw "PyInstaller failed (exit $pyiCode)" }
         python "$PSScriptRoot\tools\check_frozen_bundle.py" $distDir
         if ($LASTEXITCODE -ne 0) { throw "check_frozen_bundle failed" }
     } else {

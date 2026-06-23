@@ -21,8 +21,12 @@ if ($LASTEXITCODE -ne 0) { throw "unittest failed" }
 if (Test-Path "assets\app-icon.png") {
     python tools\make_app_icon.py
 }
-python -m PyInstaller nmea_serial_bridge.spec --noconfirm
-if ($LASTEXITCODE -ne 0) { throw "PyInstaller failed" }
+$prevEap = $ErrorActionPreference
+$ErrorActionPreference = "Continue"
+python -m PyInstaller nmea_serial_bridge.spec --noconfirm 2>&1 | ForEach-Object { Write-Host $_ }
+$pyiCode = $LASTEXITCODE
+$ErrorActionPreference = $prevEap
+if ($pyiCode -ne 0) { throw "PyInstaller failed (exit $pyiCode)" }
 python tools\check_frozen_bundle.py dist\serial-link
 if ($LASTEXITCODE -ne 0) { throw "check_frozen_bundle failed" }
 
