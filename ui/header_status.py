@@ -5,7 +5,19 @@ from PySide6 import QtCore, QtGui, QtWidgets
 
 _STATUS_SEPARATORS: tuple[str, ...] = (" · ", "  ·  ", " — ", " - ")
 _PROTECTED_TITLES: frozenset[str] = frozenset(
-    {"Stopped", "Running", "Starting…", "Start failed"}
+    {
+        "Stopped",
+        "Running",
+        "Starting…",
+        "Start failed",
+        "● Stopped",
+        "● Starting…",
+        "● Start failed",
+        "stopped",
+        "running",
+        "starting…",
+        "failed",
+    }
 )
 
 
@@ -51,7 +63,15 @@ class ElidedStatusLabel(QtWidgets.QLabel):
 
     def _apply_title_min_width(self) -> None:
         fm = self.fontMetrics()
-        self.setMinimumWidth(max(fm.horizontalAdvance("Stopped"), fm.horizontalAdvance("Running")) + 6)
+        self.setMinimumWidth(
+            max(
+                fm.horizontalAdvance("stopped"),
+                fm.horizontalAdvance("Stopped"),
+                fm.horizontalAdvance("running"),
+                fm.horizontalAdvance("Running"),
+            )
+            + 10
+        )
 
     def set_full_text(self, text: str) -> None:
         self._full_text = str(text or "").strip()
@@ -121,27 +141,23 @@ class ElidedStatusLabel(QtWidgets.QLabel):
             return
         width = self._elide_width()
         fm = self.fontMetrics()
-        if fm.horizontalAdvance(self._full_text) <= width:
-            self.setText(self._full_text)
-            return
-
         title, detail = split_status_title_detail(self._full_text)
         if title in _PROTECTED_TITLES:
             title_width = fm.horizontalAdvance(title)
-            if not detail or title_width + fm.horizontalAdvance(" · ") >= width:
+            if fm.horizontalAdvance(self._full_text) <= width:
+                self.setText(self._full_text)
+                return
+            # Never combine title + partial detail — that clips mid-word in tight headers.
+            if title_width <= width:
                 self.setText(title)
                 return
-            sep = " · "
-            detail_width = max(0, width - title_width - fm.horizontalAdvance(sep))
-            if detail_width <= 0:
-                self.setText(title)
-                return
-            elided_detail = fm.elidedText(
-                detail,
-                QtCore.Qt.TextElideMode.ElideRight,
-                detail_width,
+            self.setText(
+                fm.elidedText(
+                    title,
+                    QtCore.Qt.TextElideMode.ElideRight,
+                    width,
+                )
             )
-            self.setText(f"{title}{sep}{elided_detail}")
             return
 
         if not detail:

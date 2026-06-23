@@ -339,13 +339,30 @@ def populate_mission_review(
     if drops_lbl is not None:
         drops_lbl.setText(str(drops))
     if dur_lbl is not None:
+        from ui.transport_status import format_duration_s
+
         dur_lbl.setText(f"{mins}m {secs}s")
+        if record.com_active_s > 0 and record.duration_s > 0:
+            active = format_duration_s(record.com_active_s)
+            dur_lbl.setToolTip(
+                f"Running {mins}m {secs}s · COM data active ~{active}"
+            )
+        else:
+            dur_lbl.setToolTip(f"Session running time: {mins}m {secs}s")
     if hz_lbl is not None:
         hz_lbl.setText(f"{record.avg_hz_up:.1f} Hz")
 
     path = str(summary.get("path") or record.backup_path or "").strip()
+    transport_note = ""
+    if record.com_active_s > 0 and record.duration_s > record.com_active_s + 5:
+        from ui.transport_status import format_duration_s
+
+        transport_note = (
+            f"\nCOM data active ~{format_duration_s(record.com_active_s)} "
+            f"of {format_duration_s(record.duration_s)} running."
+        )
     win._mission_review_summary.setText(
-        line if line else "Session complete."
+        (line if line else "Session complete.") + transport_note
     )
     if path:
         win._mission_review_summary.setToolTip(path)

@@ -613,6 +613,11 @@ function setOnline(status) {
   setEl("stat-lines-down", fmtCount(status.lines_net_to_com));
   setEl("stat-lines-up", fmtCount(status.lines_com_to_net));
 
+  setEl("stat-session-running", fmtDurationS(status.session_running_s));
+  setEl("stat-com-active", fmtDurationS(status.com_active_total_s));
+  setEl("stat-com-age", fmtAgeS(status.last_com_to_net_age_s));
+  setEl("stat-udp-peer", fmtUdpPeerSummary(status));
+
   const gnssStale = !!status.gnss_stale || !!status.gnss_stream_idle;
   let gnssText = (status.gnss_summary || status.gnss_fix || "—").trim() || "—";
   if (status.gnss_stream_idle) gnssText = "No Data Stream";
@@ -1825,9 +1830,11 @@ function updateMonitorSummaries(status) {
     `${fmtHz(status.hz_net_to_com)} / ${fmtHz(status.hz_com_to_net)}`
   );
   const gnss = (status.gnss_summary || status.gnss_fix || "—").trim();
+  const runS = fmtDurationS(status.session_running_s);
+  const comAge = fmtAgeS(status.last_com_to_net_age_s);
   setEl(
     "monitor-sum-session",
-    `${fmtCount(status.lines_net_to_com)}→COM · ${gnss}`
+    `${runS} · COM ${comAge} · ${fmtCount(status.lines_net_to_com)}→COM · ${gnss}`
   );
   const drops =
     Number(status.drops_net_to_com ?? 0) + Number(status.drops_com_to_net ?? 0);
@@ -2603,6 +2610,35 @@ function setBadgeClass(id, state) {
   const el = document.getElementById(id);
   if (!el) return;
   el.className = `stat-value state-badge ${state}`;
+}
+
+function fmtDurationS(val) {
+  if (val == null || !Number.isFinite(Number(val))) return "—";
+  const total = Math.max(0, Math.floor(Number(val)));
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const s = total % 60;
+  if (h > 0) return `${h}h ${m}m`;
+  if (m > 0) return `${m}m ${s}s`;
+  return `${s}s`;
+}
+
+function fmtAgeS(val) {
+  if (val == null || !Number.isFinite(Number(val))) return "—";
+  const n = Math.max(0, Math.floor(Number(val)));
+  if (n >= 3600) return `${Math.floor(n / 3600)}h ago`;
+  if (n >= 60) return `${Math.floor(n / 60)}m ago`;
+  if (n <= 0) return "now";
+  return `${n}s ago`;
+}
+
+function fmtUdpPeerSummary(status) {
+  const count = Number(status.udp_peer_count ?? 0);
+  if (count <= 0) return "none";
+  const age = fmtAgeS(status.udp_peer_newest_in_s);
+  const stale = !!status.udp_peer_stale;
+  const base = count === 1 ? "1 peer" : `${count} peers`;
+  return stale ? `${base} · stale ${age}` : `${base} · ${age}`;
 }
 
 function fmtHz(val) {

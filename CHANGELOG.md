@@ -5,6 +5,38 @@ High-level notes for **this fork / branch** (`2034-ui-journey-modernization` and
 
 ---
 
+## v1.41.6
+
+- **CI verify_all** — GitHub Actions skips COM/com0com hardware benches (`com_free`, headless, stress, network, fanout); full suite still runs locally. Set `VERIFY_ALL_NO_SKIP=1` to force hardware steps.
+
+## v1.41.5
+
+- **Fluid header layout** — replaces rigid auto-arrange with a multi-pass engine: measure true minimums, compress Start padding under pressure, keep status/trail readable (lowercase `stopped` capsule + state dot), and scroll chips instead of clipping text.
+- **View menu** — HEADER BAR section (chip display, icon customize, manual resize) hides when Tools navigation is Sidebar; chip display picks reliably refresh the top chip rail.
+- **Phone dashboard icon** — moved from the crowded chip zone into the View/HUD/Layout cluster on the right.
+
+## v1.41.4
+
+- **Control → Network path** — Advanced network panel scrolls inside the card and expands with the column so TCP server/client fields no longer clip.
+
+## v1.41.3
+
+- **Theme quick pick** — right-click **Theme** in the Bench Tools dropdown (or sidebar) to apply a built-in palette or saved preset without opening Theme studio.
+
+## v1.41.2
+
+- **Activity toolbar height** — removed 40px `max-height` cap on the wire terminal toolbar so the transport row (Serial / UDP / Session) is no longer clipped under the filter bar or log pane in windowed and fullscreen layouts.
+- **Compact status chip** — flatter compact banner (no left border / pill radius) and explicit `● Stopped` prefix so it no longer reads as `( Stopped )`.
+
+## v1.41.1
+
+- **Modern header launch** — compact status shows **Stopped** only (detail in tooltip); safer elision avoids `| (` garbage on first paint; chip rail separator uses CSS border instead of a stray VLine widget.
+- **Activity transport row** — Serial / UDP / Session pills on their own row under filters; UDP dropdown arrow hidden until peers register.
+
+## v1.41.0
+
+- **Transport truth** — separates **Running** (Start→Stop), **COM data active** (serial bytes toward the network), and **UDP peer last seen** (inbound datagram age). Activity strip pills, Modern health chip suffix, Stop log summary, Mission Review duration tooltip, and web dashboard monitor rows (`session_running_s`, `com_active_total_s`, `last_com_to_net_age_s`, `udp_peer_newest_in_s`) all read the same bridge stats.
+
 ## v1.40.20
 
 - **Header status elision** — child-owned defer timers, reentrancy guards, and safe teardown so full unittest runs no longer recurse or crash Qt shutdown on Windows.

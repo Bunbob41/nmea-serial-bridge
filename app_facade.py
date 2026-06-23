@@ -52,6 +52,15 @@ class WebSessionState:
     com_port_lock_reason: str = ""
     com_lock_checking: bool = False
     updated_mono: float = 0.0
+    session_running_s: float = 0.0
+    com_active_total_s: float = 0.0
+    last_com_to_net_age_s: Optional[float] = None
+    serial_link_state: str = "closed"
+    udp_peer_count: int = 0
+    udp_peer_newest_in_s: Optional[float] = None
+    udp_peer_stale: bool = False
+    udp_peer_details: list[dict[str, Any]] = field(default_factory=list)
+    net_mode: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -920,6 +929,9 @@ class BridgeAppFacade(QtCore.QObject):
             if bridge is not None:
                 runtime_com = (getattr(bridge, "com", None) or "").strip() or configured_com
         com_lock = self._com_lock_fields_from_window(win)
+        from ui.transport_status import web_transport_summary
+
+        transport = web_transport_summary({**merged, "running": running})
         self.update_snapshot(
             running=running,
             com_port=runtime_com,
@@ -957,6 +969,7 @@ class BridgeAppFacade(QtCore.QObject):
             com_port_available=com_lock["com_port_available"],
             com_port_lock_reason=com_lock["com_port_lock_reason"],
             com_lock_checking=com_lock["com_lock_checking"],
+            **transport,
         )
 
 

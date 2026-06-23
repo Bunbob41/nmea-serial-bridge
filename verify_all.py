@@ -4,6 +4,10 @@
 When the bench UDP port is already bound (typically the bridge GUI is Running),
 steps that need exclusive COM + UDP (com_free, bridge_headless, bench_stress) are
 skipped so this script still passes. Set VERIFY_ALL_NO_SKIP=1 to run them anyway.
+
+On GitHub Actions (and other CI hosts with GITHUB_ACTIONS/CI set), COM hardware
+benches are skipped automatically — runners have no com0com/COM1. Full bench
+suites still run on a normal local `python verify_all.py`.
 """
 from __future__ import annotations
 
@@ -20,6 +24,25 @@ from ui.qt_test_harness import is_windows_qt_shutdown_exit, unittest_output_indi
 ROOT = Path(__file__).resolve().parent
 PY = cli_python_executable()
 _TRACEBACK_RE = re.compile(r"Traceback \(most recent call last\):")
+
+# Steps that open the bench COM port or require com0com (headless bridge paths).
+_HW_COM_STEPS = frozenset(
+    {
+        "com_free",
+        "bench_headless",
+        "bench_stress",
+        "bench_network",
+        "bench_fanout",
+    }
+)
+# Subset skipped when the bench UDP port is already bound locally (GUI running).
+_UDP_BUSY_SKIP_STEPS = frozenset(
+    {
+        "com_free",
+        "bench_headless",
+        "bench_stress",
+    }
+)
 
 
 def compile_repo() -> int:
@@ -123,21 +146,51 @@ def _bench_udp_port() -> int:
         return 10110
 
 
-def main() -> int:
-    bench_port = _bench_udp_port()
-    skip_hw = port_has_listener(bench_port) and os.environ.get("VERIFY_ALL_NO_SKIP", "").strip() not in (
-        "1",
-        "true",
-        "yes",
-    )
+def _truthy_env(name: str) -> bool:
+    return os.environ.get(name, "").strip().lower() in ("1", "true", "yes")
 
-    if skip_hw:
+
+def _is_ci_host() -> bool:
+    """True on GitHub Actions and similar CI runners (no bench COM hardware)."""
+    return _truthy_env("GITHUB_ACTIONS") or _truthy_env("CI")
+
+
+def _skip_step_names() -> frozenset[str]:
+    """Return verify_all step names to skip for this host/environment."""
+    if _truthy_env("VERIFY_ALL_NO_SKIP"):
+        return frozenset()
+    if _is_ci_host():
+        return _HW_COM_STEPS
+    bench_port = _bench_udp_port()
+    if port_has_listener(bench_port):
+        return _UDP_BUSY_SKIP_STEPS
+    return frozenset()
+
+
+def _print_skip_notice(skip_names: frozenset[str]) -> None:
+    if not skip_names:
+        return
+    if _is_ci_host() and not _truthy_env("VERIFY_ALL_NO_SKIP"):
         print(
-            f"\n[verify_all] NOTE: UDP :{bench_port} is already in use (likely bridge GUI is Running).\n"
-            "Skipping com_free, bridge_headless, and bench_stress (they need a free port and COM).\n"
-            "Stop the bridge or set VERIFY_ALL_NO_SKIP=1 to run the full hardware suite.\n",
+            "\n[verify_all] NOTE: CI host (GITHUB_ACTIONS/CI) — skipping COM hardware benches:\n"
+            f"  {', '.join(sorted(skip_names))}\n"
+            "GitHub runners have no com0com/COM1. Run `python verify_all.py` locally for the full suite.\n"
+            "Set VERIFY_ALL_NO_SKIP=1 to force hardware steps on CI (will fail without COM).\n",
             flush=True,
         )
+        return
+    bench_port = _bench_udp_port()
+    print(
+        f"\n[verify_all] NOTE: UDP :{bench_port} is already in use (likely bridge GUI is Running).\n"
+        "Skipping com_free, bridge_headless, and bench_stress (they need a free port and COM).\n"
+        "Stop the bridge or set VERIFY_ALL_NO_SKIP=1 to run the full hardware suite.\n",
+        flush=True,
+    )
+
+
+def main() -> int:
+    skip_names = _skip_step_names()
+    _print_skip_notice(skip_names)
 
     steps: list[tuple[str, list[str] | None]] = [
         ("compileall", None),
@@ -156,8 +209,7 @@ def main() -> int:
         ),
     ]
 
-    skip_names = {"com_free", "bench_headless", "bench_stress"}
-    if skip_hw:
+    if skip_names:
         steps = [(n, a) for (n, a) in steps if n not in skip_names]
 
     failed = 0
@@ -177,11 +229,19 @@ def main() -> int:
     if failed:
         print(f"\n[verify_all] {failed} step(s) failed", flush=True)
         return 1
-    if skip_hw:
-        print(
-            "\n[verify_all] All automated checks passed (hardware stress steps skipped — UDP port in use).",
-            flush=True,
-        )
+    if skip_names:
+        if _is_ci_host() and not _truthy_env("VERIFY_ALL_NO_SKIP"):
+            print(
+                "\n[verify_all] All automated checks passed "
+                "(COM hardware benches skipped on CI — run locally for full bench).",
+                flush=True,
+            )
+        else:
+            print(
+                "\n[verify_all] All automated checks passed "
+                "(hardware stress steps skipped — UDP port in use).",
+                flush=True,
+            )
     else:
         print("\n[verify_all] All automated checks passed.", flush=True)
     return 0

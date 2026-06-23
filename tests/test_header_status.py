@@ -75,6 +75,14 @@ class TestElidedStatusLabel(unittest.TestCase):
         lbl.refresh_elide()
         self.assertEqual(lbl.text(), msg)
 
+    def test_never_shows_partial_title_on_zero_width(self) -> None:
+        lbl = ElidedStatusLabel()
+        lbl.resize(1, 24)
+        lbl.set_full_text("Stopped · Set COM & UDP, then Start.")
+        lbl.refresh_elide()
+        self.assertEqual(lbl.text(), "Stopped")
+        self.assertNotIn("(", lbl.text())
+
     def test_deferred_elide_timers_cancel_on_delete(self) -> None:
         lbl = ElidedStatusLabel()
         lbl.set_full_text("Stopped · Pick a COM port and UDP settings, then Start.")

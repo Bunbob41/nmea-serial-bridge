@@ -203,9 +203,15 @@ class BridgeTerminalPanel(QtWidgets.QWidget):
         # ── toolbar ───────────────────────────────────────────────────────────
         toolbar = QtWidgets.QFrame()
         toolbar.setObjectName("wireTerminalToolbar")
-        tb = QtWidgets.QHBoxLayout(toolbar)
+        tb = QtWidgets.QVBoxLayout(toolbar)
         tb.setContentsMargins(10, 5, 10, 5)
-        tb.setSpacing(8)
+        tb.setSpacing(4)
+
+        filter_row = QtWidgets.QWidget()
+        filter_row.setObjectName("wireTerminalFilterRow")
+        filter_lay = QtWidgets.QHBoxLayout(filter_row)
+        filter_lay.setContentsMargins(0, 0, 0, 0)
+        filter_lay.setSpacing(8)
 
         # direction filter — segmented control
         seg = QtWidgets.QFrame()
@@ -224,7 +230,7 @@ class BridgeTerminalPanel(QtWidgets.QWidget):
             self._dir_group.addButton(btn)
             seg_lay.addWidget(btn)
         self._dir_group.buttonClicked.connect(self._on_dir_segment_clicked)
-        tb.addWidget(seg)
+        filter_lay.addWidget(seg)
 
         # sentence type filter — popup until types appear on the wire
         self._type_menu = QtWidgets.QMenu(self)
@@ -236,7 +242,7 @@ class BridgeTerminalPanel(QtWidgets.QWidget):
         self._btn_type.setMenu(self._type_menu)
         self._btn_type.setToolTip("Filter by NMEA sentence type (GGA, RMC, …)")
         self._btn_type.setVisible(False)
-        tb.addWidget(self._btn_type)
+        filter_lay.addWidget(self._btn_type)
 
         # hidden combo keeps mixin/tests compat for type enumeration
         self._type_combo = QtWidgets.QComboBox()
@@ -253,9 +259,9 @@ class BridgeTerminalPanel(QtWidgets.QWidget):
         self._btn_hex.setToolTip("Show raw bytes as hex dump (RAW mode only)")
         self._btn_hex.setVisible(False)
         self._btn_hex.toggled.connect(self._on_hex_toggled)
-        tb.addWidget(self._btn_hex)
+        filter_lay.addWidget(self._btn_hex)
 
-        tb.addStretch(1)
+        filter_lay.addStretch(1)
 
         # right-side icon actions
         self._btn_wrap = self._icon_btn(
@@ -279,7 +285,49 @@ class BridgeTerminalPanel(QtWidgets.QWidget):
         act_lay.addWidget(self._btn_pause)
         act_lay.addWidget(btn_clear)
         act_lay.addWidget(self._btn_save)
-        tb.addWidget(actions)
+        filter_lay.addWidget(actions)
+
+        transport_row = QtWidgets.QWidget()
+        transport_row.setObjectName("wireTransportRow")
+        transport_lay = QtWidgets.QHBoxLayout(transport_row)
+        transport_lay.setContentsMargins(0, 0, 0, 0)
+        transport_lay.setSpacing(6)
+
+        self._lbl_serial_transport = QtWidgets.QLabel("Serial — stopped")
+        self._lbl_serial_transport.setObjectName("wireTransportPill")
+        self._lbl_serial_transport.setProperty("transportKind", "idle")
+        transport_lay.addWidget(self._lbl_serial_transport)
+
+        self._btn_udp_transport = QtWidgets.QToolButton()
+        self._btn_udp_transport.setObjectName("wireTransportUdpBtn")
+        self._btn_udp_transport.setProperty("transportKind", "idle")
+        self._btn_udp_transport.setProperty("hasPeers", "false")
+        self._btn_udp_transport.setText("UDP — stopped")
+        self._btn_udp_transport.setToolButtonStyle(
+            QtCore.Qt.ToolButtonStyle.ToolButtonTextOnly
+        )
+        self._btn_udp_transport.setPopupMode(QtWidgets.QToolButton.ToolButtonPopupMode.InstantPopup)
+        self._udp_peer_menu = QtWidgets.QMenu(self._btn_udp_transport)
+        self._btn_udp_transport.setMenu(self._udp_peer_menu)
+        self._udp_peer_menu.aboutToShow.connect(self._populate_udp_peer_menu)
+        transport_lay.addWidget(self._btn_udp_transport)
+
+        self._lbl_session_transport = QtWidgets.QLabel("Session —")
+        self._lbl_session_transport.setObjectName("wireTransportPill")
+        self._lbl_session_transport.setProperty("transportKind", "idle")
+        self._lbl_session_transport.setToolTip(
+            "Wall-clock time since Start. Running ≠ continuous data flow."
+        )
+        transport_lay.addWidget(self._lbl_session_transport)
+        transport_lay.addStretch(1)
+
+        tb.addWidget(filter_row)
+        tb.addWidget(transport_row)
+
+        toolbar.setSizePolicy(
+            QtWidgets.QSizePolicy.Policy.Expanding,
+            QtWidgets.QSizePolicy.Policy.Minimum,
+        )
 
         root.addWidget(toolbar)
 
@@ -318,8 +366,69 @@ class BridgeTerminalPanel(QtWidgets.QWidget):
         self._flush_timer.start()
 
         self._wire_feed.connect(self._feed_gui, QtCore.Qt.ConnectionType.QueuedConnection)
+        self.sync_transport_status({})
 
     # ── toolbar helpers ───────────────────────────────────────────────────────
+
+    def _apply_transport_kind(self, widget: QtWidgets.QWidget, kind: str) -> None:
+        widget.setProperty("transportKind", kind)
+        style = widget.style()
+        if style is not None:
+            style.unpolish(widget)
+            style.polish(widget)
+
+    def sync_transport_status(self, stats: dict) -> None:
+        from ui.transport_status import activity_transport_labels
+
+        (
+            serial_t,
+            serial_tip,
+            serial_kind,
+            udp_t,
+            udp_tip,
+            udp_kind,
+            sess_t,
+            sess_tip,
+        ) = activity_transport_labels(stats)
+        self._transport_stats_cache = dict(stats)
+        self._lbl_serial_transport.setText(serial_t)
+        self._lbl_serial_transport.setToolTip(serial_tip)
+        self._apply_transport_kind(self._lbl_serial_transport, serial_kind)
+        self._btn_udp_transport.setText(udp_t)
+        self._btn_udp_transport.setToolTip(udp_tip)
+        peers = list(stats.get("udp_peer_details") or [])
+        has_peers = bool(peers) and str(stats.get("net_mode") or "") == "udp_listen"
+        self._btn_udp_transport.setProperty("hasPeers", "true" if has_peers else "false")
+        self._apply_transport_kind(self._btn_udp_transport, udp_kind)
+        self._lbl_session_transport.setText(sess_t)
+        self._lbl_session_transport.setToolTip(sess_tip)
+        self._apply_transport_kind(self._lbl_session_transport, "idle")
+
+    def _populate_udp_peer_menu(self) -> None:
+        self._udp_peer_menu.clear()
+        stats = getattr(self, "_transport_stats_cache", {}) or {}
+        peers = list(stats.get("udp_peer_details") or [])
+        if not peers:
+            act = self._udp_peer_menu.addAction("No UDP peers registered")
+            act.setEnabled(False)
+            return
+        from ui.transport_status import format_age_s
+
+        fanout = bool(stats.get("udp_fanout", True))
+        for p in peers:
+            addr = str(p.get("addr") or "?")
+            age = format_age_s(p.get("last_in_s"))
+            stale = " ⚠ stale" if p.get("stale") else ""
+            primary = " · last sender" if p.get("is_last_sender") else ""
+            act = self._udp_peer_menu.addAction(f"{addr}  in {age}{stale}{primary}")
+            act.setEnabled(False)
+        hint = self._udp_peer_menu.addAction("—")
+        hint.setEnabled(False)
+        tip = self._udp_peer_menu.addAction(
+            "Send a UDP packet from tablet after sleep/Wi‑Fi change"
+        )
+        tip.setEnabled(False)
+        _ = fanout
 
     def _seg_btn(
         self,

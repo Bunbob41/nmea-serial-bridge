@@ -381,7 +381,7 @@ def create_connection_controls(parent: QtWidgets.QWidget) -> None:
     _stack_group(p._mode_box)
     mv = QtWidgets.QVBoxLayout(p._mode_box)
     mv.setContentsMargins(8, 12, 8, 8)
-    mv.setSpacing(6)
+    mv.setSpacing(8)
     mv.addWidget(p.rb_udp_listen)
     mv.addWidget(p.rb_udp_remote)
     mv.addWidget(p.rb_tcp_server)

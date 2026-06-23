@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass, field
-from typing import Literal
+from typing import Literal, Optional
 
 HealthTick = Literal["ok", "warn", "bad"]
 
@@ -26,6 +26,9 @@ class MissionSessionRecord:
     error: str = ""
     com: str = ""
     baud: int = 0
+    com_active_s: float = 0.0
+    last_com_to_net_age_s: Optional[float] = None
+    udp_peer_count: int = 0
 
     def to_summary_dict(self) -> dict[str, object]:
         return {
@@ -37,6 +40,9 @@ class MissionSessionRecord:
             "error": self.error,
             "com": self.com,
             "baud": self.baud,
+            "com_active_s": self.com_active_s,
+            "last_com_to_net_age_s": self.last_com_to_net_age_s,
+            "udp_peer_count": self.udp_peer_count,
         }
 
 

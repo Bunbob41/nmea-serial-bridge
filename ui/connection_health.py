@@ -130,6 +130,7 @@ def format_connection_health_chip(
     starting: bool = False,
     fallback_com: str = "COM",
     fallback_udp_port: str = "10110",
+    transport_stats: Optional[dict] = None,
 ) -> tuple[str, HealthKind, str]:
     """Return (chip_text, healthKind, tooltip) for the Modern header pill."""
     serial_h = _serial_health(serial_line)
@@ -149,4 +150,18 @@ def format_connection_health_chip(
         f"NMEA — {nmea_mode or 'passthrough'}\n"
         f"Session — {'Running' if running else 'Starting…' if starting else 'Stopped'}"
     )
+    if transport_stats and running:
+        from ui.transport_status import connection_health_transport_suffix
+
+        suffix, extra = connection_health_transport_suffix(transport_stats)
+        if suffix:
+            chip += suffix
+        if extra:
+            tooltip += f"\n{extra}"
+        com_age = transport_stats.get("last_com_to_net_age_s")
+        if com_age is not None and float(com_age) > 60.0:
+            kind = _overall_health((serial_h, network_h, session_h, "warn"))
+        peers = transport_stats.get("udp_peer_details") or []
+        if peers and all(p.get("stale") for p in peers):
+            kind = _overall_health((serial_h, network_h, session_h, "warn"))
     return chip, kind, tooltip

@@ -437,6 +437,39 @@ def make_chip_group_separator() -> QtWidgets.QFrame:
     return sep
 
 
+class _ChipDropdownMenuContextFilter(QtCore.QObject):
+    """Right-click a dropdown row to open a child-specific menu (e.g. Theme presets)."""
+
+    def __init__(
+        self,
+        menu: QtWidgets.QMenu,
+        *,
+        child_sids: frozenset[str],
+        on_child_context: Callable[[str, QtCore.QPoint], None],
+    ) -> None:
+        super().__init__(menu)
+        self._menu = menu
+        self._child_sids = child_sids
+        self._on_child_context = on_child_context
+
+    def eventFilter(self, obj: QtCore.QObject, event: QtCore.QEvent) -> bool:
+        if obj is not self._menu or event.type() != QtCore.QEvent.Type.MouseButtonPress:
+            return False
+        me = event
+        if not isinstance(me, QtGui.QMouseEvent):
+            return False
+        if me.button() != QtCore.Qt.MouseButton.RightButton:
+            return False
+        action = self._menu.actionAt(me.pos())
+        if action is None:
+            return False
+        sid = str(action.property("navChildSid") or "").strip()
+        if sid not in self._child_sids:
+            return False
+        self._on_child_context(sid, self._menu.mapToGlobal(me.pos()))
+        return True
+
+
 def make_chip_dropdown_button(
     *,
     tier_key: str,
@@ -446,6 +479,8 @@ def make_chip_dropdown_button(
     on_pick: Callable[[str], None],
     on_cycle: Callable[[str, list[str]], None],
     utility_actions: list[tuple[str, str, Callable[[], None]]] | None = None,
+    child_context_menu_sids: frozenset[str] | None = None,
+    on_child_context_menu: Callable[[str, QtCore.QPoint], None] | None = None,
 ) -> QtWidgets.QToolButton:
     """Dropdown chip for grouped nav tiers (Logging, Bench Tools)."""
     btn = QtWidgets.QToolButton()
@@ -469,6 +504,12 @@ def make_chip_dropdown_button(
     menu.setObjectName("modernToolsNavChipMenuPopup")
     for sid, child_label, child_icon, _idx in children:
         action = menu.addAction(f"{child_icon}  {child_label}".strip())
+        action.setProperty("navChildSid", sid)
+        if sid == "theme":
+            action.setToolTip(
+                "Left-click: Theme studio. Right-click: apply a built-in palette "
+                "or saved preset."
+            )
         action.triggered.connect(lambda _checked=False, s=sid: on_pick(s))
     if utility_actions:
         menu.addSeparator()
@@ -476,6 +517,14 @@ def make_chip_dropdown_button(
             util_action = menu.addAction(f"{util_icon}  {util_label}".strip())
             util_action.triggered.connect(util_cb)
     btn.setMenu(menu)
+    if child_context_menu_sids and on_child_context_menu is not None:
+        filt = _ChipDropdownMenuContextFilter(
+            menu,
+            child_sids=child_context_menu_sids,
+            on_child_context=on_child_context_menu,
+        )
+        menu.installEventFilter(filt)
+        btn._nav_child_context_filter = filt  # keep alive
     btn.clicked.connect(
         lambda _checked=False, sids=list(child_sids): on_cycle(tier_key, sids)
     )

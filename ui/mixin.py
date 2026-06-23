@@ -2307,9 +2307,17 @@ class BridgeLogicMixin:
         name = self._selected_theme_preset_name()
         if not name:
             return
-        preset = load_theme_preset(name)
+        self._apply_theme_preset_by_name(name)
+
+    def _apply_theme_preset_by_name(self, name: str) -> None:
+        from ui.theme_palette import DEFAULT_ZONE_COLORS, build_zone_theme_map
+
+        clean = str(name or "").strip()
+        if not clean:
+            return
+        preset = load_theme_preset(clean)
         if not preset:
-            QtWidgets.QMessageBox.warning(self, "Theme preset", f"Preset not found: {name}")
+            QtWidgets.QMessageBox.warning(self, "Theme preset", f"Preset not found: {clean}")
             self._refresh_theme_preset_list()
             self._sync_theme_preset_buttons()
             return
@@ -2320,7 +2328,15 @@ class BridgeLogicMixin:
         save_random_theme_current(build_zone_theme_map(zones))
         save_random_seed_lock(bool(preset.get("seed_lock", False)))
         self._apply_theme(THEME_RANDOM_CURRENT)
-        self._log_ui(f"[UI] Loaded theme preset: {name}")
+        self._log_ui(f"[UI] Loaded theme preset: {clean}")
+
+    def _popup_theme_quick_pick_menu(self, global_pos: QtCore.QPoint) -> None:
+        menu = QtWidgets.QMenu(self)
+        menu.setObjectName("themeQuickPickMenu")
+        from ui.theme_quick_menu import populate_theme_quick_pick_menu
+
+        populate_theme_quick_pick_menu(menu, self)
+        menu.exec(global_pos)
 
     def _delete_selected_theme_preset(self) -> None:
         name = self._selected_theme_preset_name()
@@ -5028,6 +5044,7 @@ class BridgeLogicMixin:
             starting=bool(getattr(self, "_starting", False)),
             fallback_com=fallback_com,
             fallback_udp_port=fallback_port,
+            transport_stats=getattr(self, "_bridge_stats_cache", None),
         )
         elide_status_label(chip, text)
         chip.setProperty("healthKind", kind)
@@ -5891,10 +5908,17 @@ class BridgeLogicMixin:
 
 
     def _on_advanced_net_toggle(self, checked: bool) -> None:
-        self._advanced_net.setVisible(checked)
+        scroll = getattr(self, "_advanced_net_scroll", None)
+        if scroll is not None:
+            scroll.setVisible(checked)
+        else:
+            self._advanced_net.setVisible(checked)
         if not checked and not self.rb_udp_listen.isChecked():
             self.rb_udp_listen.setChecked(True)
         self._mode_toggle()
+        sync = getattr(self, "_balance_control_form_cards", None)
+        if callable(sync):
+            QtCore.QTimer.singleShot(0, sync)
 
 
     def _selected_nmea_mode(self) -> NmeaMode:
@@ -5954,6 +5978,9 @@ class BridgeLogicMixin:
         self._refresh_intent_hint()
         if advanced:
             self._advanced_net.updateGeometry()
+        sync = getattr(self, "_balance_control_form_cards", None)
+        if callable(sync):
+            QtCore.QTimer.singleShot(0, sync)
 
     def _enqueue_ui(self, line: str) -> None:
         while len(self._pending_ui) >= UI_LOG_PENDING_MAX:
@@ -6286,6 +6313,7 @@ class BridgeLogicMixin:
             "lines_down": b.lines_remote_to_serial,
             "lines_up": b.lines_serial_to_net,
             "udp_peers": b.udp_peer_count,
+            **b.transport_stats(),
             **b.navigation_quality_stats(),
             **b.navigation_position_stats(),
             **b._local_backup_stats(),
@@ -6334,6 +6362,10 @@ class BridgeLogicMixin:
         self._refresh_backpressure_chip(merged)
         self._refresh_hz_chip(merged)
         self._refresh_gnss_status_chip()
+        self._refresh_connection_health_chip()
+        panel = getattr(self, "bridge_terminal", None)
+        if panel is not None and hasattr(panel, "sync_transport_status"):
+            panel.sync_transport_status(merged)
         self._refresh_control_map(merged)
         self._refresh_stats_popout()
         self._refresh_dashboard()
@@ -7425,6 +7457,10 @@ class BridgeLogicMixin:
         self._update_status_bar("Serial: stopping…", "Network: stopping…")
         self._log_ui("Stopping bridge…")
         worker.request_stop()
+        transport_summary = None
+        bridge_obj = worker.bridge
+        if bridge_obj is not None and hasattr(bridge_obj, "transport_session_summary"):
+            transport_summary = bridge_obj.transport_session_summary(finalize=True)
         worker.wait(4000)
         summary = None
         record = None
@@ -7437,9 +7473,23 @@ class BridgeLogicMixin:
                 import time as _time
 
                 record = rec.finalize(summary, mono=_time.monotonic())
+                if transport_summary:
+                    record.com_active_s = float(
+                        transport_summary.get("com_active_total_s") or 0.0
+                    )
+                    record.last_com_to_net_age_s = transport_summary.get(
+                        "last_com_to_net_age_s"
+                    )
+                    record.udp_peer_count = len(
+                        transport_summary.get("udp_peer_details") or []
+                    )
             self._mission_recorder = None
         self._session_backup_was_active = False
         self._finish_stop_ui()
+        if transport_summary:
+            from ui.transport_status import format_transport_stop_summary
+
+            self._log_ui(format_transport_stop_summary(transport_summary))
         if summary and not getattr(self, "_layout_switch_in_progress", False):
             payload = (record, dict(summary))
             QtCore.QTimer.singleShot(0, lambda p=payload: self._present_mission_summary(*p))

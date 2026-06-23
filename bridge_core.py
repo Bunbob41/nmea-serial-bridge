@@ -63,6 +63,8 @@ START_ASYNC_TIMEOUT_S = 10.0
 STATS_EMIT_MIN_INTERVAL_S = 0.20
 UI_EVENT_LOG_MIN_INTERVAL_S = 0.40
 SERIAL_RECONNECT_INTERVAL_S = 2.0
+COM_FLOW_GAP_S = 2.0
+UDP_PEER_STALE_S = 60.0
 
 
 def rolling_hz_last_second(times: deque[float], window_s: float = 1.0) -> float:
@@ -488,6 +490,12 @@ class SerialNetBridge:
         self._mirror_serials: dict[str, serial.Serial] = {}
         self._mirror_drops: int = 0
         self._udp_peers: set[tuple] = set()
+        self._udp_peer_last_in: dict[tuple, float] = {}
+        self._udp_peer_last_out: dict[tuple, float] = {}
+        self._session_started_mono: float = 0.0
+        self._last_com_to_net_mono: float = 0.0
+        self._com_flow_last_mono: float = 0.0
+        self._com_active_total_s: float = 0.0
         self._gps_state: list[Optional[str]] = [None]
         self._nav_quality_state: list[Optional[dict]] = [None]
         self._position_state: list[Optional[dict]] = [None]
@@ -776,6 +784,96 @@ class SerialNetBridge:
         """Number of distinct UDP peers registered for fan-out this session."""
         return len(self._udp_peers)
 
+    @property
+    def serial_link_state(self) -> str:
+        if not self.running:
+            return "closed"
+        if self._serial_open and self.serial_reader is not None:
+            return "open"
+        if self.serial_auto_reconnect:
+            return "reconnecting"
+        return "closed"
+
+    def _note_com_to_net_activity(self) -> None:
+        now = time.monotonic()
+        if self._com_flow_last_mono > 0:
+            gap = now - self._com_flow_last_mono
+            if gap <= COM_FLOW_GAP_S:
+                self._com_active_total_s += gap
+        self._com_flow_last_mono = now
+        self._last_com_to_net_mono = now
+
+    def _com_active_total_s_live(self) -> float:
+        total = self._com_active_total_s
+        if self._com_flow_last_mono > 0:
+            gap = time.monotonic() - self._com_flow_last_mono
+            if gap <= COM_FLOW_GAP_S:
+                total += gap
+        return total
+
+    def last_com_to_net_age_s(self) -> Optional[float]:
+        if self._last_com_to_net_mono <= 0:
+            return None
+        return max(0.0, time.monotonic() - self._last_com_to_net_mono)
+
+    def session_running_s(self) -> float:
+        if self._session_started_mono <= 0:
+            return 0.0
+        return max(0.0, time.monotonic() - self._session_started_mono)
+
+    def udp_peer_details(self) -> list[dict]:
+        now = time.monotonic()
+        rows: list[dict] = []
+        for addr in self._udp_peers:
+            host, port = addr[0], addr[1]
+            last_in = self._udp_peer_last_in.get(addr)
+            age = (now - last_in) if last_in else None
+            stale = age is not None and age > UDP_PEER_STALE_S
+            rows.append(
+                {
+                    "host": str(host),
+                    "port": int(port),
+                    "addr": f"{host}:{port}",
+                    "last_in_s": age,
+                    "stale": stale,
+                    "is_last_sender": addr == self.last_udp_addr,
+                }
+            )
+        rows.sort(
+            key=lambda r: (
+                r.get("last_in_s") is None,
+                float(r.get("last_in_s") or 1e9),
+            )
+        )
+        return rows
+
+    def transport_stats(self) -> dict:
+        remote_host = ""
+        remote_port = 0
+        if self.udp_remote:
+            remote_host, remote_port = self.udp_remote
+        return {
+            "running": self.running,
+            "net_mode": self.mode.value,
+            "udp_fanout": self._udp_fanout,
+            "serial_link_state": self.serial_link_state,
+            "session_running_s": self.session_running_s(),
+            "com_active_total_s": self._com_active_total_s_live(),
+            "last_com_to_net_age_s": self.last_com_to_net_age_s(),
+            "udp_peer_details": self.udp_peer_details(),
+            "udp_peers": self.udp_peer_count,
+            "lines_up": self.lines_serial_to_net,
+            "udp_remote_host": remote_host,
+            "udp_remote_port": remote_port,
+            "tcp_sink_clients": len(self._tcp_sink_writers),
+        }
+
+    def transport_session_summary(self, *, finalize: bool = False) -> dict:
+        if finalize and self._com_flow_last_mono > 0:
+            self._note_com_to_net_activity()
+            self._com_flow_last_mono = 0.0
+        return dict(self.transport_stats())
+
     def _emit_stats(self) -> None:
         self._last_stats_emit_mono = time.monotonic()
         self._stats_cb(
@@ -794,6 +892,7 @@ class SerialNetBridge:
                 "lines_down": self.lines_remote_to_serial,
                 "lines_up": self.lines_serial_to_net,
                 "udp_peers": self.udp_peer_count,
+                **self.transport_stats(),
                 "running": self.running,
                 "udp_listen_host": self.udp_listen[0] if self.udp_listen else "",
                 "udp_listen_port": self.udp_listen[1] if self.udp_listen else 0,
@@ -1022,6 +1121,8 @@ class SerialNetBridge:
     def _ingest_serial(self, data: bytes, direction: str) -> None:
         if not self.running:
             return
+        if direction.startswith("SER") and data:
+            self._note_com_to_net_activity()
         if (
             self._serial_mirror
             and self._serial_mirror.include_device_tx
@@ -1080,6 +1181,7 @@ class SerialNetBridge:
         try:
             is_new_peer = addr not in self._udp_peers
             self._udp_peers.add(addr)
+            self._udp_peer_last_in[addr] = time.monotonic()
             self.last_udp_addr = addr
             if is_new_peer and self.mode == NetMode.UDP_LISTEN and self.udp_listen:
                 host, port = self.udp_listen
@@ -1157,6 +1259,10 @@ class SerialNetBridge:
         self._serial_open = True
         self._serial_hwid = _lookup_serial_hwid(self.com)
         self.running = True
+        self._session_started_mono = time.monotonic()
+        self._last_com_to_net_mono = 0.0
+        self._com_flow_last_mono = 0.0
+        self._com_active_total_s = 0.0
         self._start_local_backup()
         await self._open_mirror_ports()
         self._set_status(f"Serial: {self.com} @ {self.baud} — open", "Network: opening…")
@@ -1576,6 +1682,7 @@ class SerialNetBridge:
                     for peer in list(self._udp_peers):
                         try:
                             self.udp_transport.sendto(data, peer)
+                            self._udp_peer_last_out[peer] = time.monotonic()
                         except Exception as e:
                             self._ui_log(_friendly_network_error(e, f"UDP send→{peer}"))
                             dead.append(peer)
@@ -1610,6 +1717,8 @@ class SerialNetBridge:
         self._teardown = True
         self.running = False
         self._udp_peers.clear()
+        self._udp_peer_last_in.clear()
+        self._udp_peer_last_out.clear()
         self.last_udp_addr = None
 
         while not self.net_to_serial.empty():

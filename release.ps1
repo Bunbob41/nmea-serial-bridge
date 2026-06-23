@@ -195,14 +195,16 @@ if (-not $existing) {
 $notes = @"
 Windows x64 one-folder build (PyInstaller) — **v$Version**.
 
-**P0 hotfix — frozen launch crash**
-- Fixed ``serial-link.exe`` crash on startup: PyInstaller ``console=False`` leaves ``sys.stderr`` as ``None``; startup no longer calls ``isatty()`` on a null stream.
-- QC: ``gui_no_console_check`` in ``verify_all`` + ``frozen_gui_smoke`` after every release build.
+**Modern UI & header (v1.40.14–1.40.20)**
+- Header auto-arrange, chip display menu fix, UI editor chip rail order
+- Customize chip icons; Field layout mirror-picker and raw/MAVLink log fixes
+- Header status elision teardown fix (clean unittest / Qt shutdown on Windows)
 
-**Modern layout (default)**
-- Chip navigation: Control · Activity · Presets · Hub · Fleet · NMEA · Logging · Bench Tools
-- Fleet multi-stream; Tailscale / UDP listen host guidance (v1.40.10+)
-- Header chips: hidden scroll + edge fade when overflow
+**Bluetooth SPP (docs)**
+- ``docs/BLUETOOTH_SPP_WINDOWS.md`` — Windows incoming/outgoing COM pair notes (Sonarmite); companion-outgoing feature deferred
+
+**Repo hygiene**
+- Tests moved under ``tests/``; dead scripts removed; CI updated
 
 **Install**
 - Unzip and run ``serial-link\serial-link.exe`` (keep the whole folder).

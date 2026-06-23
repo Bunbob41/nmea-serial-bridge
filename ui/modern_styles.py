@@ -84,6 +84,15 @@ QFrame#modernGlobalHeader {{
     border-bottom: 2px solid rgba(59, 130, 246, 0.35);
     min-height: 40px;
 }}
+QFrame#modernGlobalHeader[headerTight="true"] {{
+    padding-left: 6px;
+    padding-right: 6px;
+}}
+QFrame#modernGlobalHeader[startCompact="true"] QPushButton#modernStartBtn,
+QFrame#modernGlobalHeader[startCompact="true"] QPushButton#modernStopBtn {{
+    padding: 4px 8px;
+    min-width: 56px;
+}}
 QFrame#modernGlobalHeader[toolsChipsEmbedded="true"] {{
     min-height: 42px;
 }}
@@ -109,6 +118,11 @@ QWidget#modernHeaderStatusContainer[headerCompact="true"] {{
 }}
 QWidget#modernHeaderChipHost {{
     min-width: 0;
+}}
+QWidget#modernHeaderChipHost[topChipsEmbedded="true"] {{
+    border-left: 1px solid {MODERN_BORDER};
+    padding-left: 6px;
+    margin-left: 4px;
 }}
 QToolButton#modernHeaderQrBtn {{
     background-color: {MODERN_SURFACE_ALT};
@@ -266,8 +280,33 @@ QFrame#modernStatusBanner {{
 }}
 QFrame#modernStatusBanner[headerCompact="true"] {{
     background-color: rgba(30, 41, 59, 0.55);
-    border-radius: 8px;
+    border-radius: 10px;
+    border-left: none;
     padding: 2px 10px;
+}}
+QLabel#modernStatusCapsuleDot {{
+    background-color: #64748b;
+    border-radius: 3px;
+    min-width: 6px;
+    max-width: 6px;
+    min-height: 6px;
+    max-height: 6px;
+}}
+QLabel#modernStatusCapsuleDot[state="running"] {{
+    background-color: {MODERN_ACCENT_GREEN};
+}}
+QLabel#modernStatusCapsuleDot[state="starting"] {{
+    background-color: {MODERN_ACCENT_AMBER};
+}}
+QLabel#modernStatusCapsuleDot[state="failed"] {{
+    background-color: #f87171;
+}}
+QLabel#modernStatusCapsuleDot[state="stopped"] {{
+    background-color: #64748b;
+}}
+QFrame#modernStatusBanner[headerCompact="true"] QLabel#modernStatusBannerText {{
+    font-size: 8.5pt;
+    font-weight: 600;
 }}
 QFrame#modernStatusBanner[headerCompact="true"][clickable="true"]:hover {{
     background-color: {MODERN_SURFACE_ALT};
@@ -668,6 +707,13 @@ QFrame#modernControlFormCard QWidget#advancedNetPanel QLabel {{
     color: {MODERN_TEXT_MUTED};
     font-size: 9pt;
     font-weight: 600;
+}}
+QScrollArea#modernAdvancedNetScroll {{
+    background: transparent;
+    border: none;
+}}
+QScrollArea#modernAdvancedNetScroll > QWidget > QWidget#advancedNetPanel {{
+    background: transparent;
 }}
 
 QFrame#modernControlMapCard {{
@@ -2064,8 +2110,13 @@ QWidget#bridgeTerminalPanel {{
 QFrame#wireTerminalToolbar {{
     background-color: {MODERN_SURFACE};
     border-bottom: 1px solid {MODERN_BORDER};
-    min-height: 36px;
-    max-height: 40px;
+    min-height: 68px;
+}}
+QWidget#wireTerminalFilterRow {{
+    min-height: 32px;
+}}
+QWidget#wireTransportRow {{
+    min-height: 28px;
 }}
 QLabel#wireToolbarLabel {{
     color: {MODERN_TEXT_MUTED};
@@ -2142,6 +2193,59 @@ QToolButton#wireHexBtn:checked {{
     background-color: rgba(251, 191, 36, 0.15);
     color: {MODERN_ACCENT_AMBER};
     border-color: {MODERN_ACCENT_AMBER};
+}}
+QLabel#wireTransportPill {{
+    background-color: {MODERN_SURFACE_ALT};
+    color: {MODERN_TEXT_MUTED};
+    border: 1px solid {MODERN_BORDER};
+    border-radius: 6px;
+    padding: 2px 8px;
+    font-size: 8.5pt;
+    font-weight: 600;
+}}
+QLabel#wireTransportPill[transportKind="ok"] {{
+    color: {MODERN_ACCENT_GREEN};
+    border-color: rgba(52, 211, 153, 0.45);
+}}
+QLabel#wireTransportPill[transportKind="warn"] {{
+    color: {MODERN_ACCENT_AMBER};
+    border-color: rgba(251, 191, 36, 0.55);
+}}
+QLabel#wireTransportPill[transportKind="idle"] {{
+    color: {MODERN_TEXT_MUTED};
+}}
+QToolButton#wireTransportUdpBtn {{
+    background-color: {MODERN_SURFACE_ALT};
+    color: {MODERN_TEXT_MUTED};
+    border: 1px solid {MODERN_BORDER};
+    border-radius: 6px;
+    padding: 2px 8px;
+    font-size: 8.5pt;
+    font-weight: 600;
+    min-height: 26px;
+}}
+QToolButton#wireTransportUdpBtn::menu-indicator {{
+    image: none;
+    width: 0px;
+    height: 0px;
+}}
+QToolButton#wireTransportUdpBtn[hasPeers="true"]::menu-indicator {{
+    subcontrol-origin: padding;
+    subcontrol-position: center right;
+    width: 10px;
+    height: 10px;
+}}
+QToolButton#wireTransportUdpBtn:hover {{
+    border-color: {MODERN_ACCENT};
+    color: {MODERN_TEXT};
+}}
+QToolButton#wireTransportUdpBtn[transportKind="ok"] {{
+    color: {MODERN_ACCENT_GREEN};
+    border-color: rgba(52, 211, 153, 0.45);
+}}
+QToolButton#wireTransportUdpBtn[transportKind="warn"] {{
+    color: {MODERN_ACCENT_AMBER};
+    border-color: rgba(251, 191, 36, 0.55);
 }}
 QToolButton#wireIconBtn {{
     background-color: {MODERN_SURFACE_ALT};

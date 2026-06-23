@@ -115,6 +115,15 @@ class StatusResponse(BaseModel):
     com_port_lock_reason: str = ""
     com_lock_checking: bool = False
     updated_mono: float
+    session_running_s: float = 0.0
+    com_active_total_s: float = 0.0
+    last_com_to_net_age_s: Optional[float] = None
+    serial_link_state: str = "closed"
+    udp_peer_count: int = 0
+    udp_peer_newest_in_s: Optional[float] = None
+    udp_peer_stale: bool = False
+    udp_peer_details: list[dict[str, Any]] = []
+    net_mode: str = ""
 
 
 class ConfigResponse(BaseModel):

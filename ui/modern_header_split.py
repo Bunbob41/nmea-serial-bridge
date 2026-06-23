@@ -133,8 +133,7 @@ class ModernHeaderSplitter(QtWidgets.QSplitter):
             clamped[2] += width - total
         elif total > width:
             over = total - width
-            # Shrink trail/status/run before the tool-chip rail when the bar is tight.
-            for idx in (3, 1, 0, 2):
+            for idx in (2, 0):
                 if over <= 0:
                     break
                 room = max(0, clamped[idx] - mins[idx])
@@ -158,9 +157,13 @@ class ModernHeaderSplitter(QtWidgets.QSplitter):
             sizes[2] += width - total
             self.setSizes(sizes)
         host = self.window()
-        sync = getattr(host, "_sync_modern_header_chip_compression", None)
+        sync = getattr(host, "_schedule_modern_header_layout", None)
         if callable(sync):
             QtCore.QTimer.singleShot(0, sync)
+        else:
+            legacy = getattr(host, "_sync_modern_header_chip_compression", None)
+            if callable(legacy):
+                QtCore.QTimer.singleShot(0, legacy)
 
 
 def wrap_header_pane(

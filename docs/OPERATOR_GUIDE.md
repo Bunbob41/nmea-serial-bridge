@@ -501,6 +501,24 @@ Read left to right:
 
 If **drops** or **rejects** climb under load, serial consumer may be slow or filter too strict.
 
+### Transport truth (v1.41+)
+
+Three clocks — do not confuse them:
+
+| Clock | Meaning | Where to look |
+| ----- | ------- | ------------- |
+| **Running** | Time since **Start** until **Stop** | Activity **Session** pill; web **Running**; Mission Review duration |
+| **COM data active** | Time with serial bytes actually moving **COM→network** (gaps >2 s pause the timer) | Activity **Session** tooltip; web **COM data active**; Stop log `[Transport] Session summary`; Mission Review when active ≪ running |
+| **UDP peer last seen** | Age of the **newest inbound** datagram from a registered tablet/app (listen mode) | Activity **UDP** pill (click for peer list); Modern header chip **UDP …** suffix; web **UDP peer** |
+
+**Activity strip** (Modern → Activity): **Serial ● …** shows last COM→net byte age; **UDP ● …** shows peer address or count; **Session …** shows Running time with COM-active detail on hover. Amber **⚠** means stale COM data (>60 s) or stale UDP peers (>60 s since inbound).
+
+**After Stop:** the log prints a `[Transport] Session summary` block (Running, COM active, last COM→net byte, line counts, UDP peers).
+
+**Mission Review:** duration label tooltip compares Running vs COM data active; summary text notes when COM was idle for much of the session.
+
+**Web dashboard** (Survey monitor): **Running**, **COM data active**, **Last COM→net**, and **UDP peer** mirror the same fields from `GET /status`.
+
 ---
 
 ## 10. Troubleshooting
