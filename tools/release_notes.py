@@ -23,6 +23,27 @@ INSTALL_FOOTER = """\
 - `build-env-v{version}.txt` — pip freeze / build environment lock
 """
 
+# Bullets aimed at maintainers/CI — omit from operator-facing GitHub releases.
+_MAINTAINER_BULLET_HINTS = (
+    "release notes generated",
+    "--notes-file",
+    "mojibake",
+    "github actions skips",
+    "verify_all",
+    "qt offscreen",
+    "pillow",
+)
+
+
+def _operator_bullets(bullets: list[str]) -> list[str]:
+    kept: list[str] = []
+    for bullet in bullets:
+        low = bullet.lower()
+        if any(hint in low for hint in _MAINTAINER_BULLET_HINTS):
+            continue
+        kept.append(bullet)
+    return kept
+
 
 def read_version(explicit: str | None) -> str:
     if explicit:
@@ -105,11 +126,11 @@ def build_release_notes(
     lines.append("")
 
     for ver in picked:
-        bullets = sections.get(ver, [])
+        bullets = _operator_bullets(sections.get(ver, []))
         if not bullets:
             continue
         if len(picked) > 1:
-            lines.append(f"**v{ver}**")
+            lines.append(f"### v{ver}")
         for bullet in bullets:
             lines.append(f"- {bullet}")
         lines.append("")
