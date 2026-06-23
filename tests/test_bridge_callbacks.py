@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import unittest
+from typing import Optional
 
 from bridge_core import NetMode, SerialNetBridge
 from nmea_codec import NmeaMode
@@ -13,13 +14,21 @@ _GGA = (
 
 
 class TestBridgeCallbackSafety(unittest.TestCase):
+    def setUp(self) -> None:
+        self._loop: Optional[asyncio.AbstractEventLoop] = None
+
+    def tearDown(self) -> None:
+        if self._loop is not None and not self._loop.is_closed():
+            self._loop.close()
+        self._loop = None
+
     def _bridge(self, **kwargs: object) -> SerialNetBridge:
-        loop = asyncio.new_event_loop()
+        self._loop = asyncio.new_event_loop()
         return SerialNetBridge(
             "COM99",
             115200,
             NetMode.UDP_LISTEN,
-            loop=loop,
+            loop=self._loop,
             udp_listen=("127.0.0.1", 10110),
             nmea_mode=NmeaMode.PASSTHROUGH,
             **kwargs,

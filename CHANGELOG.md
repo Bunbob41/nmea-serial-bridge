@@ -5,6 +5,10 @@ High-level notes for **this fork / branch** (`2034-ui-journey-modernization` and
 
 ---
 
+## v1.41.13
+
+- **CI unittest** — close per-test asyncio loops in `test_bridge_callbacks.py` to silence unclosed-loop `ResourceWarning` on Python 3.11 runners.
+
 ## v1.41.12
 
 - **CI test** — `test_modern_tools_nav_top_chips_mode` pins labels-only chip mode so icon-only compression does not assert missing label text.
