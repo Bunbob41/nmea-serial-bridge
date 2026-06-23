@@ -112,8 +112,16 @@ def build_release_notes(
     if not picked:
         raise SystemExit(f"No changelog bullets for v{version} (since v{since or 'start'})")
 
-    lo = picked[-1]
-    hi = picked[0]
+    included: list[tuple[str, list[str]]] = []
+    for ver in picked:
+        bullets = _operator_bullets(sections.get(ver, []))
+        if bullets:
+            included.append((ver, bullets))
+    if not included:
+        raise SystemExit(f"No operator-facing bullets for v{version} (since v{since or 'start'})")
+
+    lo = included[-1][0]
+    hi = included[0][0]
 
     lines = [
         f"Windows x64 one-folder build (PyInstaller) — **v{version}**.",
@@ -125,11 +133,8 @@ def build_release_notes(
         lines.append(f"### Highlights (v{version})")
     lines.append("")
 
-    for ver in picked:
-        bullets = _operator_bullets(sections.get(ver, []))
-        if not bullets:
-            continue
-        if len(picked) > 1:
+    for ver, bullets in included:
+        if len(included) > 1:
             lines.append(f"### v{ver}")
         for bullet in bullets:
             lines.append(f"- {bullet}")
