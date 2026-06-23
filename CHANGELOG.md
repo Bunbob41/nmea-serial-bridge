@@ -5,6 +5,10 @@ High-level notes for **this fork / branch** (`2034-ui-journey-modernization` and
 
 ---
 
+## v1.41.12
+
+- **CI test** — `test_modern_tools_nav_top_chips_mode` pins labels-only chip mode so icon-only compression does not assert missing label text.
+
 ## v1.41.11
 
 - **CI verify** — duplicate unittest step uses `run_unittests.py` (Qt-safe); fixed stale header/splitter tests and false-pass when inline `F` appeared in output.

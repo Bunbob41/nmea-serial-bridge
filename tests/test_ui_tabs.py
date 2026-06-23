@@ -383,6 +383,10 @@ class TestUiTabs(unittest.TestCase):
         self.assertFalse(win._modern_sidebar_scroll.isHidden())
 
         win._apply_modern_tools_nav_mode("top_chips", persist=False)
+        win._header_chips_icon_only = False
+        win._header_chips_icon_mode = "labels"
+        win._apply_embedded_header_chip_styles()
+        self._app.processEvents()
         self.assertEqual(win._modern_tools_nav_mode, "top_chips")
         chip_sep = getattr(win, "_header_chip_sep", None)
         self.assertIsNotNone(chip_sep)
