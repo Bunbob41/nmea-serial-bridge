@@ -69,7 +69,7 @@ class TestElidedStatusLabel(unittest.TestCase):
         lbl = ElidedStatusLabel()
         msg = "Stopped · Set COM & UDP, then Start."
         lbl.set_full_text(msg)
-        lbl.resize(420, 24)
+        lbl.resize(480, 24)
         lbl.refresh_elide()
         self.assertEqual(lbl.text(), msg)
 

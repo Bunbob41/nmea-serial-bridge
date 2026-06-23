@@ -24,8 +24,8 @@ jobs:
           python -m pip install -r requirements.txt
       - name: verify_all (compile, unit tests, GUI smoke — no COM hardware)
         run: python verify_all.py
-      - name: unittest
-        run: python -m unittest discover -s tests -p "test_*.py"
+      - name: unittest (Qt-safe runner)
+        run: python tools/run_unittests.py
 
   linux-headless:
     runs-on: ubuntu-latest

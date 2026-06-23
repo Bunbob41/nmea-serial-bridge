@@ -133,16 +133,23 @@ class ModernHeaderSplitter(QtWidgets.QSplitter):
             clamped[2] += width - total
         elif total > width:
             over = total - width
-            for idx in (2, 0):
+            # Shrink trail and run before the chip rail; status keeps its floor.
+            for idx in (3, 0, 2):
                 if over <= 0:
                     break
                 room = max(0, clamped[idx] - mins[idx])
                 take = min(over, room)
                 clamped[idx] -= take
                 over -= take
+            if over > 0 and clamped[2] > mins[2]:
+                clamped[2] = max(mins[2], clamped[2] - over)
 
         if len(clamped) >= 3:
-            clamped[2] = max(mins[2], clamped[2] + (width - sum(clamped)))
+            drift = width - sum(clamped)
+            if drift > 0:
+                clamped[2] += drift
+            elif drift < 0:
+                clamped[2] = max(mins[2], clamped[2] + drift)
 
         self.setSizes(clamped)
 

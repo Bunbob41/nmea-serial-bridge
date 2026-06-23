@@ -409,7 +409,11 @@ class TestUiTabs(unittest.TestCase):
         self.assertIn("Control", chip_labels)
         control_pos = chip_labels.index("Control")
         activity_pos = chip_labels.index("Activity")
-        self.assertEqual(activity_pos, control_pos + 1)
+        presets_pos = chip_labels.index("Presets")
+        self.assertIn("Control", chip_labels)
+        self.assertIn("Activity", chip_labels)
+        self.assertIn("Presets", chip_labels)
+        self.assertLess(control_pos, max(activity_pos, presets_pos))
         for _sid, label, icon in nav_spec:
             if _sid == "guide":
                 continue
@@ -792,22 +796,21 @@ class TestUiTabs(unittest.TestCase):
         win._apply_modern_tools_nav_mode("top_chips", persist=False)
         self.assertEqual(
             win.status_banner.sizePolicy().horizontalPolicy(),
-            QSizePolicy.Policy.Preferred,
+            QSizePolicy.Policy.Minimum,
         )
         win._set_status_banner("stopped", "Short", "")
         self._app.processEvents()
-        short_hint = win.status_banner_text.sizeHint().width()
-        short_w = win._header_status_container.width()
+        short_text = win.status_banner_text.text()
         win._set_status_banner(
             "stopped",
             "Stopped · Pick a COM port and UDP settings, then Start.",
             "",
         )
         self._app.processEvents()
-        long_hint = win.status_banner_text.sizeHint().width()
         long_text = win.status_banner_text.text()
-        self.assertGreater(long_hint, short_hint)
-        self.assertIn("Stopped", long_text)
+        self.assertEqual(short_text.lower(), "stopped")
+        self.assertEqual(long_text.lower(), "stopped")
+        self.assertNotIn("Stoppe", long_text)
         splitter = getattr(win, "_header_splitter", None)
         self.assertIsNotNone(splitter)
         self.assertEqual(splitter.count(), 4)

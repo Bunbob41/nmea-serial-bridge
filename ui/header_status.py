@@ -108,7 +108,7 @@ class ElidedStatusLabel(QtWidgets.QLabel):
 
     def _elide_width(self) -> int:
         try:
-            label_w = max(0, self.contentsRect().width())
+            label_w = max(0, self.width(), self.contentsRect().width())
         except RuntimeError:
             return 24
         if label_w > 32:

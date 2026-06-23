@@ -5,6 +5,11 @@ High-level notes for **this fork / branch** (`2034-ui-journey-modernization` and
 
 ---
 
+## v1.41.11
+
+- **CI verify** — duplicate unittest step uses `run_unittests.py` (Qt-safe); fixed stale header/splitter tests and false-pass when inline `F` appeared in output.
+- **Header splitter** — `set_clamped_sizes` shrinks trail before chip rail when space is tight.
+
 ## v1.41.10
 
 - **TCP serve loops** — `_serve_tcp_forever` / `_serve_tcp_sink_forever` tolerate test doubles that lack async context manager protocol; fixes CI `TypeError` on `_DummyServer`.

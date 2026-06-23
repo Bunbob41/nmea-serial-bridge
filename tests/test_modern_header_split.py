@@ -31,8 +31,10 @@ class TestModernHeaderSplit(unittest.TestCase):
             splitter.addWidget(QtWidgets.QWidget())
         splitter.set_clamped_sizes([106, 122, 755, 274])
         sizes = splitter.sizes()
-        self.assertGreaterEqual(sizes[2], 400)
-        self.assertGreater(sum(sizes), 850)
+        mins = header_split_mins()
+        self.assertGreaterEqual(sizes[2], mins[2])
+        self.assertGreaterEqual(sizes[3], mins[3] - 8)
+        self.assertAlmostEqual(sum(sizes), 900, delta=12)
 
     def test_set_clamped_sizes_shrinks_trail_before_chips_when_tight(self) -> None:
         host = QtWidgets.QWidget()
@@ -45,8 +47,9 @@ class TestModernHeaderSplit(unittest.TestCase):
         sizes = splitter.sizes()
         mins = header_split_mins()
         self.assertGreaterEqual(sizes[2], mins[2])
-        self.assertGreaterEqual(sizes[2], 300)
-        self.assertGreater(sum(sizes), 740)
+        self.assertGreaterEqual(sizes[3], mins[3] - 8)
+        self.assertLessEqual(sizes[3], 274)
+        self.assertAlmostEqual(sum(sizes), 780, delta=12)
 
 
 class TestModernToolsChipScroll(unittest.TestCase):
