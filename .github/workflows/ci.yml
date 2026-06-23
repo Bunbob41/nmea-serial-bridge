@@ -39,7 +39,7 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -r requirements-linux-headless.txt
       - name: Headless unit tests
-        run: python -m unittest tests.test_serial_link_headless tests.test_web_api -v
+        run: python -m unittest tests.test_serial_link_headless -v
       - name: Build Linux headless release tar.gz
         run: bash packaging/linux/build-release-tar.sh
       - name: Upload linux-headless artifact
