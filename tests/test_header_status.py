@@ -19,6 +19,12 @@ class TestElidedStatusLabel(unittest.TestCase):
         else:
             cls._app = QtWidgets.QApplication.instance()
 
+    def test_compact_stopped_never_elides(self) -> None:
+        lbl = ElidedStatusLabel()
+        lbl.resize(36, 24)
+        lbl.set_full_text("stopped")
+        self.assertEqual(lbl.text(), "stopped")
+
     def test_keeps_stopped_title_when_narrow(self) -> None:
         lbl = ElidedStatusLabel()
         lbl.resize(48, 24)

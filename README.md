@@ -4,11 +4,12 @@
 [![License](https://img.shields.io/github/license/Bunbob41/nmea-serial-bridge)](LICENSE)
 [![CI](https://github.com/Bunbob41/nmea-serial-bridge/actions/workflows/ci.yml/badge.svg)](https://github.com/Bunbob41/nmea-serial-bridge/actions/workflows/ci.yml)
 
-**Serial Link** (`serial-link.exe`) is a Windows desktop app that **bidirectionally bridges** traffic between **UDP/TCP** and a **serial COM port**. Built for survey / USV workflows — NMEA 0183, raw binary (RTCM / MAVLink), **Fleet** multi-stream, and **Modern** or **Field** layouts.
+**Serial Link** (`serial-link.exe` on Windows) **bidirectionally bridges** traffic between **UDP/TCP** and a **serial port** (COM on Windows, `/dev/tty*` on Linux). Built for survey / USV workflows — NMEA 0183, raw binary (RTCM / MAVLink), **Fleet** multi-stream, and **Modern** or **Field** layouts on Windows.
 
 | | |
 | --- | --- |
-| **Download** | [Latest release](https://github.com/Bunbob41/nmea-serial-bridge/releases/latest) — unzip and run `serial-link.exe` |
+| **Download (Windows)** | [Latest release](https://github.com/Bunbob41/nmea-serial-bridge/releases/latest) — unzip and run `serial-link.exe` |
+| **Download (Linux)** | Same releases page — `serial-link-vX.Y.Z-linux-headless.tar.gz` (headless bridge + web dashboard; see below) |
 | **Version** | [`version.py`](version.py) |
 | **Repo name** | `nmea-serial-bridge` (product: **Serial Link**) |
 
@@ -20,6 +21,7 @@
 
 | Doc | Audience |
 | --- | -------- |
+| [`docs/LINUX_HEADLESS.md`](docs/LINUX_HEADLESS.md) | Linux headless service + browser dashboard |
 | [`docs/GETTING_STARTED.md`](docs/GETTING_STARTED.md) | First install + 15-minute bench walkthrough |
 | [`docs/OPERATOR_GUIDE.md`](docs/OPERATOR_GUIDE.md) | Full operator manual |
 | [`docs/NORBIT_DCT.md`](docs/NORBIT_DCT.md) | NORBIT DCT + Applanix workflow |
@@ -41,7 +43,7 @@
 
 - **Live log** — throttled; optional **verbose** per-sentence view (NMEA text modes).
 
-- **NMEA tab** — **Passthrough** (recommended for Trimble NMEA), **Strict** (+ checksum + sentence filter), or **Raw binary** (RTCM / **MAVLink** / other binary passthrough).
+- **NMEA tab** — **Passthrough** (recommended for professional GPS unit NMEA), **Strict** (+ checksum + sentence filter), or **Raw binary** (RTCM / **MAVLink** / other binary passthrough).
 
 - **Cube / MAVLink + Mission Planner** — Raw binary + UDP listen; GCS uses **UDP Client** to the bridge (see `docs/OPERATOR_GUIDE.md` §5.6). Shipped **Cube MAVLink** preset.
 
@@ -61,9 +63,10 @@
 
 ## Requirements
 
-- **Windows** (primary target).  
-- **Python 3.10+** for dev; frozen **`.exe`** for field PCs.  
-- COM drivers for your hardware (USB serial, com0com on bench).
+- **Windows** — full desktop app (primary target).  
+- **Linux** — headless bridge + web dashboard (Ubuntu 22.04/24.04; no PySide6). See [`docs/LINUX_HEADLESS.md`](docs/LINUX_HEADLESS.md).  
+- **Python 3.10+** for dev; frozen **`.exe`** for Windows field PCs.  
+- Serial drivers for your hardware (USB serial, com0com on Windows bench).
 
 ## Install (development)
 
@@ -94,12 +97,25 @@ python launcher.py --ui modern
 
 Saved layout: `%USERPROFILE%\.cursor-udp-com-bridge\ui_choice.json`
 
+### Linux (headless + dashboard)
+
+No Qt GUI — bridge and the same browser dashboard as **Phone** on desktop. Spec: [`specs/011-linux-headless-bridge/spec.md`](specs/011-linux-headless-bridge/spec.md).
+
+```bash
+# From release tar or git clone
+./packaging/linux/install.sh
+./packaging/linux/run-headless.sh --serial /dev/ttyUSB0
+# Open http://127.0.0.1:8765/
+```
+
+Add your user to `dialout` for USB serial. Optional systemd user unit: `packaging/linux/serial-link-headless.service`.
+
 **Desktop shortcut:** `.\create_desktop_shortcut.bat` (re-run after moving the project folder).
 
 ### Typical workflow
 
 1. **Presets** — load bench or boat preset → confirm COM + UDP on **Connect** (Modern) or the strip (Field) → **Start** → **Running**.  
-2. **NMEA** — **Passthrough** for Trimble/R10 NMEA; **Raw** only for binary RTCM or other non-NMEA streams.  
+2. **NMEA** — **Passthrough** for professional GPS unit NMEA; **Raw** only for binary RTCM or other non-NMEA streams.  
 3. **Send** — manual inject on bench (watch **paired** com0com port, not bridge COM).  
 4. **Stop** when finished.
 

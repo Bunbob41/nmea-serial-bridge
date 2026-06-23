@@ -94,7 +94,7 @@ def measure_status_capsule_width(
     fm = label.fontMetrics() if label is not None else QtGui.QFontMetrics(QtGui.QFont())
     text_w = fm.horizontalAdvance(text)
     dot_slack = 10 if include_dot else 0  # 6px dot + spacing
-    pad = 22  # banner padding + capsule margins
+    pad = 28  # banner padding + capsule margins + layout slack
     mins = header_split_mins()
     return max(mins[1], text_w + dot_slack + pad)
 
@@ -167,15 +167,18 @@ def apply_plan_sizes(splitter: QtWidgets.QSplitter, plan: HeaderLayoutPlan) -> N
     clamped = list(plan.sizes)
     mins = header_split_mins()
     width = max(splitter.width(), 1)
+    status_floor = max(mins[1], int(plan.sizes[1]))
+    trail_floor = max(mins[3], int(plan.sizes[3]))
     for i in range(len(clamped)):
         clamped[i] = max(mins[i], int(clamped[i]))
+    clamped[1] = max(clamped[1], status_floor)
+    clamped[3] = max(clamped[3], trail_floor)
 
     total = sum(clamped)
     if total < width:
         clamped[2] += width - total
     elif total > width:
         over = total - width
-        # Pass 3 protection: only the chip pane flexes; never steal from status/trail.
         room = max(0, clamped[2] - mins[2])
         take = min(over, room)
         clamped[2] -= take
@@ -187,9 +190,16 @@ def apply_plan_sizes(splitter: QtWidgets.QSplitter, plan: HeaderLayoutPlan) -> N
             over -= take
         if over > 0 and clamped[2] > mins[2]:
             clamped[2] = max(mins[2], clamped[2] - over)
+        clamped[1] = max(clamped[1], status_floor)
+        clamped[3] = max(clamped[3], trail_floor)
 
     if len(clamped) >= 3:
         drift = width - sum(clamped)
-        clamped[2] = max(mins[2], clamped[2] + drift)
+        if drift > 0:
+            clamped[2] += drift
+        elif drift < 0:
+            clamped[2] = max(mins[2], clamped[2] + drift)
+            if sum(clamped) < width:
+                clamped[2] += width - sum(clamped)
 
     splitter.setSizes(clamped)

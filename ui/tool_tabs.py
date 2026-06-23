@@ -457,7 +457,7 @@ Full docs: Getting started… / Operator guide… buttons above.</p>
 _GUIDE_UDP = """
 <h2>UDP — listen vs remote</h2>
 <p><em><b>UDP listen</b> (default): this PC receives datagrams on a bound port — typical for
-Trimble/INS Ethernet NMEA. <b>UDP remote</b> (Advanced): send to one fixed host:port.</em></p>
+professional GPS unit / INS Ethernet NMEA. <b>UDP remote</b> (Advanced): send to one fixed host:port.</em></p>
 <hr/>
 <h3>UDP listen (most survey installs)</h3>
 <ol>

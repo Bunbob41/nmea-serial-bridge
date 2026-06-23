@@ -5,6 +5,18 @@ High-level notes for **this fork / branch** (`2034-ui-journey-modernization` and
 
 ---
 
+## v1.41.9
+
+- **Linux headless (Phase 1)** — `serial_link_headless.py` runs `bridge_core` + existing web dashboard (port 8765) without PySide6; `headless_facade.py` and `headless_bridge_runner.py` back the same REST API as desktop.
+- **No Qt in bridge_core import path** — `BridgeAsyncThread` moved to `bridge_qt_thread.py`; shared web DTOs in `web_facade_types.py` so Linux installs skip PySide6.
+- **Packaging** — `requirements-linux-headless.txt`, `docs/LINUX_HEADLESS.md`, `packaging/linux/` (install, run, systemd unit, release tar script); CI `linux-headless` job builds `serial-link-vX.Y.Z-linux-headless.tar.gz`.
+- **Spec** — `specs/011-linux-headless-bridge/` (FR-501–509, single-node, tar.gz delivery).
+
+## v1.41.8
+
+- **Operator copy** — replaced Trimble/R10 references in UI and docs with **professional GPS unit** (USB auto-detect keywords unchanged).
+- **Top-chips status capsule** — removed the 220px max-width cap; status pane now keeps a readable floor so **stopped** no longer clips to **Stoppe…**; protected capsule titles never elide mid-word.
+
 ## v1.41.7
 
 - **GitHub releases** — release notes generated from `CHANGELOG.md` via UTF-8 `--notes-file` (fixes em-dash mojibake on release pages); CI installs Pillow and uses Qt offscreen for GUI smoke.

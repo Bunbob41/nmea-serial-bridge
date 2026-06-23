@@ -143,21 +143,11 @@ class ElidedStatusLabel(QtWidgets.QLabel):
         fm = self.fontMetrics()
         title, detail = split_status_title_detail(self._full_text)
         if title in _PROTECTED_TITLES:
-            title_width = fm.horizontalAdvance(title)
             if fm.horizontalAdvance(self._full_text) <= width:
                 self.setText(self._full_text)
                 return
-            # Never combine title + partial detail — that clips mid-word in tight headers.
-            if title_width <= width:
-                self.setText(title)
-                return
-            self.setText(
-                fm.elidedText(
-                    title,
-                    QtCore.Qt.TextElideMode.ElideRight,
-                    width,
-                )
-            )
+            # Protected capsule titles must never clip mid-word (e.g. "Stoppe…").
+            self.setText(title)
             return
 
         if not detail:

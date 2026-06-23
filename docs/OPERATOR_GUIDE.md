@@ -7,7 +7,7 @@ Step-by-step guide for survey / bench use. Screenshots are optional; a **shot li
 
 **Display comfort:** default theme is **Field Slate** (neutral gray, high-contrast text). Gold is used for accents and primary actions only, not for paragraph text on bright panels. Change theme via **View → Theme** if you prefer Maroon & Gold or others.
 
-**What this app does:** forwards data between **UDP (or advanced TCP)** and a **COM port**. Default path is **NMEA 0183 text** (Trimble R10, simulators, Hypack). Optional **Raw binary** mode forwards **RTCM**, **MAVLink**, and other non-NMEA bytes without parsing.
+**What this app does:** forwards data between **UDP (or advanced TCP)** and a **COM port**. Default path is **NMEA 0183 text** (professional GPS unit, simulators, Hypack). Optional **Raw binary** mode forwards **RTCM**, **MAVLink**, and other non-NMEA bytes without parsing.
 
 Typical use: INS or GNSS on Ethernet → bridge → designated device COM input.
 
@@ -270,7 +270,7 @@ Use when the INS sends NMEA UDP to the survey PC and the bridge drives the targe
 | 2    | Adjust COM/baud/UDP if this PC differs           |                                                     |
 | 3    | **Save** after first good config on this PC      | Updates `path_presets.json`                         |
 | 4    | **Auto-reconnect COM** (default on)              | Connect tab (Standard) or Presets → Advanced (Field)  |
-| 5    | **NMEA** → **Passthrough** for Trimble NMEA      | Use **Raw** only for binary RTCM / other (rare)     |
+| 5    | **NMEA** → **Passthrough** for professional GPS unit NMEA | Use **Raw** only for binary RTCM / other (rare)     |
 | 6    | **Start bridge**                                 | Running; bridge COM is dedicated                     |
 | 7    | Confirm INS stream                               | Log shows UDP traffic; Hz in status bar / HUD         |
 | 7b   | Multiple UDP consumers (rare)                    | Leave **Fan-out** on so each sender that contacted the bridge receives serial→net |
@@ -344,7 +344,7 @@ Serial Link is one **COM ↔ IP** bridge session. It does not replace survey sof
 
 On a **single survey PC** you might run:
 
-1. **Bridge A (NMEA):** Trimble/INS UDP → COM → Hypack positioning input.  
+1. **Bridge A (NMEA):** Professional GPS / INS UDP → COM → Hypack positioning input.  
 2. **Bridge B (MAVLink):** Cube COM → UDP **14550** → Mission Planner for USV autopilot monitoring.
 
 That requires **two COM ports and two bridge processes** (GUI + headless, or two machines). One Serial Link session cannot split two COM devices.
@@ -418,7 +418,7 @@ On **one autopilot COM** with fan-out, you can simultaneously:
 
 | Mode | Use when |
 | ---- | -------- |
-| **Passthrough** | Trimble R10 NMEA, simulators, Hypack path (default) |
+| **Passthrough** | Professional GPS unit NMEA, simulators, Hypack path (default) |
 | **Strict** | You need checksum + sentence-type filter (bench QA) |
 | **Raw binary** | Receiver outputs **RTCM** or other binary — bytes forwarded unchanged |
 

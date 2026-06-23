@@ -114,7 +114,7 @@ QWidget#modernHeaderStatusContainer {{
     min-width: 80px;
 }}
 QWidget#modernHeaderStatusContainer[headerCompact="true"] {{
-    max-width: 220px;
+    min-width: 80px;
 }}
 QWidget#modernHeaderChipHost {{
     min-width: 0;
@@ -307,6 +307,7 @@ QLabel#modernStatusCapsuleDot[state="stopped"] {{
 QFrame#modernStatusBanner[headerCompact="true"] QLabel#modernStatusBannerText {{
     font-size: 8.5pt;
     font-weight: 600;
+    min-width: 52px;
 }}
 QFrame#modernStatusBanner[headerCompact="true"][clickable="true"]:hover {{
     background-color: {MODERN_SURFACE_ALT};

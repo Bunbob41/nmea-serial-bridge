@@ -25,8 +25,8 @@ from bench_config import (
     save_preset,
     set_last_preset,
 )
+from bridge_qt_thread import BridgeAsyncThread
 from bridge_core import (
-    BridgeAsyncThread,
     NetMode,
     SerialNetBridge,
     SERIAL_OPEN_TIMEOUT_S,
@@ -1591,7 +1591,7 @@ class BridgeLogicMixin:
         elif mode == "passthrough":
             lbl.setText(
                 "Next Start: Passthrough — all NMEA forwarded with minimal changes "
-                "(recommended for Trimble / survey UDP)."
+                "(recommended for professional GPS unit / survey UDP)."
             )
             lbl.setProperty("summaryKind", "ok")
         else:

@@ -47,7 +47,7 @@ Goal: prove UDP → COM on your desk with com0com or a USB serial adapter.
 | 4 | External | Open Tera Term (or similar) on the **paired** com0com port (e.g. COM12) | Do **not** open the bridge COM in another app |
 | 5 | **Tools → Diagnostics** | **Automated checks** → **UDP sample burst (2.5 s)** | Log + Tera Term show NMEA; status bar Hz > 0 |
 | 6 | **Log** tab | Skim traffic; try log preset **Survey ops** | Readable sentences, not a flood |
-| 7 | **Tools → NMEA** | Leave **Passthrough** for Trimble-style NMEA | Use **Strict** only when you need QA |
+| 7 | **Tools → NMEA** | Leave **Passthrough** for professional GPS unit NMEA | Use **Strict** only when you need QA |
 | 8 | **Connect** | **Stop bridge** | COM released; banner **Stopped** |
 
 **Stuck?** **Tools → Diagnostics → Bench checklist** or survey bar **Checklists → Bench checklist**.

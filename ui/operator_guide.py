@@ -269,7 +269,7 @@ def _build_udp_page(parent: QtWidgets.QWidget) -> QtWidgets.QWidget:
     lay.addWidget(
         _guide_tip_card(
             "When to use UDP listen",
-            "Trimble R10, Applanix POS MV, and most INS boxes send NMEA over UDP to a port on this PC. "
+            "Professional GPS units, Applanix POS MV, and most INS boxes send NMEA over UDP to a port on this PC. "
             "You listen — you do not dial out to them.",
         )
     )
@@ -309,7 +309,7 @@ def _build_udp_page(parent: QtWidgets.QWidget) -> QtWidgets.QWidget:
 
     lay.addWidget(
         _guide_tip_card(
-            "Typical Trimble / R10 bench values",
+            "Typical professional GPS unit bench values",
             "COM7 @ 115200 · UDP listen 0.0.0.0:10110 · NMEA mode Passthrough (Tools → NMEA).",
         )
     )

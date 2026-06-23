@@ -82,7 +82,7 @@ def build_modern_nmea_settings(parent: QtWidgets.QWidget) -> QtWidgets.QWidget:
         _mode_card(
             parent.rb_nmea_passthrough,
             "Passthrough",
-            "Default for Trimble R10 and survey UDP. Forwards NMEA with minimal changes.",
+            "Default for professional GPS unit and survey UDP. Forwards NMEA with minimal changes.",
             mode_key="passthrough",
             recommended=True,
         ),

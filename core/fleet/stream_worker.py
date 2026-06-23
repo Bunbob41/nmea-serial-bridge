@@ -6,7 +6,7 @@ from typing import Optional, Protocol
 
 from PySide6 import QtCore
 
-from bridge_core import BridgeAsyncThread
+from bridge_qt_thread import BridgeAsyncThread
 from core.fleet.bridge_factory import make_bridge_builder
 from core.fleet.config import StreamDefinition, stream_connection_key
 from core.fleet.types import FLEET_QUEUE_BACKLOG_DEPTH, StreamRuntimeState, WorkerState

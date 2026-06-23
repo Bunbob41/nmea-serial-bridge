@@ -1,0 +1,4 @@
+# Linux headless Serial Link (bridge + web dashboard). No PySide6.
+pyserial>=3.5
+pyserial-asyncio>=0.6
+-r requirements-web.txt

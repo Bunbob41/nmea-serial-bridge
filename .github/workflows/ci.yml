@@ -26,3 +26,24 @@ jobs:
         run: python verify_all.py
       - name: unittest
         run: python -m unittest discover -s tests -p "test_*.py"
+
+  linux-headless:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install headless dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-linux-headless.txt
+      - name: Headless unit tests
+        run: python -m unittest tests.test_serial_link_headless tests.test_web_api -v
+      - name: Build Linux headless release tar.gz
+        run: bash packaging/linux/build-release-tar.sh
+      - name: Upload linux-headless artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: serial-link-linux-headless
+          path: dist/serial-link-v*-linux-headless.tar.gz

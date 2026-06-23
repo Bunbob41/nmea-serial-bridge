@@ -1610,15 +1610,21 @@ class BridgeWindowModern(BridgeLogicMixin, QtWidgets.QWidget):
 
         apply_plan_sizes(splitter, plan)
         self._sync_session_run_cluster_width()
+        status_floor = plan.sizes[1]
+        status_pane = getattr(self, "_header_pane_status", None)
+        if status_pane is not None:
+            status_pane.setMinimumWidth(status_floor)
         status_container = getattr(self, "_header_status_container", None)
         if status_container is not None:
-            status_container.setMinimumWidth(plan.sizes[1])
+            status_container.setMinimumWidth(status_floor)
             status_container.setMaximumWidth(16777215)
         banner = getattr(self, "status_banner", None)
         if banner is not None:
-            banner.setMinimumWidth(max(56, plan.sizes[1] - 8))
+            banner.setMinimumWidth(max(56, status_floor - 8))
             banner.setMaximumWidth(16777215)
         if isinstance(label, ElidedStatusLabel):
+            fm = label.fontMetrics()
+            label.setMinimumWidth(max(52, fm.horizontalAdvance(status_display) + 4))
             label.refresh_elide()
         self._sync_modern_header_chip_scroll()
         self._sync_header_chip_fade_edges()
@@ -1818,9 +1824,10 @@ class BridgeWindowModern(BridgeLogicMixin, QtWidgets.QWidget):
                 chip_label.hide()
             if status_container is not None:
                 status_container.setSizePolicy(
-                    QtWidgets.QSizePolicy.Policy.Maximum,
+                    QtWidgets.QSizePolicy.Policy.Minimum,
                     QtWidgets.QSizePolicy.Policy.Fixed,
                 )
+                status_container.setMaximumWidth(16777215)
                 status_container.setProperty("headerCompact", "true")
                 status_container.style().unpolish(status_container)
                 status_container.style().polish(status_container)
@@ -1832,15 +1839,25 @@ class BridgeWindowModern(BridgeLogicMixin, QtWidgets.QWidget):
             if status_banner is not None:
                 status_banner.setProperty("headerCompact", "true")
                 status_banner.setSizePolicy(
-                    QtWidgets.QSizePolicy.Policy.Preferred,
+                    QtWidgets.QSizePolicy.Policy.Minimum,
                     QtWidgets.QSizePolicy.Policy.Fixed,
                 )
                 status_banner.style().unpolish(status_banner)
                 status_banner.style().polish(status_banner)
+                banner_lay = status_banner.layout()
+                if banner_lay is not None:
+                    lbl = getattr(self, "status_banner_text", None)
+                    if lbl is not None:
+                        banner_lay.setStretch(banner_lay.indexOf(lbl), 0)
             label = getattr(self, "status_banner_text", None)
-            if isinstance(label, QtWidgets.QLabel):
+            if isinstance(label, ElidedStatusLabel):
                 label.setSizePolicy(
-                    QtWidgets.QSizePolicy.Policy.Preferred,
+                    QtWidgets.QSizePolicy.Policy.Minimum,
+                    QtWidgets.QSizePolicy.Policy.Fixed,
+                )
+            elif isinstance(label, QtWidgets.QLabel):
+                label.setSizePolicy(
+                    QtWidgets.QSizePolicy.Policy.Minimum,
                     QtWidgets.QSizePolicy.Policy.Fixed,
                 )
             if hdr is not None:

@@ -300,7 +300,7 @@ def create_connection_controls(parent: QtWidgets.QWidget) -> None:
     p.chk_auto_discover = QtWidgets.QCheckBox("Auto-connect on GNSS device detected")
     p.chk_auto_discover.setChecked(False)
     p.chk_auto_discover.setToolTip(
-        "Watch for USB-serial GNSS devices (Trimble, U-blox, NovAtel, …) in the "
+        "Watch for USB-serial GNSS devices (professional GPS units, U-blox, NovAtel, …) in the "
         "background.  When a matching device appears, its COM port is selected "
         "automatically.  If the bridge is stopped and a preset is loaded, it also "
         "starts the bridge.\n\n"
@@ -527,7 +527,7 @@ def create_nmea_controls(parent: QtWidgets.QWidget, *, embedded: bool = False) -
     parent.rb_nmea_raw = QtWidgets.QRadioButton("Raw binary (RTCM / other)")
     parent.rb_nmea_passthrough.setChecked(True)
     parent.rb_nmea_passthrough.setToolTip(
-        "Default for Trimble R10 NMEA and bench simulators — lines forwarded with minimal changes."
+        "Default for professional GPS unit NMEA and bench simulators — lines forwarded with minimal changes."
     )
     parent.rb_nmea_strict.setToolTip(
         "Verify NMEA checksums and only forward checked sentence types (bench QA)."

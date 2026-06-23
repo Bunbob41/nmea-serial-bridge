@@ -1,0 +1,20 @@
+[Unit]
+Description=Serial Link headless bridge + web dashboard
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/nmea-serial-bridge
+Environment=PYTHONUNBUFFERED=1
+# Adjust paths and flags for your site:
+ExecStart=%h/nmea-serial-bridge/packaging/linux/run-headless.sh \
+  --serial /dev/ttyUSB0 \
+  --baud 115200 \
+  --udp-port 10110 \
+  --web-port 8765
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target
