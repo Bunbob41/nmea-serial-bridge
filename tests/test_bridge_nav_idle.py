@@ -4,6 +4,7 @@ from __future__ import annotations
 import asyncio
 import time
 import unittest
+from typing import Optional
 
 from bridge_core import NetMode, SerialNetBridge
 from nmea_codec import NmeaMode
@@ -14,16 +15,43 @@ _SAMPLE_RTK = (
 
 
 class TestBridgeNavIdle(unittest.TestCase):
+    def setUp(self) -> None:
+        self._loop: Optional[asyncio.AbstractEventLoop] = None
+        self._bridge_obj: Optional[SerialNetBridge] = None
+
+    def tearDown(self) -> None:
+        if self._bridge_obj is not None:
+            try:
+                self._bridge_obj.abort_now()
+            except Exception:
+                pass
+            self._bridge_obj = None
+
+        if self._loop is not None:
+            try:
+                asyncio.set_event_loop(None)
+            except Exception:
+                pass
+            if not self._loop.is_closed():
+                try:
+                    self._loop.close()
+                except Exception:
+                    pass
+        self._loop = None
+
     def _make_bridge(self) -> SerialNetBridge:
-        loop = asyncio.new_event_loop()
-        return SerialNetBridge(
+        self._loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(self._loop)
+        bridge = SerialNetBridge(
             "COM99",
             115200,
             NetMode.UDP_LISTEN,
-            loop=loop,
+            loop=self._loop,
             udp_listen=("127.0.0.1", 10110),
             nmea_mode=NmeaMode.PASSTHROUGH,
         )
+        self._bridge_obj = bridge
+        return bridge
 
     def test_live_gga_then_clear_on_zero_hz(self) -> None:
         bridge = self._make_bridge()

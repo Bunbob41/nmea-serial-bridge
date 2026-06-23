@@ -5,6 +5,11 @@ High-level notes for **this fork / branch** (`2034-ui-journey-modernization` and
 
 ---
 
+## v1.41.14
+
+- **CI verify (root cause)** — `unittest_output_indicates_ok` no longer treats `.F` inside the word **False** as a dot-mode failure; restores pass detection for long verbose runs on GitHub Actions.
+- **Asyncio tests** — `test_bridge_callbacks` / `test_bridge_nav_idle` abort bridges and close/set_event_loop(None) in tearDown to stop ProactorEventLoop ResourceWarnings on Python 3.11.
+
 ## v1.41.13
 
 - **CI unittest** — close per-test asyncio loops in `test_bridge_callbacks.py` to silence unclosed-loop `ResourceWarning` on Python 3.11 runners.

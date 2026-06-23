@@ -16,15 +16,32 @@ _GGA = (
 class TestBridgeCallbackSafety(unittest.TestCase):
     def setUp(self) -> None:
         self._loop: Optional[asyncio.AbstractEventLoop] = None
+        self._bridge_obj: Optional[SerialNetBridge] = None
 
     def tearDown(self) -> None:
-        if self._loop is not None and not self._loop.is_closed():
-            self._loop.close()
+        if self._bridge_obj is not None:
+            try:
+                self._bridge_obj.abort_now()
+            except Exception:
+                pass
+            self._bridge_obj = None
+
+        if self._loop is not None:
+            try:
+                asyncio.set_event_loop(None)
+            except Exception:
+                pass
+            if not self._loop.is_closed():
+                try:
+                    self._loop.close()
+                except Exception:
+                    pass
         self._loop = None
 
     def _bridge(self, **kwargs: object) -> SerialNetBridge:
         self._loop = asyncio.new_event_loop()
-        return SerialNetBridge(
+        asyncio.set_event_loop(self._loop)
+        bridge = SerialNetBridge(
             "COM99",
             115200,
             NetMode.UDP_LISTEN,
@@ -33,6 +50,8 @@ class TestBridgeCallbackSafety(unittest.TestCase):
             nmea_mode=NmeaMode.PASSTHROUGH,
             **kwargs,
         )
+        self._bridge_obj = bridge
+        return bridge
 
     def test_emit_stats_survives_stats_cb_failure(self) -> None:
         logs: list[str] = []
