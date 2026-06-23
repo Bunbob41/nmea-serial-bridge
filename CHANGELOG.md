@@ -5,6 +5,10 @@ High-level notes for **this fork / branch** (`2034-ui-journey-modernization` and
 
 ---
 
+## v1.41.10
+
+- **TCP serve loops** — `_serve_tcp_forever` / `_serve_tcp_sink_forever` tolerate test doubles that lack async context manager protocol; fixes CI `TypeError` on `_DummyServer`.
+
 ## v1.41.9
 
 - **Linux headless (Phase 1)** — `serial_link_headless.py` runs `bridge_core` + existing web dashboard (port 8765) without PySide6; `headless_facade.py` and `headless_bridge_runner.py` back the same REST API as desktop.

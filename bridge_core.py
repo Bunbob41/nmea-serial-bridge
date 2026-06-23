@@ -398,6 +398,24 @@ class UDPRecvProtocol(asyncio.DatagramProtocol):
         self.bridge.on_udp_datagram(data, addr)
 
 
+async def _tcp_server_serve_forever(server: object) -> None:
+    """Run asyncio.start_server result until cancelled; tolerate test doubles."""
+    if hasattr(server, "__aenter__"):
+        async with server:  # type: ignore[misc]
+            await server.serve_forever()  # type: ignore[attr-defined]
+        return
+    if hasattr(server, "serve_forever"):
+        try:
+            await server.serve_forever()  # type: ignore[attr-defined]
+        except asyncio.CancelledError:
+            pass
+        return
+    try:
+        await asyncio.Event().wait()
+    except asyncio.CancelledError:
+        pass
+
+
 class SerialNetBridge:
     """Bidirectional serial ↔ network with bounded queues and drop counters."""
 
@@ -1357,8 +1375,7 @@ class SerialNetBridge:
 
     async def _serve_tcp_sink_forever(self) -> None:
         assert self._tcp_sink_server is not None
-        async with self._tcp_sink_server:
-            await self._tcp_sink_server.serve_forever()
+        await _tcp_server_serve_forever(self._tcp_sink_server)
 
     async def _on_tcp_sink_client(
         self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter
@@ -1404,8 +1421,7 @@ class SerialNetBridge:
 
     async def _serve_tcp_forever(self) -> None:
         assert self._tcp_server is not None
-        async with self._tcp_server:
-            await self._tcp_server.serve_forever()
+        await _tcp_server_serve_forever(self._tcp_server)
 
     async def _on_tcp_client(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
         addr = writer.get_extra_info("peername")

@@ -52,6 +52,12 @@ class _DummyServer:
     async def wait_closed(self) -> None:
         return
 
+    async def serve_forever(self) -> None:
+        try:
+            await asyncio.Event().wait()
+        except asyncio.CancelledError:
+            raise
+
 
 class TestBridgeStateMachine(unittest.IsolatedAsyncioTestCase):
     async def _make_bridge(self, mode: NetMode) -> SerialNetBridge:
