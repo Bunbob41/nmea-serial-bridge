@@ -66,7 +66,7 @@ High-level notes for **this fork / branch** (`2034-ui-journey-modernization` and
 
 ## v1.48.6
 
-- **Mission Review depth pipeline** ? secondary COM soundings export lat/lon even when GPS fix is stale; session stop captures mux buffer + depth telemetry; Mission Review grid shows Depth and Depth Hz from session data.
+- **Mission Review depth pipeline** — secondary COM soundings export lat/lon even when GPS fix is stale; session stop captures mux buffer + depth telemetry; Mission Review grid shows Depth and Depth Hz from session data.
 
 ## v1.48.5
 
