@@ -187,8 +187,29 @@
           <input type="checkbox" id="map-enabled" />
           Show map
         </label>
+        <label class="map-enable-row">
+          <input type="checkbox" id="map-show-depth" checked />
+          Show depth points
+        </label>
         <div class="map-coords mono" id="map-coords">No fix yet</div>
         <div class="map-frame" id="map-frame" hidden>
+          <aside id="map-depth-legend" class="map-depth-legend" hidden aria-label="Depth color scale (right-click to customize colors)">
+            <div class="map-depth-legend-title">Depth (m)</div>
+            <div class="map-depth-legend-body">
+              <div class="map-depth-legend-labels">
+                <span id="map-depth-legend-max">--</span>
+                <span id="map-depth-legend-min">--</span>
+              </div>
+              <canvas id="map-depth-legend-bar" width="24" height="160"></canvas>
+            </div>
+          </aside>
+          <nav id="map-depth-legend-menu" class="map-depth-legend-menu map-context-menu" hidden aria-label="Depth scale colors">
+            <div class="legend-menu-head">Depth scale colors</div>
+            <label class="legend-color-row"><span>Shallow</span><input type="color" id="map-depth-ramp-shallow" value="#08486b" /></label>
+            <label class="legend-color-row"><span>Mid</span><input type="color" id="map-depth-ramp-mid" value="#2a9d8f" /></label>
+            <label class="legend-color-row"><span>Deep</span><input type="color" id="map-depth-ramp-deep" value="#e76f51" /></label>
+            <button type="button" class="ctx-item" id="map-depth-ramp-reset">Reset defaults</button>
+          </nav>
           <div id="bridge-map" class="bridge-map" role="img" aria-label="Live GNSS position map"></div>
         </div>
         <p class="map-attribution" id="map-attribution" hidden>
@@ -430,6 +451,7 @@
   </footer>
 
   <script src="/static/vendor/leaflet/leaflet.js"></script>
-  <script src="/static/dashboard.js?v=1.31.1"></script>
+  <script src="/static/depth_ramp.js?v=1.48.18"></script>
+  <script src="/static/dashboard.js?v=1.48.18"></script>
 </body>
 </html>

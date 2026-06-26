@@ -1556,3 +1556,60 @@ def delete_terminal_ping_preset(name: str) -> bool:
 
 def terminal_ping_bubble_names() -> list[str]:
     return list_terminal_ping_preset_names()[:_TERMINAL_PING_BUBBLE_MAX]
+
+
+_BUDGET_SURVEY_DEFAULTS: dict[str, Any] = {
+    "depth_com_enabled": False,
+    "depth_com_port": "",
+    "depth_com_baud": 4800,
+    "survey_map_base_layer": "satellite",
+    "survey_map_show_depth": True,
+    "survey_map_depth_auto": True,
+    "survey_map_depth_min_m": 0.0,
+    "survey_map_depth_max_m": 200.0,
+}
+
+
+def load_budget_survey_prefs() -> dict[str, Any]:
+    data = _read_json()
+    raw = data.get("budget_survey")
+    out = dict(_BUDGET_SURVEY_DEFAULTS)
+    if isinstance(raw, dict):
+        out["depth_com_enabled"] = bool(raw.get("depth_com_enabled", out["depth_com_enabled"]))
+        out["depth_com_port"] = str(raw.get("depth_com_port") or "")
+        try:
+            out["depth_com_baud"] = int(raw.get("depth_com_baud", out["depth_com_baud"]))
+        except (TypeError, ValueError):
+            pass
+        layer = str(raw.get("survey_map_base_layer") or out["survey_map_base_layer"])
+        out["survey_map_base_layer"] = "satellite" if layer == "satellite" else "street"
+        out["survey_map_show_depth"] = bool(
+            raw.get("survey_map_show_depth", out["survey_map_show_depth"])
+        )
+        out["survey_map_depth_auto"] = bool(
+            raw.get("survey_map_depth_auto", out["survey_map_depth_auto"])
+        )
+        try:
+            out["survey_map_depth_min_m"] = float(
+                raw.get("survey_map_depth_min_m", out["survey_map_depth_min_m"])
+            )
+        except (TypeError, ValueError):
+            pass
+        try:
+            out["survey_map_depth_max_m"] = float(
+                raw.get("survey_map_depth_max_m", out["survey_map_depth_max_m"])
+            )
+        except (TypeError, ValueError):
+            pass
+    return out
+
+
+def save_budget_survey_prefs(prefs: dict[str, Any]) -> None:
+    data = _read_json()
+    prev = data.get("budget_survey")
+    merged = dict(_BUDGET_SURVEY_DEFAULTS)
+    if isinstance(prev, dict):
+        merged.update(prev)
+    merged.update(prefs or {})
+    data["budget_survey"] = merged
+    _write_json(data)

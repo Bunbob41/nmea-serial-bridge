@@ -3320,6 +3320,157 @@ let mapMarker = null;
 let mapTrackLine = null;
 let mapTrackPoints = [];
 let mapTilesOk = true;
+let mapDepthLayer = null;
+let mapDepthLastUpdateMs = 0;
+const MAP_DEPTH_IDLE_MIN = 0;
+const MAP_DEPTH_IDLE_MAX = 200;
+const MAP_DEPTH_RAMP_DEFAULT = [
+  { t: 0, r: 8, g: 48, b: 107 },
+  { t: 0.2, r: 33, g: 158, b: 188 },
+  { t: 0.4, r: 42, g: 157, b: 143 },
+  { t: 0.6, r: 233, g: 196, b: 106 },
+  { t: 0.8, r: 244, g: 162, b: 97 },
+  { t: 1, r: 231, g: 111, b: 81 },
+];
+let MAP_DEPTH_RAMP =
+  typeof DepthRamp !== "undefined" ? DepthRamp.load() : MAP_DEPTH_RAMP_DEFAULT;
+
+function reloadMapDepthRamp() {
+  MAP_DEPTH_RAMP =
+    typeof DepthRamp !== "undefined" ? DepthRamp.load() : MAP_DEPTH_RAMP_DEFAULT;
+}
+
+function mapDepthRampColor(t) {
+  if (typeof DepthRamp !== "undefined") return DepthRamp.color(t, MAP_DEPTH_RAMP);
+  t = Math.max(0, Math.min(1, t));
+  for (let i = 1; i < MAP_DEPTH_RAMP.length; i++) {
+    const a = MAP_DEPTH_RAMP[i - 1];
+    const b = MAP_DEPTH_RAMP[i];
+    if (t <= b.t) {
+      const f = (t - a.t) / ((b.t - a.t) || 1);
+      return (
+        "rgb(" +
+        Math.round(a.r + (b.r - a.r) * f) +
+        "," +
+        Math.round(a.g + (b.g - a.g) * f) +
+        "," +
+        Math.round(a.b + (b.b - a.b) * f) +
+        ")"
+      );
+    }
+  }
+  const z = MAP_DEPTH_RAMP[MAP_DEPTH_RAMP.length - 1];
+  return "rgb(" + z.r + "," + z.g + "," + z.b + ")";
+}
+
+function mapDepthColor(d, minD, maxD, stale) {
+  if (stale) return "#64748b";
+  if (!Number.isFinite(d)) return "#64748b";
+  return mapDepthRampColor((d - minD) / Math.max(0.1, maxD - minD));
+}
+
+function mapDepthRange(pts) {
+  const ds = pts.map((s) => +s.depth_m).filter(Number.isFinite);
+  if (!ds.length) return { min: 0, max: 1 };
+  let min = Math.min(...ds);
+  let max = Math.max(...ds);
+  if (max - min < 0.5) {
+    min = Math.max(0, min - 0.5);
+    max += 0.5;
+  } else {
+    min = Math.max(0, min - 0.1 * (max - min));
+    max += 0.1 * (max - min);
+  }
+  return { min, max };
+}
+
+function paintMapDepthLegend(minD, maxD, vis) {
+  const box = document.getElementById("map-depth-legend");
+  const c = document.getElementById("map-depth-legend-bar");
+  const lo = document.getElementById("map-depth-legend-min");
+  const hi = document.getElementById("map-depth-legend-max");
+  if (!box || !c) return;
+  box.hidden = !vis;
+  if (!vis) return;
+  const ctx = c.getContext("2d");
+  if (!ctx) return;
+  for (let y = 0; y < c.height; y++) {
+    ctx.fillStyle = mapDepthRampColor(1 - y / (c.height - 1));
+    ctx.fillRect(0, y, c.width, 1);
+  }
+  if (lo) lo.textContent = minD.toFixed(1);
+  if (hi) hi.textContent = maxD.toFixed(1);
+}
+
+function mapShowDepthEnabled() {
+  const chk = document.getElementById("map-show-depth");
+  return !chk || chk.checked;
+}
+
+function updateDepthLayer(status) {
+  const now = Date.now();
+  if (now - mapDepthLastUpdateMs < 900) return;
+  mapDepthLastUpdateMs = now;
+  ensureBridgeMap();
+  if (!mapDepthLayer) {
+    mapDepthLayer = L.layerGroup();
+    mapDepthLayer.addTo(mapInstance);
+  }
+  mapDepthLayer.clearLayers();
+  if (!mapShowDepthEnabled()) {
+    paintMapDepthLegend(0, 1, false);
+    return;
+  }
+  if (!status) {
+    paintMapDepthLegend(MAP_DEPTH_IDLE_MIN, MAP_DEPTH_IDLE_MAX, true);
+    return;
+  }
+  const pts = (status.soundings_recent || []).filter((s) => {
+    const lat = Number(s.lat);
+    const lon = Number(s.lon);
+    return Number.isFinite(lat) && Number.isFinite(lon);
+  });
+  if (!pts.length) {
+    paintMapDepthLegend(MAP_DEPTH_IDLE_MIN, MAP_DEPTH_IDLE_MAX, true);
+    return;
+  }
+  const rg = mapDepthRange(pts);
+  paintMapDepthLegend(rg.min, rg.max, true);
+  for (let i = 1; i < pts.length; i++) {
+    const a = pts[i - 1];
+    const b = pts[i];
+    const st = !!(a.stale || a.fix_stale || b.stale || b.fix_stale);
+    L.polyline(
+      [
+        [+a.lat, +a.lon],
+        [+b.lat, +b.lon],
+      ],
+      {
+        color: mapDepthColor(+b.depth_m, rg.min, rg.max, st),
+        weight: 3,
+        opacity: 0.85,
+        lineCap: "round",
+        lineJoin: "round",
+      }
+    ).addTo(mapDepthLayer);
+  }
+  pts.forEach((s) => {
+    const lat = Number(s.lat);
+    const lon = Number(s.lon);
+    const st = !!(s.stale || s.fix_stale);
+    const d = +s.depth_m;
+    L.circleMarker([lat, lon], {
+      radius: 4,
+      stroke: false,
+      fillColor: mapDepthColor(d, rg.min, rg.max, st),
+      fillOpacity: 0.9,
+    })
+      .bindTooltip(
+        "Depth " + (Number.isFinite(d) ? d.toFixed(2) : "-") + " m" + (st ? " (stale GPS)" : "")
+      )
+      .addTo(mapDepthLayer);
+  });
+}
 
 function loadMapBaseLayer() {
   try {
@@ -3390,6 +3541,34 @@ function initPositionMap() {
       setTimeout(() => mapInstance?.invalidateSize(), 120);
     }
   });
+  const depthChk = document.getElementById("map-show-depth");
+  if (depthChk) {
+    depthChk.addEventListener("change", () => {
+      if (depthChk.checked) {
+        paintMapDepthLegend(MAP_DEPTH_IDLE_MIN, MAP_DEPTH_IDLE_MAX, true);
+      } else {
+        paintMapDepthLegend(0, 1, false);
+      }
+      updateDepthLayer(lastDashboardStatus);
+    });
+  }
+  if (typeof DepthRamp !== "undefined") {
+    DepthRamp.bindLegendColorMenu({
+      legendId: "map-depth-legend",
+      menuId: "map-depth-legend-menu",
+      shallowId: "map-depth-ramp-shallow",
+      midId: "map-depth-ramp-mid",
+      deepId: "map-depth-ramp-deep",
+      resetId: "map-depth-ramp-reset",
+      onChange: () => {
+        reloadMapDepthRamp();
+        updateDepthLayer(lastDashboardStatus);
+      },
+    });
+  }
+  if (depthChk?.checked) {
+    paintMapDepthLegend(MAP_DEPTH_IDLE_MIN, MAP_DEPTH_IDLE_MAX, true);
+  }
   syncMapVisibility();
 }
 
@@ -3563,6 +3742,7 @@ function updatePositionMap(status) {
   } else if (!stale) {
     mapInstance.panTo(ll, { animate: true, duration: 0.35 });
   }
+  updateDepthLayer(status);
 }
 
 window.invalidateDashboardMap = invalidateDashboardMap;

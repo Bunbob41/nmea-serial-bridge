@@ -81,6 +81,23 @@ class TestWebApi(unittest.TestCase):
         self.assertIn("com_port_lock_reason", body)
         self.assertIn("com_lock_checking", body)
 
+    def test_status_soundings_fields(self) -> None:
+        self.facade._last_publish_mono = 0.0
+        self.facade.update_snapshot(
+            depth_enabled=True,
+            depth_port="COM8",
+            depth_rate_hz=2.0,
+            last_depth_m=5.1,
+            sounding_count=3,
+            soundings_recent=[{"lat": 44.0, "lon": -120.0, "depth_m": 5.1, "stale": False}],
+        )
+        r = self.client.get("/status")
+        self.assertEqual(r.status_code, 200)
+        body = r.json()
+        self.assertTrue(body["depth_enabled"])
+        self.assertEqual(body["depth_port"], "COM8")
+        self.assertEqual(len(body["soundings_recent"]), 1)
+
     def test_com_lock_fields_from_window_busy(self) -> None:
         from port_release import PortLockState
 

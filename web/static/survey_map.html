@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Survey Map</title>
+  <link rel="stylesheet" href="./vendor/leaflet/leaflet.css" />
+  <link rel="stylesheet" href="./survey_map.css" />
+</head>
+<body>
+  <div id="map-shell" class="map-shell">
+    <div id="tile-banner" class="tile-banner" hidden>Map tiles need internet</div>
+    <header id="map-top-controls" class="map-top-controls" aria-label="Survey map controls">
+      <div class="ctrl-row ctrl-row-primary">
+        <span id="ctrl-status-text" class="ctrl-metric">Stopped</span>
+        <label class="ctrl-inline-label" for="ctrl-layer">Layer</label>
+        <select id="ctrl-layer" class="ctrl-select ctrl-select-compact">
+          <option value="satellite">Satellite</option>
+          <option value="street">Street</option>
+        </select>
+      </div>
+      <div class="ctrl-row ctrl-row-secondary">
+        <label class="ctrl-check-label"><input type="checkbox" id="ctrl-show-depth" checked /> Depth</label>
+        <label class="ctrl-check-label"><input type="checkbox" id="ctrl-auto-scale" checked /> Auto</label>
+        <span class="ctrl-depth-range" title="Depth scale min – max (m)">
+          <input type="number" id="ctrl-depth-min" class="ctrl-num ctrl-num-tight" min="0" max="500" step="0.1" value="0" disabled aria-label="Depth min" />
+          <span class="ctrl-range-sep" aria-hidden="true">–</span>
+          <input type="number" id="ctrl-depth-max" class="ctrl-num ctrl-num-tight" min="0.5" max="500" step="0.1" value="200" disabled aria-label="Depth max" />
+        </span>
+      </div>
+    </header>
+    <aside id="depth-legend" class="depth-legend" hidden aria-label="Depth color scale (right-click to customize colors)">
+      <div class="depth-legend-title">Depth (m)</div>
+      <div class="depth-legend-body">
+        <div class="depth-legend-labels">
+          <span id="depth-legend-max">--</span>
+          <span id="depth-legend-min">--</span>
+        </div>
+        <canvas id="depth-legend-bar" width="24" height="160"></canvas>
+      </div>
+    </aside>
+    <nav id="depth-legend-menu" class="depth-legend-menu context-menu" hidden aria-label="Depth scale colors">
+      <div class="legend-menu-head">Depth scale colors</div>
+      <label class="legend-color-row"><span>Shallow</span><input type="color" id="depth-ramp-shallow" value="#08486b" /></label>
+      <label class="legend-color-row"><span>Mid</span><input type="color" id="depth-ramp-mid" value="#2a9d8f" /></label>
+      <label class="legend-color-row"><span>Deep</span><input type="color" id="depth-ramp-deep" value="#e76f51" /></label>
+      <button type="button" class="ctx-item" id="depth-ramp-reset">Reset defaults</button>
+    </nav>
+    <nav id="custom-context-menu" class="context-menu" hidden aria-label="Map actions">
+      <button type="button" class="ctx-item" data-action="center-boat">Center on Boat</button>
+      <button type="button" class="ctx-item ctx-item-check" id="ctx-follow-boat" data-action="follow-boat">
+        <span class="ctx-check" id="ctx-follow-check" aria-hidden="true">&#10003;</span>
+        Follow Boat Mode
+      </button>
+      <button type="button" class="ctx-item ctx-item-danger" data-action="clear-soundings">Clear Live Soundings</button>
+    </nav>
+    <div id="survey-map" class="survey-map-host" role="img" aria-label="Survey track and depth"></div>
+  </div>
+  <script src="./vendor/leaflet/leaflet.js"></script>
+  <script src="qrc:///qtwebchannel/qwebchannel.js"></script>
+  <script src="./depth_ramp.js"></script>
+  <script src="./survey_map.js"></script>
+</body>
+</html>

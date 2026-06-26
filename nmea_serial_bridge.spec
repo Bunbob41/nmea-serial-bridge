@@ -79,6 +79,8 @@ HELPER_MODULES = [
     "bench_udp_test.py",
     "bench_tcp_test.py",
     "nmea_codec.py",
+    "depth_codec.py",
+    "sounding_mux.py",
     "bridge_core.py",
     "py_interpreter.py",
 ]

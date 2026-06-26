@@ -253,6 +253,11 @@ def wire_connection_controls(win: QtWidgets.QWidget) -> None:
     ):
         if rb is not None:
             rb.toggled.connect(win._sync_nmea_mode_ui)
+    if hasattr(win, "chk_depth_com_enabled"):
+        win.chk_depth_com_enabled.toggled.connect(win._on_depth_com_enabled_toggled)
+    for w in (getattr(win, "depth_com_cb", None), getattr(win, "depth_baud_edit", None)):
+        if w is not None:
+            w.currentIndexChanged.connect(lambda *_: win._persist_budget_survey_prefs())
     if hasattr(win, "_refresh_tools_page_status"):
         com_cb = getattr(win, "com_cb", None)
         if com_cb is not None:
@@ -306,6 +311,26 @@ def create_connection_controls(parent: QtWidgets.QWidget) -> None:
         "starts the bridge.\n\n"
         "Leave unchecked for full manual control."
     )
+
+    p.chk_depth_com_enabled = QtWidgets.QCheckBox("Depth sonar on secondary COM")
+    p.chk_depth_com_enabled.setChecked(False)
+    p.chk_depth_com_enabled.setToolTip(
+        "Budget survey stack: read single-beam depth ($SDDPT / $SDDBT / SonarMite ASCII) "
+        "on a second serial port while GNSS flows on the primary bridge path.\n\n"
+        "Off by default — Norbit/DCT positioning-only jobs are unchanged."
+    )
+    p.depth_com_cb = NoWheelComboBox()
+    p.depth_com_cb.setObjectName("connectDepthComCombo")
+    _style_connect_serial_combo(p.depth_com_cb)
+    p.depth_com_cb.setEnabled(False)
+    p.depth_baud_edit = NoWheelComboBox()
+    p.depth_baud_edit.setObjectName("connectDepthBaudCombo")
+    _style_connect_serial_combo(p.depth_baud_edit)
+    p.depth_baud_edit.setEditable(False)
+    for rate in (4800, 9600, 19200, 38400, 57600, 115200):
+        p.depth_baud_edit.addItem(str(rate))
+    p.depth_baud_edit.setCurrentText("4800")
+    p.depth_baud_edit.setEnabled(False)
 
     p.udp_host = QtWidgets.QLineEdit("0.0.0.0")
     p.udp_host.setToolTip(

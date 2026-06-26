@@ -5,7 +5,7 @@ Layout stack (top to bottom):
   ├─ Body: [Tools sidebar | main content stack]                              │
   └─ Footer strip — version ─────────────────────────────────────────────────┘
 
-Smart-Peek: bridge start opens Activity; when live traffic arrives, auto-switch to Control for the map.
+Smart-Peek (auto tab switch on Start) removed — stay on the current tab; use Survey Map for live track.
 """
 from __future__ import annotations
 
@@ -45,11 +45,14 @@ from version import __version__
 
 MODERN_SIDEBAR_EXPANDED_W = 196
 MODERN_SIDEBAR_COLLAPSED_W = 52
-# Side-by-side Serial/Network on Control tab down to window minimum (640px).
-# Vertical stack only below this threshold — narrower than the allowed min width;
-# kept for unit tests and future min-size experiments (see test_modern_control_forms_stack_narrow).
+# Option A connection strip — max width for the left-aligned band (see test_modern_control_strip_band).
+CONTROL_STRIP_BAND_W = 520
+MODERN_WINDOW_MIN_W = 400
+MODERN_WINDOW_MIN_H = 260
+MODERN_SIDEBAR_AUTO_COLLAPSE_BELOW_W = 820
+MODERN_SIDEBAR_AUTO_EXPAND_ABOVE_W = 940
+# Legacy alias for tests that referenced the old responsive threshold.
 CONTROL_FORMS_STACK_BELOW_W = 700
-CONTROL_FORMS_STOPPED_MAX_W = 960
 MODERN_CHIP_RAIL_H = 52
 MODERN_CHIP_BTN_H = 36
 MODERN_COMPACT_STATUS_MAX_W = 220
@@ -129,6 +132,7 @@ _MODERN_LEGACY_SECTION: dict[str, str] = {
     "Fleet": "fleet",
     "Settings": "presets",
     "Mission Review": "mission_review",
+    "Survey Map": "survey_map",
     "Activity": "activity",
     "Control": "control",
 }
@@ -137,19 +141,6 @@ _MODERN_LEGACY_SECTION: dict[str, str] = {
 # ─────────────────────────────────────────────────────────────────────────────
 # Helpers
 # ─────────────────────────────────────────────────────────────────────────────
-
-def bridge_stats_show_live_traffic(stats: dict) -> bool:
-    """True when bridge stats report wire movement (NET↔COM or inject)."""
-    if not stats:
-        return False
-    for key in ("hz_down", "hz_up", "hz_gui", "lines_down", "lines_up"):
-        try:
-            if float(stats.get(key) or 0) > 0:
-                return True
-        except (TypeError, ValueError):
-            continue
-    return False
-
 
 def _vsep() -> QtWidgets.QFrame:
     s = QtWidgets.QFrame()
@@ -190,7 +181,7 @@ class BridgeWindowModern(BridgeLogicMixin, QtWidgets.QWidget):
         self._theme_id = THEME_SLATE
         self.setWindowTitle(f"Serial Link  v{__version__}")
         self.resize(1280, 800)
-        self.setMinimumSize(480, 320)
+        self.setMinimumSize(MODERN_WINDOW_MIN_W, MODERN_WINDOW_MIN_H)
 
         self._init_bridge_state()
         create_connection_controls(self)
@@ -681,21 +672,17 @@ class BridgeWindowModern(BridgeLogicMixin, QtWidgets.QWidget):
         return total
 
     def _sync_modern_header_nav_width(self, need: int, bar=None) -> None:
-        """Reserve header width for View/HUD/Layout — content-sized, not ratcheted."""
+        """Reserve header width for View/HUD/Layout — floor only; splitter owns allocation."""
         from ui.modern_header_split import embedded_nav_cluster_min_width
         from ui.survey_top_bar import _WIDGET_SIZE_MAX
 
+        del need  # cluster natural width must not ratchet window minimum
         bar = bar or getattr(self, "_survey_top_bar", None)
         nav = getattr(self, "_modern_header_nav", None)
         track = getattr(bar, "_track", None) if bar is not None else None
         if nav is None:
             return
-        track_hint = track.sizeHint().width() if track is not None else 0
-        content_floor = max(
-            int(need),
-            int(track_hint),
-            embedded_nav_cluster_min_width(),
-        )
+        content_floor = embedded_nav_cluster_min_width()
         nav.setMinimumWidth(content_floor)
         nav.setSizePolicy(
             QtWidgets.QSizePolicy.Policy.Minimum,
@@ -706,7 +693,7 @@ class BridgeWindowModern(BridgeLogicMixin, QtWidgets.QWidget):
                 QtWidgets.QSizePolicy.Policy.Minimum,
                 QtWidgets.QSizePolicy.Policy.Fixed,
             )
-            track.setMinimumWidth(content_floor)
+            track.setMinimumWidth(0)
             track.setMaximumWidth(_WIDGET_SIZE_MAX)
         trail = getattr(self, "_header_pane_trail", None)
         if trail is not None:
@@ -796,8 +783,7 @@ class BridgeWindowModern(BridgeLogicMixin, QtWidgets.QWidget):
         self._apply_modern_header_nav_button_palettes(bar)
         track = getattr(bar, "_track", None)
         if track is not None:
-            need = max(track.sizeHint().width(), bar.sizeHint().width())
-            self._sync_modern_header_nav_width(need, bar)
+            self._sync_modern_header_nav_width(0, bar)
         QtCore.QTimer.singleShot(0, self._sync_header_trail_layout)
 
     def _apply_modern_header_nav_button_palettes(self, bar=None) -> None:
@@ -890,10 +876,14 @@ class BridgeWindowModern(BridgeLogicMixin, QtWidgets.QWidget):
 
     # ── Tab content builders ──────────────────────────────────────────────
 
+    def _build_survey_map_tab(self) -> QtWidgets.QWidget:
+        from ui.survey_map import create_survey_map_tab
+
+        return create_survey_map_tab(self)
+
     def _build_control_tab(self) -> QtWidgets.QWidget:
         from ui.control_map import build_control_map_panel
         from ui.tool_tabs import _modern_flat_page
-        from ui.ui_prefs import load_modern_layout_prefs
 
         outer, content_lay = _modern_flat_page(
             "modernControlTab",
@@ -904,48 +894,14 @@ class BridgeWindowModern(BridgeLogicMixin, QtWidgets.QWidget):
             icon="🎛",
         )
         content_lay.setSpacing(14)
-
-        self._control_serial_group = self._build_serial_group()
-        self._control_network_group = self._build_network_group()
-
-        self._control_stopped_forms_host = QtWidgets.QWidget()
-        self._control_stopped_forms_host.setObjectName("modernControlStoppedFormsHost")
-        self._control_stopped_forms_host.setSizePolicy(
-            QtWidgets.QSizePolicy.Policy.Expanding,
-            QtWidgets.QSizePolicy.Policy.Preferred,
-        )
-        self._control_forms_grid = QtWidgets.QGridLayout(self._control_stopped_forms_host)
-        self._control_forms_grid.setContentsMargins(0, 0, 0, 0)
-        self._control_forms_grid.setHorizontalSpacing(14)
-        self._control_forms_grid.setVerticalSpacing(14)
-        self._control_forms_grid.setAlignment(
+        content_lay.setAlignment(
             QtCore.Qt.AlignmentFlag.AlignLeft | QtCore.Qt.AlignmentFlag.AlignTop
         )
-        self._control_forms_grid.addWidget(
-            self._control_serial_group, 0, 0, QtCore.Qt.AlignmentFlag.AlignTop
-        )
-        self._control_forms_grid.addWidget(
-            self._control_network_group, 0, 1, QtCore.Qt.AlignmentFlag.AlignTop
-        )
-
-        self._control_compact_host = QtWidgets.QWidget()
-        self._control_compact_host.setObjectName("modernControlCompactHost")
-        self._control_compact_host.setSizePolicy(
-            QtWidgets.QSizePolicy.Policy.Expanding,
-            QtWidgets.QSizePolicy.Policy.Expanding,
-        )
-        self._control_forms_compact_lay = QtWidgets.QVBoxLayout(self._control_compact_host)
-        self._control_forms_compact_lay.setContentsMargins(0, 0, 0, 0)
-        self._control_forms_compact_lay.setSpacing(10)
-        self._control_forms_compact_lay.setAlignment(QtCore.Qt.AlignmentFlag.AlignTop)
-
-        self._control_forms_host = self._control_stopped_forms_host
-        self._control_forms_vertical = False
 
         preset_bar = QtWidgets.QFrame()
         preset_bar.setObjectName("modernControlPresetBar")
         preset_lay = QtWidgets.QHBoxLayout(preset_bar)
-        preset_lay.setContentsMargins(14, 10, 14, 10)
+        preset_lay.setContentsMargins(12, 8, 12, 8)
         preset_lay.setSpacing(8)
         preset_icon = QtWidgets.QLabel("📌")
         preset_icon.setObjectName("modernControlPresetIcon")
@@ -953,96 +909,237 @@ class BridgeWindowModern(BridgeLogicMixin, QtWidgets.QWidget):
         preset_lay.addWidget(self.intent_hint, 1)
         self._control_preset_bar = preset_bar
 
-        self._control_stopped_panel = QtWidgets.QWidget()
-        self._control_stopped_panel.setObjectName("modernControlStoppedPanel")
-        self._control_stopped_panel.setMaximumWidth(CONTROL_FORMS_STOPPED_MAX_W)
-        self._control_stopped_panel.setSizePolicy(
-            QtWidgets.QSizePolicy.Policy.Maximum,
+        band = QtWidgets.QWidget()
+        band.setObjectName("modernControlStripBand")
+        band.setMaximumWidth(CONTROL_STRIP_BAND_W)
+        band.setSizePolicy(
+            QtWidgets.QSizePolicy.Policy.Preferred,
             QtWidgets.QSizePolicy.Policy.Preferred,
         )
-        self._control_stopped_panel_lay = QtWidgets.QVBoxLayout(self._control_stopped_panel)
-        self._control_stopped_panel_lay.setContentsMargins(0, 0, 0, 0)
-        self._control_stopped_panel_lay.setSpacing(14)
-        self._control_stopped_panel_lay.setAlignment(QtCore.Qt.AlignmentFlag.AlignTop)
-        self._control_stopped_panel_lay.addWidget(self._control_stopped_forms_host, 0)
-        self._control_stopped_panel_lay.addWidget(preset_bar, 0)
+        band_lay = QtWidgets.QVBoxLayout(band)
+        band_lay.setContentsMargins(0, 0, 0, 0)
+        band_lay.setSpacing(10)
+        band_lay.setAlignment(
+            QtCore.Qt.AlignmentFlag.AlignTop | QtCore.Qt.AlignmentFlag.AlignLeft
+        )
+        band_lay.addWidget(preset_bar, 0)
 
-        self._control_stopped_viewport = QtWidgets.QWidget()
-        self._control_stopped_viewport.setObjectName("modernControlStoppedViewport")
-        self._control_stopped_viewport.setSizePolicy(
-            QtWidgets.QSizePolicy.Policy.Expanding,
-            QtWidgets.QSizePolicy.Policy.Expanding,
+        strip = QtWidgets.QFrame()
+        strip.setObjectName("modernControlStrip")
+        strip.setFrameShape(QtWidgets.QFrame.Shape.StyledPanel)
+        strip.setSizePolicy(
+            QtWidgets.QSizePolicy.Policy.Preferred,
+            QtWidgets.QSizePolicy.Policy.Preferred,
         )
-        self._control_stopped_viewport_lay = QtWidgets.QHBoxLayout(self._control_stopped_viewport)
-        self._control_stopped_viewport_lay.setContentsMargins(0, 0, 0, 0)
-        self._control_stopped_viewport_lay.setSpacing(0)
-        self._control_stopped_viewport_lay.addStretch(1)
-        self._control_stopped_viewport_lay.addWidget(
-            self._control_stopped_panel,
+        self._control_strip_frame = strip
+        strip_lay = QtWidgets.QVBoxLayout(strip)
+        strip_lay.setContentsMargins(14, 12, 14, 12)
+        strip_lay.setSpacing(10)
+        strip_lay.setAlignment(QtCore.Qt.AlignmentFlag.AlignTop)
+
+        self._wire_modern_com_refresh_button()
+        self._serial_link_status_badge = QtWidgets.QLabel("")
+        self._serial_link_status_badge.setObjectName("modernSerialLinkBadge")
+        self._serial_link_status_badge.hide()
+
+        serial_row = QtWidgets.QFrame()
+        serial_row.setObjectName("modernControlSerialRow")
+        serial_row.setFrameShape(QtWidgets.QFrame.Shape.NoFrame)
+        self._serial_control_card = serial_row
+        serial_row.setProperty("serialLinkState", "closed")
+        serial_h = QtWidgets.QHBoxLayout(serial_row)
+        serial_h.setContentsMargins(0, 0, 0, 0)
+        serial_h.setSpacing(8)
+        serial_h.addWidget(self._control_strip_label("SERIAL"), 0)
+        self.com_cb.setMinimumHeight(34)
+        serial_h.addWidget(self.com_cb, 1)
+        self.baud_edit.setMinimumHeight(34)
+        self.baud_edit.setMaximumWidth(104)
+        self.baud_edit.setSizePolicy(
+            QtWidgets.QSizePolicy.Policy.Fixed,
+            QtWidgets.QSizePolicy.Policy.Fixed,
+        )
+        serial_h.addWidget(self.baud_edit, 0)
+        serial_h.addWidget(
+            self.refresh_btn,
             0,
-            QtCore.Qt.AlignmentFlag.AlignTop | QtCore.Qt.AlignmentFlag.AlignHCenter,
+            QtCore.Qt.AlignmentFlag.AlignVCenter,
         )
-        self._control_stopped_viewport_lay.addStretch(1)
+        serial_h.addWidget(
+            self._serial_link_status_badge,
+            0,
+            QtCore.Qt.AlignmentFlag.AlignVCenter,
+        )
+
+        net_row = QtWidgets.QWidget()
+        net_row.setObjectName("modernControlNetworkRow")
+        net_h = QtWidgets.QHBoxLayout(net_row)
+        net_h.setContentsMargins(0, 0, 0, 0)
+        net_h.setSpacing(8)
+        net_h.addWidget(self._control_strip_label("NETWORK"), 0)
+        self.udp_host.setMinimumHeight(34)
+        net_h.addWidget(self.udp_host, 1)
+        colon = QtWidgets.QLabel(":")
+        colon.setObjectName("modernControlStripColon")
+        colon.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+        net_h.addWidget(colon, 0)
+        self.udp_port.setMinimumHeight(34)
+        self.udp_port.setMaximumWidth(88)
+        self.udp_port.setSizePolicy(
+            QtWidgets.QSizePolicy.Policy.Fixed,
+            QtWidgets.QSizePolicy.Policy.Fixed,
+        )
+        net_h.addWidget(self.udp_port, 0)
+
+        strip_lay.addWidget(serial_row)
+        strip_lay.addWidget(net_row)
+
+        self._control_more_toggle = QtWidgets.QToolButton()
+        self._control_more_toggle.setObjectName("modernControlMoreToggle")
+        self._control_more_toggle.setText("▾ More Options")
+        self._control_more_toggle.setToolButtonStyle(
+            QtCore.Qt.ToolButtonStyle.ToolButtonTextOnly
+        )
+        self._control_more_toggle.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
+        self._control_more_toggle.setAutoRaise(True)
+        self._control_more_toggle.setFocusPolicy(QtCore.Qt.FocusPolicy.NoFocus)
+        self._control_more_toggle.clicked.connect(self._toggle_control_more_options)
+        self._control_more_expanded = False
+        strip_lay.addWidget(
+            self._control_more_toggle,
+            0,
+            QtCore.Qt.AlignmentFlag.AlignLeft,
+        )
+
+        more_host = QtWidgets.QWidget()
+        more_host.setObjectName("modernControlMoreOptions")
+        more_host.hide()
+        self._control_more_host = more_host
+        more_lay = QtWidgets.QVBoxLayout(more_host)
+        more_lay.setContentsMargins(0, 2, 0, 0)
+        more_lay.setSpacing(8)
+        more_lay.addWidget(self.chk_serial_auto_reconnect)
+        more_lay.addWidget(self.chk_auto_discover)
+        more_lay.addWidget(self.chk_depth_com_enabled)
+
+        depth_row_host = QtWidgets.QWidget()
+        depth_row_host.setObjectName("modernControlDepthRow")
+        depth_row_host.hide()
+        self._control_depth_row = depth_row_host
+        depth_h = QtWidgets.QHBoxLayout(depth_row_host)
+        depth_h.setContentsMargins(16, 0, 0, 0)
+        depth_h.setSpacing(8)
+        self.depth_com_cb.setMinimumHeight(34)
+        self.depth_baud_edit.setMinimumHeight(34)
+        self.depth_baud_edit.setMaximumWidth(104)
+        depth_h.addWidget(self.depth_com_cb, 1)
+        at_lbl = QtWidgets.QLabel("@")
+        at_lbl.setObjectName("modernControlStripAt")
+        depth_h.addWidget(at_lbl, 0)
+        depth_h.addWidget(self.depth_baud_edit, 0)
+        more_lay.addWidget(depth_row_host)
+        self._sync_control_depth_row_visibility(self.chk_depth_com_enabled.isChecked())
+
+        fan_row = QtWidgets.QHBoxLayout()
+        fan_row.setSpacing(6)
+        fan_row.addWidget(self.chk_udp_fanout, 1)
+        fan_row.addWidget(
+            create_network_help_button(self),
+            0,
+            QtCore.Qt.AlignmentFlag.AlignRight | QtCore.Qt.AlignmentFlag.AlignVCenter,
+        )
+        more_lay.addLayout(fan_row)
+
+        self.serial_mirror_ports.show()
+        mirror_row = QtWidgets.QHBoxLayout()
+        mirror_row.setSpacing(8)
+        mirror_row.addWidget(self._control_form_label("Serial mirrors"), 0)
+        self.serial_mirror_ports.setMinimumHeight(32)
+        mirror_row.addWidget(self.serial_mirror_ports, 1)
+        more_lay.addLayout(mirror_row)
+
+        self.chk_serial_mirror_device_tx.show()
+        more_lay.addWidget(self.chk_serial_mirror_device_tx)
+        more_lay.addWidget(self.chk_tcp_sink_enable)
+
+        self._tcp_sink_port_panel = QtWidgets.QWidget()
+        self._tcp_sink_port_panel.setObjectName("modernTcpSinkIndent")
+        port_panel_lay = QtWidgets.QHBoxLayout(self._tcp_sink_port_panel)
+        port_panel_lay.setContentsMargins(16, 0, 0, 0)
+        port_panel_lay.setSpacing(10)
+        indent = QtWidgets.QFrame()
+        indent.setObjectName("modernControlIndentRule")
+        indent.setFixedWidth(3)
+        port_panel_lay.addWidget(indent, 0, QtCore.Qt.AlignmentFlag.AlignTop)
+        port_inner = QtWidgets.QVBoxLayout()
+        port_inner.setSpacing(4)
+        port_inner.addWidget(self._control_form_label("Mirror port"))
+        self.tcp_sink_port.setFixedWidth(88)
+        self.tcp_sink_port.setMaximumWidth(96)
+        self.tcp_sink_port.setMinimumHeight(32)
+        port_inner.addWidget(self.tcp_sink_port, 0, QtCore.Qt.AlignmentFlag.AlignLeft)
+        port_panel_lay.addLayout(port_inner, 1)
+        more_lay.addWidget(self._tcp_sink_port_panel)
+        self.chk_tcp_sink_enable.toggled.connect(self._sync_tcp_sink_port_row)
+        self._sync_tcp_sink_port_row(self.chk_tcp_sink_enable.isChecked())
+
+        more_lay.addWidget(self.chk_advanced_net)
+        self._advanced_net_scroll = QtWidgets.QScrollArea()
+        self._advanced_net_scroll.setObjectName("modernAdvancedNetScroll")
+        self._advanced_net_scroll.setWidgetResizable(True)
+        self._advanced_net_scroll.setFrameShape(QtWidgets.QFrame.Shape.NoFrame)
+        self._advanced_net_scroll.setHorizontalScrollBarPolicy(
+            QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+        )
+        self._advanced_net_scroll.setVerticalScrollBarPolicy(
+            QtCore.Qt.ScrollBarPolicy.ScrollBarAsNeeded
+        )
+        self._advanced_net_scroll.setMaximumHeight(280)
+        self._advanced_net_scroll.setWidget(self._advanced_net)
+        self._advanced_net_scroll.setVisible(self.chk_advanced_net.isChecked())
+        self._advanced_net.setVisible(True)
+        more_lay.addWidget(self._advanced_net_scroll)
+
+        strip_lay.addWidget(more_host)
+        band_lay.addWidget(strip, 0)
+        content_lay.addWidget(
+            band,
+            0,
+            QtCore.Qt.AlignmentFlag.AlignTop | QtCore.Qt.AlignmentFlag.AlignLeft,
+        )
 
         map_card, self.control_position_map = build_control_map_panel(
             self,
-            on_layout_change=self._sync_control_tab_map_layout,
+            on_layout_change=lambda _collapsed: None,
         )
+        map_card.setParent(outer)
+        map_card.hide()
         self._control_map_card = map_card
 
-        self._control_split_host = QtWidgets.QWidget()
-        self._control_split_host.setObjectName("modernControlSplitHost")
-        split_lay = QtWidgets.QHBoxLayout(self._control_split_host)
-        split_lay.setContentsMargins(0, 0, 0, 0)
-        split_lay.setSpacing(14)
-
-        self._control_left_col = QtWidgets.QWidget()
-        self._control_left_col.setObjectName("modernControlLeftCol")
-        self._control_left_col.setSizePolicy(
-            QtWidgets.QSizePolicy.Policy.Expanding,
-            QtWidgets.QSizePolicy.Policy.Expanding,
-        )
-        left_lay = QtWidgets.QVBoxLayout(self._control_left_col)
-        left_lay.setContentsMargins(0, 0, 0, 0)
-        left_lay.setSpacing(14)
-        left_lay.setAlignment(QtCore.Qt.AlignmentFlag.AlignTop)
-        left_lay.addWidget(self._control_compact_host, 1)
-
-        self._control_right_col = QtWidgets.QWidget()
-        self._control_right_col.setObjectName("modernControlRightCol")
-        self._control_right_col.setSizePolicy(
-            QtWidgets.QSizePolicy.Policy.Expanding,
-            QtWidgets.QSizePolicy.Policy.Expanding,
-        )
-        right_lay = QtWidgets.QVBoxLayout(self._control_right_col)
-        right_lay.setContentsMargins(0, 0, 0, 0)
-        right_lay.setSpacing(0)
-        right_lay.addWidget(map_card, 0)
-        self._control_map_bottom_spacer = QtWidgets.QWidget()
-        self._control_map_bottom_spacer.setSizePolicy(
-            QtWidgets.QSizePolicy.Policy.Preferred,
-            QtWidgets.QSizePolicy.Policy.Expanding,
-        )
-        right_lay.addWidget(self._control_map_bottom_spacer, 1)
-        self._control_map_right_lay = right_lay
-
-        split_lay.addWidget(self._control_left_col, 45)
-        split_lay.addWidget(self._control_right_col, 55)
-        content_lay.addWidget(self._control_stopped_viewport, 1)
-        content_lay.addWidget(self._control_split_host, 1)
-        self._control_split_host.hide()
+        self._control_strip_extra_widgets = [
+            self.chk_auto_discover,
+            self.chk_depth_com_enabled,
+            self.depth_com_cb,
+            self.depth_baud_edit,
+            self.chk_udp_fanout,
+            self.serial_mirror_ports,
+            self.chk_serial_mirror_device_tx,
+            self.chk_tcp_sink_enable,
+            self.tcp_sink_port,
+            self.chk_advanced_net,
+            self.remote_host,
+            self.remote_port,
+            self.tcp_srv_host,
+            self.tcp_srv_port,
+            self.tcp_cli_host,
+            self.tcp_cli_port,
+            self.tcp_reconnect_spin,
+        ]
 
         self._control_tab_outer = outer
         self._control_tab_lay = content_lay
-        self._control_split_horizontal = True
-        self._control_map_live_visible = None
-        collapsed = bool(load_modern_layout_prefs().get("control_map_collapsed", False))
-        self._sync_control_tab_map_layout(collapsed)
-        self._mount_control_tab_stopped_layout()
+        self._control_map_running = False
         self._sync_control_map_visibility(running=False, has_gga=False)
-
-        QtCore.QTimer.singleShot(0, self._apply_control_forms_responsive)
-        QtCore.QTimer.singleShot(0, self._force_control_tab_layout_update)
         return outer
 
     def _apply_intent_hint_display(self) -> None:
@@ -1064,333 +1161,103 @@ class BridgeWindowModern(BridgeLogicMixin, QtWidgets.QWidget):
         if bar is not None:
             bar.setVisible(visible)
 
+    def _control_strip_label(self, text: str) -> QtWidgets.QLabel:
+        lbl = QtWidgets.QLabel(text)
+        lbl.setObjectName("modernControlStripLabel")
+        lbl.setAlignment(
+            QtCore.Qt.AlignmentFlag.AlignLeft | QtCore.Qt.AlignmentFlag.AlignVCenter
+        )
+        return lbl
+
+    def _toggle_control_more_options(self) -> None:
+        self._control_more_expanded = not bool(
+            getattr(self, "_control_more_expanded", False)
+        )
+        host = getattr(self, "_control_more_host", None)
+        toggle = getattr(self, "_control_more_toggle", None)
+        if host is not None:
+            host.setVisible(self._control_more_expanded)
+        if toggle is not None:
+            arrow = "▴" if self._control_more_expanded else "▾"
+            toggle.setText(f"{arrow} More Options")
+
+    def _sync_control_depth_row_visibility(self, enabled: bool) -> None:
+        row = getattr(self, "_control_depth_row", None)
+        if row is not None:
+            row.setVisible(bool(enabled))
+
     def _apply_control_forms_responsive(self, width: int | None = None) -> None:
-        """Stack Serial/Network vertically on narrow windows; collapse split below min width."""
-        if getattr(self, "_control_map_live_visible", False):
-            self._force_control_tab_layout_update()
-            return
-        grid = getattr(self, "_control_forms_grid", None)
-        serial = getattr(self, "_control_serial_group", None)
-        network = getattr(self, "_control_network_group", None)
-        split_host = getattr(self, "_control_split_host", None)
-        right_col = getattr(self, "_control_right_col", None)
-        map_card = getattr(self, "_control_map_card", None)
-        tab_lay = getattr(self, "_control_tab_lay", None)
-        stopped_viewport = getattr(self, "_control_stopped_viewport", None)
-        if grid is None or serial is None or network is None:
-            return
-        win_w = width if width is not None else self.width()
-        stack_vertical = win_w < CONTROL_FORMS_STACK_BELOW_W
-        use_split = win_w >= 820
-
-        if (
-            split_host is not None
-            and right_col is not None
-            and map_card is not None
-            and tab_lay is not None
-            and stopped_viewport is not None
-        ):
-            if use_split != getattr(self, "_control_split_horizontal", True):
-                tab_lay.removeWidget(stopped_viewport)
-                tab_lay.removeWidget(split_host)
-                if use_split:
-                    if not getattr(self, "_control_map_live_visible", False):
-                        tab_lay.addWidget(stopped_viewport, 1)
-                    else:
-                        tab_lay.addWidget(split_host, 1)
-                else:
-                    if not getattr(self, "_control_map_live_visible", False):
-                        tab_lay.addWidget(stopped_viewport, 1)
-                    else:
-                        tab_lay.addWidget(self._control_compact_host, 0)
-                        tab_lay.addWidget(self._control_preset_bar, 0)
-                        tab_lay.addWidget(map_card, 1)
-                self._control_split_horizontal = use_split
-
-        if stack_vertical == getattr(self, "_control_forms_vertical", False):
-            QtCore.QTimer.singleShot(0, self._force_control_tab_layout_update)
-            return
-
-        grid.removeWidget(serial)
-        grid.removeWidget(network)
-        if stack_vertical:
-            grid.addWidget(serial, 0, 0, QtCore.Qt.AlignmentFlag.AlignTop)
-            grid.addWidget(network, 1, 0, QtCore.Qt.AlignmentFlag.AlignTop)
-            grid.setColumnStretch(0, 1)
-            grid.setColumnStretch(1, 0)
-            grid.setRowStretch(0, 1)
-            grid.setRowStretch(1, 0)
-        else:
-            grid.addWidget(serial, 0, 0, QtCore.Qt.AlignmentFlag.AlignTop)
-            grid.addWidget(network, 0, 1, QtCore.Qt.AlignmentFlag.AlignTop)
-            grid.setColumnStretch(0, 1)
-            grid.setColumnStretch(1, 1)
-            grid.setRowStretch(0, 1)
-            grid.setRowStretch(1, 0)
-        self._control_forms_vertical = stack_vertical
-        QtCore.QTimer.singleShot(0, self._force_control_tab_layout_update)
+        """Legacy hook — strip band width is fixed; kept for resizeEvent compatibility."""
+        del width
 
     def _sync_control_tab_map_layout(self, collapsed: bool) -> None:
-        """Expanded map fills the column; collapsed header pins to the top via bottom spacer."""
-        map_card = getattr(self, "_control_map_card", None)
-        right_lay: QtWidgets.QVBoxLayout | None = getattr(self, "_control_map_right_lay", None)
-        spacer = getattr(self, "_control_map_bottom_spacer", None)
-        tab_lay: QtWidgets.QVBoxLayout | None = getattr(self, "_control_tab_lay", None)
-        if map_card is None:
-            return
-
-        host_lay = right_lay
-        if tab_lay is not None and tab_lay.indexOf(map_card) >= 0:
-            host_lay = tab_lay
-
-        if host_lay is None:
-            return
-
-        map_idx = host_lay.indexOf(map_card)
-        if map_idx < 0:
-            return
-
-        if collapsed:
-            host_lay.setStretch(map_idx, 0)
-            if spacer is not None and host_lay is right_lay:
-                spacer_idx = host_lay.indexOf(spacer)
-                if spacer_idx >= 0:
-                    host_lay.setStretch(spacer_idx, 1)
-                    spacer.show()
-            if tab_lay is not None and host_lay is tab_lay:
-                host_lay.setStretch(map_idx, 0)
-        else:
-            host_lay.setStretch(map_idx, 1)
-            if spacer is not None and host_lay is right_lay:
-                spacer_idx = host_lay.indexOf(spacer)
-                if spacer_idx >= 0:
-                    host_lay.setStretch(spacer_idx, 0)
-                    spacer.hide()
-            map_card.setMinimumHeight(160)
-        map_card.updateGeometry()
-        self._force_control_tab_layout_update()
-
-    def _detach_control_form_cards(self) -> None:
-        serial = getattr(self, "_control_serial_group", None)
-        network = getattr(self, "_control_network_group", None)
-        if serial is None or network is None:
-            return
-        for lay in (
-            getattr(self, "_control_forms_grid", None),
-            getattr(self, "_control_forms_compact_lay", None),
-        ):
-            if lay is not None:
-                lay.removeWidget(serial)
-                lay.removeWidget(network)
-
-    def _mount_control_tab_stopped_layout(self) -> None:
-        """Center the 960px Serial + Network block in the tab viewport."""
-        serial = getattr(self, "_control_serial_group", None)
-        network = getattr(self, "_control_network_group", None)
-        grid = getattr(self, "_control_forms_grid", None)
-        preset = getattr(self, "_control_preset_bar", None)
-        stopped_panel_lay = getattr(self, "_control_stopped_panel_lay", None)
-        left_col = getattr(self, "_control_left_col", None)
-        left_lay = left_col.layout() if left_col is not None else None
-        if (
-            serial is None
-            or network is None
-            or grid is None
-            or preset is None
-            or stopped_panel_lay is None
-        ):
-            return
-
-        self._detach_control_form_cards()
-        if not self._control_forms_vertical:
-            grid.addWidget(serial, 0, 0, QtCore.Qt.AlignmentFlag.AlignTop)
-            grid.addWidget(network, 0, 1, QtCore.Qt.AlignmentFlag.AlignTop)
-            grid.setColumnStretch(0, 1)
-            grid.setColumnStretch(1, 1)
-            grid.setRowStretch(0, 1)
-            grid.setRowStretch(1, 0)
-        else:
-            grid.addWidget(serial, 0, 0, QtCore.Qt.AlignmentFlag.AlignTop)
-            grid.addWidget(network, 1, 0, QtCore.Qt.AlignmentFlag.AlignTop)
-            grid.setColumnStretch(0, 1)
-            grid.setColumnStretch(1, 0)
-            grid.setRowStretch(0, 1)
-            grid.setRowStretch(1, 0)
-
-        if left_lay is not None and left_lay.indexOf(preset) >= 0:
-            left_lay.removeWidget(preset)
-        if stopped_panel_lay.indexOf(preset) < 0:
-            stopped_panel_lay.addWidget(preset, 0)
-
-        split_host = getattr(self, "_control_split_host", None)
-        if split_host is not None:
-            split_host.hide()
-            split_host.setMaximumHeight(0)
-        viewport = getattr(self, "_control_stopped_viewport", None)
-        if viewport is not None:
-            viewport.setMaximumHeight(16777215)
-            viewport.show()
-
-    def _mount_control_tab_running_layout(self) -> None:
-        """Compact read-only cards in the left rail beside the live map."""
-        serial = getattr(self, "_control_serial_group", None)
-        network = getattr(self, "_control_network_group", None)
-        compact_lay = getattr(self, "_control_forms_compact_lay", None)
-        preset = getattr(self, "_control_preset_bar", None)
-        left_col = getattr(self, "_control_left_col", None)
-        left_lay = left_col.layout() if left_col is not None else None
-        stopped_panel_lay = getattr(self, "_control_stopped_panel_lay", None)
-        if (
-            serial is None
-            or network is None
-            or compact_lay is None
-            or preset is None
-            or left_lay is None
-        ):
-            return
-
-        self._detach_control_form_cards()
-        compact_lay.addWidget(serial, 1)
-        compact_lay.addWidget(network, 1)
-
-        if stopped_panel_lay is not None and stopped_panel_lay.indexOf(preset) >= 0:
-            stopped_panel_lay.removeWidget(preset)
-        if left_lay.indexOf(preset) < 0:
-            left_lay.addWidget(preset, 0)
-
-        viewport = getattr(self, "_control_stopped_viewport", None)
-        if viewport is not None:
-            viewport.hide()
-            viewport.setMaximumHeight(0)
-        split_host = getattr(self, "_control_split_host", None)
-        if split_host is not None:
-            split_host.setMaximumHeight(16777215)
-            split_host.show()
+        """Position map lives on Survey Map; Control strip ignores map layout."""
+        del collapsed
 
     def _force_control_tab_layout_update(self) -> None:
-        """Activate layouts immediately after map / form visibility changes."""
-        widgets = (
+        for widget in (
             getattr(self, "_control_tab_outer", None),
-            getattr(self, "_control_split_host", None),
-            getattr(self, "_control_stopped_viewport", None),
-            getattr(self, "_control_stopped_panel", None),
-            getattr(self, "_control_stopped_forms_host", None),
-            getattr(self, "_control_left_col", None),
-            getattr(self, "_control_right_col", None),
-            getattr(self, "_control_compact_host", None),
-            getattr(self, "_control_map_card", None),
+            getattr(self, "_control_strip_frame", None),
+            getattr(self, "_control_more_host", None),
             getattr(self, "_control_preset_bar", None),
-        )
-        for widget in widgets:
+        ):
             if widget is not None:
                 widget.updateGeometry()
-        layouts: list[QtWidgets.QLayout | None] = [
-            getattr(self, "_control_tab_lay", None),
-            getattr(self, "_control_stopped_viewport_lay", None),
-            getattr(self, "_control_stopped_panel_lay", None),
-            getattr(self, "_control_forms_grid", None),
-            getattr(self, "_control_forms_compact_lay", None),
-        ]
-        split_host = getattr(self, "_control_split_host", None)
-        if split_host is not None and split_host.layout() is not None:
-            layouts.append(split_host.layout())
-        left_col = getattr(self, "_control_left_col", None)
-        if left_col is not None and left_col.layout() is not None:
-            layouts.append(left_col.layout())
-        for lay in layouts:
-            if lay is not None:
-                lay.activate()
-        outer_lay = getattr(self, "_control_tab_lay", None)
-        if outer_lay is not None:
-            outer_lay.activate()
-        self.updateGeometry()
-        self._balance_control_form_cards()
+        lay = getattr(self, "_control_tab_lay", None)
+        if lay is not None:
+            lay.activate()
 
     def _relayout_control_tab(self) -> None:
-        """Force geometry refresh after map / form visibility changes."""
         self._force_control_tab_layout_update()
 
     def _sync_control_map_visibility(self, *, running: bool, has_gga: bool) -> None:
-        """Hide map until bridge runs with GGA; compact Serial/Network when map is live."""
-        show_map = bool(running and has_gga)
-        prev = getattr(self, "_control_map_live_visible", None)
-        if prev is not None and prev == show_map:
-            if show_map:
-                self._update_control_form_summaries()
+        """Single Control strip — disable fields while Running; Survey Map owns live track."""
+        del has_gga
+        prev = getattr(self, "_control_map_running", None)
+        if prev is not None and prev == running:
             return
-
-        self._control_map_live_visible = show_map
-        right_col = getattr(self, "_control_right_col", None)
+        self._control_map_running = running
         map_card = getattr(self, "_control_map_card", None)
-        split_host = getattr(self, "_control_split_host", None)
-        left_col = getattr(self, "_control_left_col", None)
-
         if map_card is not None:
-            map_card.setVisible(show_map)
-        if right_col is not None:
-            right_col.setVisible(show_map)
-
-        self._set_control_forms_compact(show_map)
-        self._update_control_form_summaries()
-
-        if show_map:
-            self._mount_control_tab_running_layout()
-            if map_card is not None:
-                set_collapsed = getattr(map_card, "set_map_collapsed", None)
-                if callable(set_collapsed):
-                    set_collapsed(False, save=False)
-                self._sync_control_tab_map_layout(False)
-            split_lay = split_host.layout() if split_host is not None else None
-            if split_lay is not None and left_col is not None and right_col is not None:
-                split_lay.setStretchFactor(left_col, 45)
-                split_lay.setStretchFactor(right_col, 55)
-                split_lay.setAlignment(
-                    QtCore.Qt.AlignmentFlag.AlignTop | QtCore.Qt.AlignmentFlag.AlignLeft
-                )
-        else:
-            self._mount_control_tab_stopped_layout()
-            self._apply_control_forms_responsive()
-
-        self._force_control_tab_layout_update()
-        QtCore.QTimer.singleShot(0, self._force_control_tab_layout_update)
+            map_card.setVisible(False)
+        strip = getattr(self, "_control_strip_frame", None)
+        if strip is not None:
+            strip.setProperty("controlStripRunning", "true" if running else "false")
+            style = strip.style()
+            if style is not None:
+                style.unpolish(strip)
+                style.polish(strip)
 
     def _set_control_forms_compact(self, compact: bool) -> None:
-        pairs = (
-            (
-                getattr(self, "_serial_control_body", None),
-                getattr(self, "_serial_control_summary", None),
-                getattr(self, "_serial_control_card", None),
-            ),
-            (
-                getattr(self, "_network_control_body", None),
-                getattr(self, "_network_control_summary", None),
-                getattr(self, "_control_network_group", None),
-            ),
-        )
-        for body, summary, card in pairs:
-            if body is not None:
-                body.setVisible(not compact)
-            if summary is not None:
-                summary.setVisible(compact)
-            if card is not None:
-                card.setProperty("controlFormCompact", "true" if compact else "false")
-                card.style().unpolish(card)
-                card.style().polish(card)
-                if compact:
-                    card.setMinimumHeight(0)
+        """Legacy no-op — unified strip uses _set_connection_locked instead."""
+        del compact
 
     def _update_control_form_summaries(self) -> None:
-        serial_sum = getattr(self, "_serial_control_summary", None)
-        if serial_sum is not None:
-            com = self.com_cb.currentText().strip() or "—"
-            baud = self.baud_edit.currentText().strip() or "—"
-            serial_sum.setText(f"{com} · {baud} baud")
-        network_sum = getattr(self, "_network_control_summary", None)
-        if network_sum is not None:
-            host = self.udp_host.text().strip() or "0.0.0.0"
-            port = self.udp_port.text().strip() or "—"
-            mode = self._nmea_mode_label() if hasattr(self, "_nmea_mode_label") else "NMEA"
-            network_sum.setText(f"UDP {host}:{port} · {mode}")
+        return
+
+    def _set_connection_locked(self, locked: bool) -> None:
+        super()._set_connection_locked(locked)
+        for widget in getattr(self, "_control_strip_extra_widgets", ()):
+            if widget is not None:
+                widget.setEnabled(not locked)
+        toggle = getattr(self, "_control_more_toggle", None)
+        if toggle is not None:
+            toggle.setEnabled(True)
+        if not locked:
+            chk = getattr(self, "chk_depth_com_enabled", None)
+            if chk is not None:
+                self._on_depth_com_enabled_toggled(chk.isChecked())
+        self._sync_control_map_visibility(running=locked, has_gga=False)
+
+    def _on_depth_com_enabled_toggled(self, enabled: bool) -> None:
+        self._sync_control_depth_row_visibility(enabled)
+        for w in (
+            getattr(self, "depth_com_cb", None),
+            getattr(self, "depth_baud_edit", None),
+        ):
+            if w is not None:
+                w.setEnabled(bool(enabled))
+        self._persist_budget_survey_prefs()
 
     def _wrap_live_activity_page(self, panel: QtWidgets.QWidget) -> QtWidgets.QWidget:
         host = QtWidgets.QWidget()
@@ -1428,6 +1295,7 @@ class BridgeWindowModern(BridgeLogicMixin, QtWidgets.QWidget):
         live_activity = self._wrap_live_activity_page(activity_panel)
         page_builders = {
             "control": lambda: control_panel,
+            "survey_map": lambda: self._build_survey_map_tab(),
             "hub": lambda: build_modern_hub_page(self),
             "fleet": lambda: build_modern_fleet_page(self),
             "presets": lambda: build_modern_presets_page(self),
@@ -1751,6 +1619,8 @@ class BridgeWindowModern(BridgeLogicMixin, QtWidgets.QWidget):
 
     def _toggle_modern_sidebar_collapsed(self) -> None:
         collapsed = not bool(getattr(self, "_modern_sidebar_collapsed", False))
+        self._modern_sidebar_user_pinned = True
+        self._modern_sidebar_auto_collapsed = False
         self._apply_modern_sidebar_collapsed(collapsed, persist=True)
 
     def _detach_widget_from_layout(self, widget: QtWidgets.QWidget) -> None:
@@ -1947,7 +1817,12 @@ class BridgeWindowModern(BridgeLogicMixin, QtWidgets.QWidget):
 
         apply_plan_sizes(splitter, plan)
         self._sync_session_run_cluster_width()
-        status_floor = plan.sizes[1]
+        from ui.modern_header_split import header_split_mins
+
+        split_mins = header_split_mins()
+        tight = plan.header_tight or splitter.width() < 860
+        status_floor = split_mins[1] if tight else max(split_mins[1], int(plan.sizes[1]))
+        status_floor = min(status_floor, MODERN_COMPACT_STATUS_MAX_W) if tight else status_floor
         status_pane = getattr(self, "_header_pane_status", None)
         if status_pane is not None:
             status_pane.setMinimumWidth(status_floor)
@@ -1961,10 +1836,33 @@ class BridgeWindowModern(BridgeLogicMixin, QtWidgets.QWidget):
             banner.setMaximumWidth(16777215)
         if isinstance(label, ElidedStatusLabel):
             fm = label.fontMetrics()
-            label.setMinimumWidth(max(52, fm.horizontalAdvance(status_display) + 4))
+            cap = MODERN_COMPACT_STATUS_MAX_W if tight else 16777215
+            label.setMinimumWidth(
+                min(cap, max(52, fm.horizontalAdvance(status_display) + 4))
+            )
             label.refresh_elide()
         self._sync_modern_header_chip_scroll()
         self._sync_header_chip_fade_edges()
+
+    def _sync_modern_window_compact_chrome(self, width: int | None = None) -> None:
+        """Narrow windows: collapse sidebar icons-only unless the user pinned it expanded."""
+        if getattr(self, "_modern_tools_nav_mode", "sidebar") != "sidebar":
+            return
+        if getattr(self, "_modern_sidebar_user_pinned", False):
+            return
+        win_w = int(width if width is not None else self.width())
+        collapsed = bool(getattr(self, "_modern_sidebar_collapsed", False))
+        auto = getattr(self, "_modern_sidebar_auto_collapsed", False)
+        if win_w < MODERN_SIDEBAR_AUTO_COLLAPSE_BELOW_W and not collapsed:
+            self._modern_sidebar_auto_collapsed = True
+            self._apply_modern_sidebar_collapsed(True, persist=False)
+        elif (
+            auto
+            and win_w >= MODERN_SIDEBAR_AUTO_EXPAND_ABOVE_W
+            and collapsed
+        ):
+            self._modern_sidebar_auto_collapsed = False
+            self._apply_modern_sidebar_collapsed(False, persist=False)
 
     def _sync_modern_header_chip_compression(self) -> None:
         """Top chips: auto icons-only when tight unless View overrides."""
@@ -2500,125 +2398,10 @@ class BridgeWindowModern(BridgeLogicMixin, QtWidgets.QWidget):
 
     # ── Sub-builders ──────────────────────────────────────────────────────
 
-    def _modern_control_form_card(
-        self,
-        title: str,
-        *,
-        icon: str = "",
-        status_badge: QtWidgets.QLabel | None = None,
-    ) -> tuple[QtWidgets.QFrame, QtWidgets.QVBoxLayout]:
-        card = QtWidgets.QFrame()
-        card.setObjectName("modernControlFormCard")
-        card.setSizePolicy(
-            QtWidgets.QSizePolicy.Policy.Expanding,
-            QtWidgets.QSizePolicy.Policy.Expanding,
-        )
-        lay = QtWidgets.QVBoxLayout(card)
-        lay.setContentsMargins(20, 18, 20, 18)
-        lay.setSpacing(12)
-        lay.setAlignment(QtCore.Qt.AlignmentFlag.AlignTop)
-        head = QtWidgets.QHBoxLayout()
-        head.setSpacing(8)
-        if icon:
-            ic = QtWidgets.QLabel(icon)
-            ic.setObjectName("modernControlSectionIcon")
-            head.addWidget(ic, 0, QtCore.Qt.AlignmentFlag.AlignTop)
-        ttl = QtWidgets.QLabel(title)
-        ttl.setObjectName("modernControlSectionTitle")
-        head.addWidget(ttl, 1)
-        if status_badge is not None:
-            head.addWidget(
-                status_badge,
-                0,
-                QtCore.Qt.AlignmentFlag.AlignTop | QtCore.Qt.AlignmentFlag.AlignRight,
-            )
-        lay.addLayout(head)
-        sep = QtWidgets.QFrame()
-        sep.setObjectName("modernControlSectionSep")
-        sep.setFrameShape(QtWidgets.QFrame.Shape.HLine)
-        sep.setFrameShadow(QtWidgets.QFrame.Shadow.Plain)
-        lay.addWidget(sep)
-        return card, lay
-
     def _control_form_label(self, text: str) -> QtWidgets.QLabel:
         lbl = QtWidgets.QLabel(text)
         lbl.setObjectName("modernControlFormLabel")
         return lbl
-
-    def _control_form_field(
-        self, label: str, widget: QtWidgets.QWidget
-    ) -> QtWidgets.QWidget:
-        col = QtWidgets.QWidget()
-        lay = QtWidgets.QVBoxLayout(col)
-        lay.setContentsMargins(0, 0, 0, 0)
-        lay.setSpacing(4)
-        lay.addWidget(self._control_form_label(label))
-        lay.addWidget(widget)
-        return col
-
-    def _build_serial_group(self) -> QtWidgets.QFrame:
-        self._serial_link_status_badge = QtWidgets.QLabel("")
-        self._serial_link_status_badge.setObjectName("modernSerialLinkBadge")
-        self._serial_link_status_badge.hide()
-        card, lay = self._modern_control_form_card(
-            "Serial link",
-            icon="🔌",
-            status_badge=self._serial_link_status_badge,
-        )
-        self._serial_control_card = card
-        card.setProperty("serialLinkState", "closed")
-        self._wire_modern_com_refresh_button()
-
-        com_field = QtWidgets.QFrame()
-        com_field.setObjectName("modernComFieldWrap")
-        com_row = QtWidgets.QHBoxLayout(com_field)
-        com_row.setContentsMargins(0, 0, 0, 0)
-        com_row.setSpacing(0)
-        self.com_cb.setMinimumHeight(34)
-        com_row.addWidget(self.com_cb, 1)
-        com_row.addWidget(
-            self.refresh_btn,
-            0,
-            QtCore.Qt.AlignmentFlag.AlignVCenter,
-        )
-        self.refresh_btn.raise_()
-
-        fields = QtWidgets.QVBoxLayout()
-        fields.setSpacing(10)
-        com_baud_row = QtWidgets.QHBoxLayout()
-        com_baud_row.setSpacing(10)
-        com_baud_row.addWidget(self._control_form_field("COM port", com_field), 3)
-        self.baud_edit.setMinimumHeight(34)
-        self.baud_edit.setMaximumWidth(132)
-        self.baud_edit.setSizePolicy(
-            QtWidgets.QSizePolicy.Policy.Fixed,
-            QtWidgets.QSizePolicy.Policy.Fixed,
-        )
-        com_baud_row.addWidget(self._control_form_field("Baud", self.baud_edit), 0)
-        fields.addLayout(com_baud_row)
-        chk_col = QtWidgets.QVBoxLayout()
-        chk_col.setSpacing(6)
-        chk_col.addWidget(self.chk_serial_auto_reconnect)
-        chk_col.addWidget(self.chk_auto_discover)
-        fields.addLayout(chk_col)
-        body_host = QtWidgets.QWidget()
-        body_host.setSizePolicy(
-            QtWidgets.QSizePolicy.Policy.Expanding,
-            QtWidgets.QSizePolicy.Policy.Expanding,
-        )
-        body_lay = QtWidgets.QVBoxLayout(body_host)
-        body_lay.setContentsMargins(0, 0, 0, 0)
-        body_lay.setSpacing(0)
-        body_lay.addLayout(fields)
-        body_lay.addStretch(1)
-        lay.addWidget(body_host, 1)
-        self._serial_control_body = body_host
-        self._serial_control_summary = QtWidgets.QLabel("")
-        self._serial_control_summary.setObjectName("modernControlFormSummary")
-        self._serial_control_summary.setWordWrap(True)
-        self._serial_control_summary.hide()
-        lay.addWidget(self._serial_control_summary)
-        return card
 
     def _wire_modern_com_refresh_button(self) -> None:
         """Icon refresh control beside COM dropdown — rescan serial ports."""
@@ -2639,154 +2422,20 @@ class BridgeWindowModern(BridgeLogicMixin, QtWidgets.QWidget):
         btn.setText("" if not icon.isNull() else "\u21bb")
         btn.clicked.connect(self.refresh_ports)
 
-    def _build_network_group(self) -> QtWidgets.QFrame:
-        card, lay = self._modern_control_form_card("Network path", icon="📡")
-        body_host = QtWidgets.QWidget()
-        body_host.setSizePolicy(
-            QtWidgets.QSizePolicy.Policy.Expanding,
-            QtWidgets.QSizePolicy.Policy.Expanding,
-        )
-        body = QtWidgets.QVBoxLayout(body_host)
-        body.setContentsMargins(0, 0, 0, 0)
-        body.setSpacing(8)
-        host_col = QtWidgets.QVBoxLayout()
-        host_col.setSpacing(4)
-        host_col.addWidget(self._control_form_label("Listen host"))
-        self.udp_host.setMinimumHeight(34)
-        host_col.addWidget(self.udp_host)
-        body.addLayout(host_col)
-        port_col = QtWidgets.QVBoxLayout()
-        port_col.setSpacing(4)
-        port_col.addWidget(self._control_form_label("Listen port"))
-        self.udp_port.setMinimumHeight(34)
-        port_col.addWidget(self.udp_port)
-        body.addLayout(port_col)
-        fan = QtWidgets.QHBoxLayout()
-        fan.addWidget(self.chk_udp_fanout, 1)
-        fan.addWidget(
-            create_network_help_button(self),
-            0,
-            QtCore.Qt.AlignmentFlag.AlignRight | QtCore.Qt.AlignmentFlag.AlignVCenter,
-        )
-        body.addLayout(fan)
-        mirror_row = QtWidgets.QHBoxLayout()
-        mirror_row.setContentsMargins(0, 0, 0, 0)
-        mirror_row.setSpacing(8)
-        mirror_row.addWidget(self._control_form_label("Serial mirrors"), 0)
-        self.serial_mirror_ports.setMinimumHeight(32)
-        self.serial_mirror_ports.show()
-        mirror_row.addWidget(self.serial_mirror_ports, 1)
-        body.addLayout(mirror_row)
-        mirror_tx_wrap = QtWidgets.QWidget()
-        mirror_tx_wrap.setObjectName("modernControlNestedRow")
-        mirror_tx_lay = QtWidgets.QHBoxLayout(mirror_tx_wrap)
-        mirror_tx_lay.setContentsMargins(12, 0, 0, 0)
-        mirror_tx_lay.setSpacing(0)
-        self.chk_serial_mirror_device_tx.show()
-        mirror_tx_lay.addWidget(self.chk_serial_mirror_device_tx)
-        body.addWidget(mirror_tx_wrap)
-        body.addWidget(self.chk_tcp_sink_enable)
-        self._tcp_sink_port_panel = QtWidgets.QWidget()
-        self._tcp_sink_port_panel.setObjectName("modernTcpSinkIndent")
-        port_panel_lay = QtWidgets.QHBoxLayout(self._tcp_sink_port_panel)
-        port_panel_lay.setContentsMargins(0, 2, 0, 0)
-        port_panel_lay.setSpacing(10)
-        indent = QtWidgets.QFrame()
-        indent.setObjectName("modernControlIndentRule")
-        indent.setFixedWidth(3)
-        port_panel_lay.addWidget(indent, 0, QtCore.Qt.AlignmentFlag.AlignTop)
-        port_inner = QtWidgets.QVBoxLayout()
-        port_inner.setSpacing(4)
-        port_inner.addWidget(self._control_form_label("Mirror port"))
-        self.tcp_sink_port.setFixedWidth(88)
-        self.tcp_sink_port.setMaximumWidth(96)
-        self.tcp_sink_port.setMinimumHeight(32)
-        port_inner.addWidget(self.tcp_sink_port, 0, QtCore.Qt.AlignmentFlag.AlignLeft)
-        port_panel_lay.addLayout(port_inner, 1)
-        body.addWidget(self._tcp_sink_port_panel)
-        body.addWidget(self.chk_advanced_net)
-        self._advanced_net_scroll = QtWidgets.QScrollArea()
-        self._advanced_net_scroll.setObjectName("modernAdvancedNetScroll")
-        self._advanced_net_scroll.setWidgetResizable(True)
-        self._advanced_net_scroll.setFrameShape(QtWidgets.QFrame.Shape.NoFrame)
-        self._advanced_net_scroll.setHorizontalScrollBarPolicy(
-            QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff
-        )
-        self._advanced_net_scroll.setVerticalScrollBarPolicy(
-            QtCore.Qt.ScrollBarPolicy.ScrollBarAsNeeded
-        )
-        self._advanced_net_scroll.setSizePolicy(
-            QtWidgets.QSizePolicy.Policy.Expanding,
-            QtWidgets.QSizePolicy.Policy.Expanding,
-        )
-        self._advanced_net_scroll.setWidget(self._advanced_net)
-        self._advanced_net_scroll.setVisible(self.chk_advanced_net.isChecked())
-        self._advanced_net.setVisible(True)
-        body.addWidget(self._advanced_net_scroll, 1)
-        lay.addWidget(body_host, 1)
-        self._network_control_body = body_host
-        self._network_control_summary = QtWidgets.QLabel("")
-        self._network_control_summary.setObjectName("modernControlFormSummary")
-        self._network_control_summary.setWordWrap(True)
-        self._network_control_summary.hide()
-        lay.addWidget(self._network_control_summary)
-        self.chk_tcp_sink_enable.toggled.connect(self._sync_tcp_sink_port_row)
-        self._sync_tcp_sink_port_row(self.chk_tcp_sink_enable.isChecked())
-        return card
-
     def _sync_tcp_sink_port_row(self, enabled: bool) -> None:
         panel = getattr(self, "_tcp_sink_port_panel", None)
         if panel is None:
             return
         panel.setVisible(bool(enabled))
-        if hasattr(self, "_force_control_tab_layout_update"):
-            QtCore.QTimer.singleShot(0, self._force_control_tab_layout_update)
+        QtCore.QTimer.singleShot(0, self._force_control_tab_layout_update)
 
     def _balance_control_form_cards(self) -> None:
-        serial = getattr(self, "_control_serial_group", None)
-        network = getattr(self, "_control_network_group", None)
-        host = getattr(self, "_control_stopped_forms_host", None)
-        if serial is None or network is None:
-            return
-        if getattr(self, "_control_map_live_visible", False):
-            serial.setMinimumHeight(0)
-            network.setMinimumHeight(0)
-            serial.setSizePolicy(
-                QtWidgets.QSizePolicy.Policy.Expanding,
-                QtWidgets.QSizePolicy.Policy.Expanding,
-            )
-            network.setSizePolicy(
-                QtWidgets.QSizePolicy.Policy.Expanding,
-                QtWidgets.QSizePolicy.Policy.Expanding,
-            )
-            self._sync_network_advanced_scroll()
-            return
-        serial.setSizePolicy(
-            QtWidgets.QSizePolicy.Policy.Expanding,
-            QtWidgets.QSizePolicy.Policy.Preferred,
-        )
-        network.setSizePolicy(
-            QtWidgets.QSizePolicy.Policy.Expanding,
-            QtWidgets.QSizePolicy.Policy.Preferred,
-        )
-        content_h = max(
-            120,
-            serial.sizeHint().height(),
-            network.sizeHint().height(),
-        )
-        host_h = host.height() if host is not None else 0
-        if host_h > 80:
-            h = min(content_h, host_h)
-        else:
-            h = content_h
-        serial.setMinimumHeight(h)
-        network.setMinimumHeight(h)
-        self._sync_network_advanced_scroll()
-
-    def _sync_network_advanced_scroll(self) -> None:
         scroll = getattr(self, "_advanced_net_scroll", None)
         if scroll is not None:
             scroll.updateGeometry()
+
+    def _sync_network_advanced_scroll(self) -> None:
+        self._balance_control_form_cards()
 
     def _build_status_footer(self) -> QtWidgets.QFrame:
         footer = QtWidgets.QFrame()
@@ -3625,12 +3274,6 @@ class BridgeWindowModern(BridgeLogicMixin, QtWidgets.QWidget):
         super()._on_bridge_started(b)
         self._sync_modern_footer_chrome()
         self._sync_modern_start_stop_labels()
-        # Smart-Peek: Activity first; return to Control when wire traffic arrives.
-        self._smart_peek_pending = True
-        try:
-            self._open_modern_section_by_sid("activity")
-        except Exception:
-            pass
 
     def _stats_from_bridge(self, d: dict) -> None:
         super()._stats_from_bridge(d)
@@ -3640,26 +3283,6 @@ class BridgeWindowModern(BridgeLogicMixin, QtWidgets.QWidget):
         if not stats and isinstance(d, dict):
             stats = d
         self._sync_modern_footer_chrome(stats)
-        self._maybe_finish_smart_peek(stats)
-
-    def _tick_stats(self) -> None:
-        super()._tick_stats()
-        if not self._is_bridge_running():
-            self._sync_modern_footer_chrome()
-
-    def _maybe_finish_smart_peek(self, stats: dict) -> None:
-        if not getattr(self, "_smart_peek_pending", False):
-            return
-        if not bridge_stats_show_live_traffic(stats):
-            return
-        if self._modern_current_section_sid() != "activity":
-            self._smart_peek_pending = False
-            return
-        self._smart_peek_pending = False
-        try:
-            self._open_modern_section_by_sid("control")
-        except Exception:
-            pass
 
     def _modern_current_section_sid(self) -> str:
         stack = getattr(self, "_tools_stack", None)
@@ -3668,8 +3291,12 @@ class BridgeWindowModern(BridgeLogicMixin, QtWidgets.QWidget):
         idx = stack.currentIndex()
         return str(getattr(self, "_modern_sid_by_stack_index", {}).get(idx, ""))
 
+    def _tick_stats(self) -> None:
+        super()._tick_stats()
+        if not self._is_bridge_running():
+            self._sync_modern_footer_chrome()
+
     def stop_bridge(self) -> None:
-        self._smart_peek_pending = False
         super().stop_bridge()
         self._sync_modern_footer_chrome()
         self._sync_modern_start_stop_labels()
@@ -3725,6 +3352,7 @@ class BridgeWindowModern(BridgeLogicMixin, QtWidgets.QWidget):
             elide_status_label(self.lbl_stats, full)
         self._sync_modern_status_banner_width()
         self._apply_control_forms_responsive(event.size().width())
+        self._sync_modern_window_compact_chrome(event.size().width())
         self._sync_header_trail_layout()
         from ui.tool_tabs import apply_phone_dashboard_responsive
 

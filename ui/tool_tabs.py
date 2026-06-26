@@ -1900,6 +1900,7 @@ def build_modern_tools_nav_groups() -> list[tuple[str, list[tuple[str, str, str]
             "Control",
             [
                 ("control", "Control", "🎛"),
+                ("survey_map", "Survey Map", "🗺"),
                 ("activity", "Activity", "📋"),
             ],
         ),

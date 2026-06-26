@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from enum import Enum
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
-from typing import Callable, Deque, List, Optional, Set
+from typing import Any, Callable, Deque, List, Optional, Set
 
 import serial
 import serial_asyncio
@@ -31,7 +31,9 @@ from nmea_codec import (
     format_binary_log_preview,
     parse_nmea_utc,
 )
+from depth_codec import parse_depth_line
 from nmea_position import feed_nmea_position, format_position_ddm
+from sounding_mux import FixSnapshot, SoundingBuffer, mux_depth
 from core.local_logger import LocalSerialBackup, default_local_backup_dir
 from survey_quality import (
     feed_nmea_navigation_quality,
@@ -447,9 +449,15 @@ class SerialNetBridge:
         enable_local_backup: bool = False,
         local_backup_dir: Optional[Path] = None,
         wire_tap_cb: Optional[Callable[[str, bytes], None]] = None,
+        depth_com_port: str = "",
+        depth_com_baud: int = 4800,
+        depth_com_enabled: bool = False,
     ):
         self.com = com
         self.baud = baud
+        self.depth_com_port = (depth_com_port or "").strip().upper()
+        self.depth_com_baud = max(300, int(depth_com_baud or 4800))
+        self.depth_com_enabled = bool(depth_com_enabled)
         self.mode = mode
         self.udp_listen = udp_listen
         self.udp_remote = udp_remote
@@ -552,6 +560,17 @@ class SerialNetBridge:
         self._ui_event_log_state: dict[str, tuple[float, int]] = {}
         self._serial_write_lock: Optional[asyncio.Lock] = None
 
+        self._sounding_buffer = SoundingBuffer()
+        self._sounding_count = 0
+        self._sounding_stale_count = 0
+        self._last_depth_m: Optional[float] = None
+        self._last_depth_source: str = ""
+        self._last_sounding_stale = False
+        self._hz_depth_times: deque[float] = deque()
+        self._depth_reader: Optional[asyncio.StreamReader] = None
+        self._depth_writer: Optional[asyncio.StreamWriter] = None
+        self._depth_disconnect_logged = False
+
     def _wrap_bridge_callback(
         self, cb: Callable[..., None], label: str
     ) -> Callable[..., None]:
@@ -625,6 +644,97 @@ class SerialNetBridge:
         if lon_ddm:
             out["position_lon_ddm"] = lon_ddm
         return out
+
+    def _fix_snapshot_for_mux(self) -> Optional[FixSnapshot]:
+        if self.nmea_mode == NmeaMode.RAW or not self.running:
+            return None
+        pos = self._position_state[0]
+        if not pos:
+            return None
+        nav = self._nav_quality_state[0] or {}
+        fix_mono = float(pos.get("mono") or time.monotonic())
+        hdop_raw = nav.get("hdop")
+        try:
+            hdop_f = float(hdop_raw) if hdop_raw is not None else None
+        except (TypeError, ValueError):
+            hdop_f = None
+        q_raw = nav.get("quality")
+        try:
+            q_i = int(q_raw) if q_raw is not None else None
+        except (TypeError, ValueError):
+            q_i = None
+        return FixSnapshot(
+            lat=float(pos["lat"]),
+            lon=float(pos["lon"]),
+            fix_type=q_i,
+            hdop=hdop_f,
+            source=str(pos.get("source") or "gga"),
+            fix_mono=fix_mono,
+        )
+
+    def _ingest_depth_line(self, line: str) -> None:
+        sample = parse_depth_line(line)
+        if sample is None:
+            return
+        now = time.monotonic()
+        self._hz_depth_times.append(now)
+        self._last_depth_m = float(sample.depth_m)
+        self._last_depth_source = str(sample.source or "")
+        sounding = mux_depth(
+            sample,
+            self._fix_snapshot_for_mux(),
+            wall_time=time.time(),
+        )
+        self._sounding_buffer.append(sounding)
+        self._sounding_count += 1
+        self._last_sounding_stale = bool(sounding.stale)
+        if sounding.stale:
+            self._sounding_stale_count += 1
+        self._schedule_stats_emit()
+
+    def hz_depth(self) -> float:
+        return rolling_hz_last_second(self._hz_depth_times)
+
+    def sounding_stats(self) -> dict[str, object]:
+        if not self.depth_com_enabled or not self.depth_com_port:
+            return {
+                "depth_enabled": False,
+                "depth_port": "",
+                "depth_rate_hz": 0.0,
+                "last_depth_m": None,
+                "last_depth_source": "",
+                "last_sounding_stale": False,
+                "sounding_count": 0,
+                "sounding_stale_count": 0,
+                "soundings_recent": [],
+            }
+        return {
+            "depth_enabled": True,
+            "depth_port": self.depth_com_port,
+            "depth_rate_hz": self.hz_depth(),
+            "last_depth_m": self._last_depth_m,
+            "last_depth_source": self._last_depth_source,
+            "last_sounding_stale": self._last_sounding_stale,
+            "sounding_count": self._sounding_count,
+            "sounding_stale_count": self._sounding_stale_count,
+            "soundings_recent": self._sounding_buffer.recent_for_map(max_points=300),
+        }
+
+    def session_soundings_export(self) -> list[dict[str, object]]:
+        return self._sounding_buffer.session_soundings()
+
+    def session_depth_stats(self) -> dict[str, object]:
+        """Depth telemetry snapshot for Mission Review / export handoff."""
+        stats = self.sounding_stats()
+        return {
+            "depth_enabled": bool(stats.get("depth_enabled")),
+            "depth_port": str(stats.get("depth_port") or ""),
+            "depth_rate_hz": float(stats.get("depth_rate_hz") or 0.0),
+            "last_depth_m": stats.get("last_depth_m"),
+            "last_depth_source": str(stats.get("last_depth_source") or ""),
+            "sounding_count": int(stats.get("sounding_count") or 0),
+            "sounding_stale_count": int(stats.get("sounding_stale_count") or 0),
+        }
 
     def navigation_quality_stats(self) -> dict:
         """Stats-bar / HUD fields from latest GGA (excludes internal monotonic timestamp)."""
@@ -929,6 +1039,7 @@ class SerialNetBridge:
                 ),
                 **self.navigation_quality_stats(),
                 **self.navigation_position_stats(),
+                **self.sounding_stats(),
                 **self._local_backup_stats(),
             }
         )
@@ -1242,13 +1353,17 @@ class SerialNetBridge:
 
 
     async def _open_serial_stream(
-        self, com: Optional[str] = None
+        self,
+        com: Optional[str] = None,
+        *,
+        baud: Optional[int] = None,
     ) -> tuple[asyncio.StreamReader, asyncio.StreamWriter]:
         """Open COM without hanging the Qt loop (thread join timeout, not wait_for on a stuck thread)."""
         loop = self.loop
         target = (com or self.com).strip().upper()
+        target_baud = int(baud if baud is not None else self.baud)
         ser = await asyncio.to_thread(
-            _open_serial_port_timed, target, self.baud, SERIAL_OPEN_TIMEOUT_S
+            _open_serial_port_timed, target, target_baud, SERIAL_OPEN_TIMEOUT_S
         )
         reader = asyncio.StreamReader(loop=loop)
         protocol = asyncio.StreamReaderProtocol(reader, loop=loop)
@@ -1286,6 +1401,13 @@ class SerialNetBridge:
         self._last_com_to_net_mono = 0.0
         self._com_flow_last_mono = 0.0
         self._com_active_total_s = 0.0
+        self._sounding_buffer.clear()
+        self._sounding_count = 0
+        self._sounding_stale_count = 0
+        self._last_depth_m = None
+        self._last_depth_source = ""
+        self._last_sounding_stale = False
+        self._hz_depth_times.clear()
         self._start_local_backup()
         await self._open_mirror_ports()
         self._set_status(f"Serial: {self.com} @ {self.baud} — open", "Network: opening…")
@@ -1377,7 +1499,47 @@ class SerialNetBridge:
                 )
                 self._tcp_sink = None
 
+        if self.depth_com_enabled and self.depth_com_port:
+            self._tasks.append(
+                asyncio.create_task(self._depth_serial_pump(), name="depth_pump")
+            )
+
         return True
+
+    async def _depth_serial_pump(self) -> None:
+        port = self.depth_com_port.strip().upper()
+        baud = self.depth_com_baud
+        if not port:
+            return
+        while self.running and not self._teardown:
+            reader: Optional[asyncio.StreamReader] = None
+            writer: Optional[asyncio.StreamWriter] = None
+            try:
+                reader, writer = await self._open_serial_stream(port, baud=baud)
+                self._depth_reader = reader
+                self._depth_writer = writer
+                self._depth_disconnect_logged = False
+                self._ui_log(f"Depth sonar open: {port} @ {baud}")
+                while self.running and not self._teardown:
+                    line_b = await reader.readline()
+                    if not line_b:
+                        break
+                    text = line_b.decode("utf-8", errors="replace").strip()
+                    if text:
+                        self._ingest_depth_line(text)
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                if self.running and not self._depth_disconnect_logged:
+                    self._depth_disconnect_logged = True
+                    self._ui_log(_friendly_serial_error(e, port))
+            finally:
+                self._depth_reader = None
+                close_writer = writer or self._depth_writer
+                self._depth_writer = None
+                await self._await_closed(close_writer, "Depth sonar")
+            if self.running and not self._teardown:
+                await asyncio.sleep(SERIAL_RECONNECT_INTERVAL_S)
 
     async def _serve_tcp_sink_forever(self) -> None:
         assert self._tcp_sink_server is not None
@@ -1889,6 +2051,10 @@ class SerialNetBridge:
         self.serial_writer = None
         self.serial_reader = None
         await self._await_closed(writer, "Serial")
+        depth_writer = self._depth_writer
+        self._depth_writer = None
+        self._depth_reader = None
+        await self._await_closed(depth_writer, "Depth sonar")
         await self._close_mirror_ports()
 
         self._serial_open = False

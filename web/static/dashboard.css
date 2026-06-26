@@ -2067,10 +2067,129 @@ body.dashboard-log-expanded .log-card .dashboard-panel-summary::after {
 }
 
 .map-frame {
+  position: relative;
   border: 1px solid var(--border);
   border-radius: var(--radius);
   overflow: hidden;
   margin-bottom: var(--gap-sm);
+}
+
+.map-depth-legend {
+  position: absolute;
+  left: 10px;
+  bottom: 28px;
+  z-index: 500;
+  width: 52px;
+  padding: 6px 5px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: rgba(15, 23, 42, 0.92);
+  color: #e2e8f0;
+  font-size: 11px;
+  pointer-events: auto;
+  cursor: context-menu;
+}
+
+.map-depth-legend-title {
+  font-weight: 600;
+  margin-bottom: 6px;
+  letter-spacing: 0.02em;
+  font-size: 9px;
+  text-transform: uppercase;
+  text-align: center;
+}
+
+.map-depth-legend-body {
+  display: flex;
+  align-items: stretch;
+  gap: 6px;
+}
+
+.map-depth-legend-labels {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 10px;
+  color: #94a3b8;
+}
+
+.map-depth-legend-labels span {
+  line-height: 1;
+}
+
+#map-depth-legend-bar {
+  border-radius: 4px;
+  border: 1px solid var(--border);
+}
+
+.map-depth-legend-menu {
+  min-width: 210px;
+}
+
+.legend-menu-head {
+  padding: 4px 10px 6px;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+}
+
+.legend-color-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 6px 10px;
+  font-size: 11px;
+  color: var(--text);
+  cursor: default;
+}
+
+.legend-color-row input[type="color"] {
+  width: 44px;
+  height: 26px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: transparent;
+  cursor: pointer;
+}
+
+.map-context-menu {
+  position: fixed;
+  z-index: 2000;
+  min-width: 188px;
+  padding: 6px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: rgba(15, 23, 42, 0.96);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+}
+
+.map-context-menu[hidden] {
+  display: none !important;
+}
+
+.map-context-menu .ctx-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  margin: 0;
+  padding: 8px 10px;
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text);
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.map-context-menu .ctx-item:hover {
+  background: rgba(51, 65, 85, 0.55);
 }
 
 .bridge-map {

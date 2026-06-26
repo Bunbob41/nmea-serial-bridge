@@ -48,9 +48,9 @@ def install_tray_icon(win: QtWidgets.QWidget) -> Optional[QtWidgets.QSystemTrayI
 
 
 def show_main_window(win: QtWidgets.QWidget) -> None:
-    win.showNormal()
-    win.raise_()
-    win.activateWindow()
+    from ui.window_present import present_main_window
+
+    present_main_window(win)
 
 
 def update_tray_tooltip(tray: Optional[QtWidgets.QSystemTrayIcon], text: str) -> None:

@@ -57,6 +57,14 @@ class WebSessionState:
     udp_peer_stale: bool = False
     udp_peer_details: list[dict[str, Any]] = field(default_factory=list)
     net_mode: str = ""
+    depth_enabled: bool = False
+    depth_port: str = ""
+    depth_rate_hz: float = 0.0
+    last_depth_m: Optional[float] = None
+    last_sounding_stale: bool = False
+    sounding_count: int = 0
+    sounding_stale_count: int = 0
+    soundings_recent: list[dict[str, Any]] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)

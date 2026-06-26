@@ -135,6 +135,17 @@ _SVG_DATA: dict[str, str] = {
         '<path d="M3 13L9 19L18 3L21 3L9 22L0 13Z"/>'
         '</svg>'
     ),
+
+    # Survey map: globe with meridians (tactical chart view)
+    "globe": (
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="FILL" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">'
+        '<circle cx="12" cy="12" r="9"/>'
+        '<ellipse cx="12" cy="12" rx="4" ry="9"/>'
+        '<path d="M3 12H21"/>'
+        '<path d="M4.5 7.5H19.5"/>'
+        '<path d="M4.5 16.5H19.5"/>'
+        '</svg>'
+    ),
 }
 
 # ── Icon-to-sidebar-section mapping ──────────────────────────────────────────
@@ -156,6 +167,7 @@ SIDEBAR_ICON_MAP: dict[str, str] = {
     "terminal":  "prompt",
     "checks":    "check",
     "theme":     "setting",
+    "survey_map": "globe",
 }
 
 
