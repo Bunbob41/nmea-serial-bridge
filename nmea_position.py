@@ -13,14 +13,46 @@ class NmeaPosition:
     lat: float
     lon: float
     source: str  # "gga" | "rmc"
+    lat_dm: str = ""
+    lat_hemi: str = ""
+    lon_dm: str = ""
+    lon_hemi: str = ""
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        out: dict[str, Any] = {
             "lat": self.lat,
             "lon": self.lon,
             "source": self.source,
             "mono": time.monotonic(),
         }
+        if self.lat_dm:
+            out["lat_dm"] = self.lat_dm
+            out["lat_hemi"] = self.lat_hemi
+            out["lon_dm"] = self.lon_dm
+            out["lon_hemi"] = self.lon_hemi
+        return out
+
+
+def format_dm_field(dm: str, hemisphere: str) -> str:
+    """NMEA DDMM.mmmmm field → simulator-style DDM label (no decimal round-trip)."""
+    raw = (dm or "").strip()
+    hemi = (hemisphere or "").strip().upper()
+    if not raw or not hemi:
+        return ""
+    try:
+        value = float(raw)
+    except ValueError:
+        return ""
+    degrees = int(value // 100)
+    minutes = value - degrees * 100
+    return f"{degrees}° {minutes:.5f}' {hemi}"
+
+
+def format_position_ddm(pos: dict[str, Any]) -> tuple[str, str]:
+    """Return (lat_label, lon_label) from raw NMEA dm fields when present."""
+    lat = format_dm_field(str(pos.get("lat_dm") or ""), str(pos.get("lat_hemi") or ""))
+    lon = format_dm_field(str(pos.get("lon_dm") or ""), str(pos.get("lon_hemi") or ""))
+    return lat, lon
 
 
 def nmea_dm_to_decimal(dm: str, hemisphere: str) -> Optional[float]:
@@ -57,7 +89,15 @@ def parse_gga_position(line: str) -> Optional[NmeaPosition]:
         return None
     if abs(lat) > 90.0 or abs(lon) > 180.0:
         return None
-    return NmeaPosition(lat=lat, lon=lon, source="gga")
+    return NmeaPosition(
+        lat=lat,
+        lon=lon,
+        source="gga",
+        lat_dm=parts[2].strip(),
+        lat_hemi=parts[3].strip(),
+        lon_dm=parts[4].strip(),
+        lon_hemi=parts[5].strip(),
+    )
 
 
 def parse_rmc_position(line: str) -> Optional[NmeaPosition]:
@@ -77,7 +117,15 @@ def parse_rmc_position(line: str) -> Optional[NmeaPosition]:
         return None
     if abs(lat) > 90.0 or abs(lon) > 180.0:
         return None
-    return NmeaPosition(lat=lat, lon=lon, source="rmc")
+    return NmeaPosition(
+        lat=lat,
+        lon=lon,
+        source="rmc",
+        lat_dm=parts[3].strip(),
+        lat_hemi=parts[4].strip(),
+        lon_dm=parts[5].strip(),
+        lon_hemi=parts[6].strip(),
+    )
 
 
 def parse_nmea_position(line: str) -> Optional[NmeaPosition]:

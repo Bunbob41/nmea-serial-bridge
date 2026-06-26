@@ -9,6 +9,8 @@ from pathlib import Path
 from ui.mission_export import (
     build_mission_summary_text,
     export_session_backup_copy,
+    export_session_nmea_csv,
+    export_session_track_kml,
     quick_export_mission_zip,
     resolve_session_backup_path,
     suggest_quick_export_path,
@@ -91,6 +93,29 @@ class TestMissionExport(unittest.TestCase):
             self.assertEqual(dest.read_bytes(), source.read_bytes())
             suggested = suggest_quick_export_path(record, dest_dir=Path(tmp))
             self.assertTrue(str(suggested).endswith(".nmea"))
+
+    def test_export_session_nmea_csv(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "backup.nmea"
+            source.write_text("$GPGGA,1,2,3,4,5,6,7*00\n$GPRMC,1,2,3,4,5,6,7,8*00\n", encoding="utf-8")
+            dest = Path(tmp) / "out.csv"
+            export_session_nmea_csv(source, dest)
+            text = dest.read_text(encoding="utf-8")
+            self.assertIn("sentence_type", text)
+            self.assertIn("GGA", text)
+
+    def test_export_session_track_kml(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "backup.nmea"
+            source.write_text(
+                "$GPGGA,123519,4807.038,N,01131.000,E,1,08,0.9,545.4,M,46.9,M,,*47\n",
+                encoding="utf-8",
+            )
+            dest = Path(tmp) / "track.kml"
+            export_session_track_kml(source, dest)
+            body = dest.read_text(encoding="utf-8")
+            self.assertIn("<kml", body)
+            self.assertIn("LineString", body)
 
 
 if __name__ == "__main__":

@@ -868,25 +868,44 @@ QListWidget#presetList::item:selected {
 QListWidget#presetList::item:hover:!selected {
     background-color: #4a3540;
 }
-QDialog#UiEditorDialog QScrollArea#uiEditorScroll {
-    background-color: #1e181c;
-    border: 1px solid #7a5a2d;
-    border-radius: 6px;
+/* UI Editor — dark theme */
+QDialog#UiEditorDialog QFrame#uiEditorBanner {
+    background-color: #221820;
+    border-bottom: 1px solid #5a3040;
 }
-QDialog#UiEditorDialog QWidget#uiEditorListHost {
-    background-color: #1e181c;
+QDialog#UiEditorDialog QFrame#uiEditorFooter {
+    background-color: #1c1418;
+    border-top: 1px solid #5a3040;
 }
-QDialog#UiEditorDialog QFrame#uiEditorRow {
-    background-color: rgba(36, 28, 32, 0.55);
-    border: 1px solid #57333f;
+QDialog#UiEditorDialog QFrame#uiEditorTabFrame {
+    background: transparent;
+}
+QListWidget#uiEditorDragList {
+    background-color: #1e181c;
+    border: none;
+    outline: none;
+}
+QListWidget#uiEditorDragList::item {
+    background-color: rgba(36, 28, 32, 0.7);
+    border: 1px solid #3a2830;
     border-radius: 6px;
+    padding: 2px 0;
+}
+QListWidget#uiEditorDragList::item:selected {
+    background-color: rgba(90, 55, 70, 0.75);
+    border: 1px solid #8a4a60;
+}
+QListWidget#uiEditorDragList::item:hover:!selected {
+    background-color: rgba(58, 38, 48, 0.75);
+    border: 1px solid #6a3a50;
 }
 QDialog#UiEditorDialog QLabel#uiEditorRowTitle {
     color: #f0ebe4;
     font-weight: 600;
 }
-QDialog#UiEditorDialog QToolButton {
-    min-width: 28px;
+QDialog#UiEditorDialog QLabel#uiEditorGrip {
+    color: #7a6070;
+    font-size: 16px;
 }
 QCheckBox { color: #f0ebe4; }
 QRadioButton { color: #f0ebe4; }
@@ -1096,25 +1115,44 @@ QListWidget#presetList::item:selected {
 QListWidget#presetList::item:hover:!selected {
     background-color: #e8e0d4;
 }
-QDialog#UiEditorDialog QScrollArea#uiEditorScroll {
-    background-color: #f5f2ec;
-    border: 1px solid #a09888;
-    border-radius: 6px;
+/* UI Editor — light theme */
+QDialog#UiEditorDialog QFrame#uiEditorBanner {
+    background-color: #faf6ef;
+    border-bottom: 1px solid #c8b090;
 }
-QDialog#UiEditorDialog QWidget#uiEditorListHost {
-    background-color: #f5f2ec;
+QDialog#UiEditorDialog QFrame#uiEditorFooter {
+    background-color: #f2ece2;
+    border-top: 1px solid #c8b090;
 }
-QDialog#UiEditorDialog QFrame#uiEditorRow {
-    background-color: rgba(255, 252, 246, 0.95);
-    border: 1px solid #c8a668;
+QDialog#UiEditorDialog QFrame#uiEditorTabFrame {
+    background: transparent;
+}
+QListWidget#uiEditorDragList {
+    background-color: #f5f0e8;
+    border: none;
+    outline: none;
+}
+QListWidget#uiEditorDragList::item {
+    background-color: rgba(255, 252, 246, 0.9);
+    border: 1px solid #d0b888;
     border-radius: 6px;
+    padding: 2px 0;
+}
+QListWidget#uiEditorDragList::item:selected {
+    background-color: rgba(210, 170, 120, 0.45);
+    border: 1px solid #b08040;
+}
+QListWidget#uiEditorDragList::item:hover:!selected {
+    background-color: rgba(230, 210, 180, 0.5);
+    border: 1px solid #c09858;
 }
 QDialog#UiEditorDialog QLabel#uiEditorRowTitle {
     color: #1a1a1a;
     font-weight: 600;
 }
-QDialog#UiEditorDialog QToolButton {
-    min-width: 28px;
+QDialog#UiEditorDialog QLabel#uiEditorGrip {
+    color: #a08868;
+    font-size: 16px;
 }
 QCheckBox { color: #1a1a1a; }
 QRadioButton { color: #1a1a1a; }
@@ -1996,6 +2034,79 @@ THEME_LABELS = {
 }
 
 
+_FLEET_PANEL_FIELD_CSS = """
+QTableWidget#modernFleetTable {
+    background-color: #1a1015;
+    color: #f4f0ea;
+    border: 1px solid #57333f;
+    gridline-color: #3a2830;
+}
+QTableWidget#modernFleetTable::item { padding: 1px 6px; }
+QTableWidget#modernFleetTable QHeaderView::section {
+    background-color: #2a1d22;
+    color: #f4f0ea;
+    font-weight: 700;
+    font-size: 9pt;
+    padding: 4px 8px;
+    border: none;
+    border-bottom: 1px solid #57333f;
+}
+QTableWidget#modernFleetTable::item:selected { background-color: #4a2030; }
+QLabel#modernFleetStatus { color: #b8a89e; font-size: 9pt; }
+QPushButton#modernToolsPrimaryBtn {
+    background-color: #3a2030;
+    color: #ffffff;
+    border: 1px solid #c9a227;
+    border-radius: 5px;
+    padding: 5px 12px;
+    font-size: 9pt;
+    font-weight: 600;
+}
+QPushButton#modernToolsPrimaryBtn:hover {
+    background-color: #c9a227;
+    color: #000000;
+}
+QPushButton#modernToolsSecondaryBtn {
+    background-color: #2a1d22;
+    color: #f4f0ea;
+    border: 1px solid #57333f;
+    border-radius: 5px;
+    padding: 5px 12px;
+    font-size: 9pt;
+}
+QPushButton#modernToolsSecondaryBtn:hover {
+    border-color: #c9a227;
+    color: #c9a227;
+}
+QDialog#fleetStreamEditDialog {
+    background-color: #241a1f;
+    color: #f4f0ea;
+}
+QDialog#fleetStreamEditDialog QLineEdit,
+QDialog#fleetStreamEditDialog QComboBox,
+QDialog#fleetStreamEditDialog QSpinBox {
+    background-color: #2a1d22;
+    color: #f4f0ea;
+    border: 1px solid #57333f;
+    border-radius: 4px;
+    padding: 3px 6px;
+}
+QDialog#fleetStreamEditDialog QLabel { color: #f4f0ea; }
+QDialog#fleetStreamEditDialog QCheckBox { color: #f4f0ea; }
+QDialog#fleetStreamEditDialog QPushButton {
+    background-color: #3a2030;
+    color: #f4f0ea;
+    border: 1px solid #57333f;
+    border-radius: 4px;
+    padding: 5px 12px;
+}
+QDialog#fleetStreamEditDialog QPushButton:hover {
+    border-color: #c9a227;
+    color: #c9a227;
+}
+"""
+
+
 def bridge_stylesheet(ui_mode: str, theme_id: str) -> str:
     from ui.theme_choice import _normalize_theme_id
     from ui.theme_palette import apply_theme_colors
@@ -2005,7 +2116,7 @@ def bridge_stylesheet(ui_mode: str, theme_id: str) -> str:
         "standard": BRIDGE_STYLESHEET_STANDARD,
         "minimal": BRIDGE_STYLESHEET_MINIMAL,
         "logfirst": BRIDGE_STYLESHEET_LOGFIRST,
-        "field": BRIDGE_STYLESHEET_LOGFIRST,
+        "field": BRIDGE_STYLESHEET_LOGFIRST + _FLEET_PANEL_FIELD_CSS,
     }.get(ui_mode, BRIDGE_STYLESHEET_STANDARD)
     return apply_theme_colors(base, theme_id)
 

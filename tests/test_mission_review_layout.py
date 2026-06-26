@@ -24,8 +24,10 @@ class TestElidedPathLabel(unittest.TestCase):
         long_path = r"C:\Users\Operator\Projects\logs\2026-06-16_21-22\backup_20260617_1426.raw"
         lbl.set_full_path(long_path)
         self.assertEqual(lbl.full_path(), long_path)
-        self.assertLess(len(lbl.text()), len(long_path))
-        self.assertTrue(lbl.text().endswith("1426.raw"))
+        shown = lbl.text()
+        self.assertLess(len(shown), len(long_path))
+        self.assertTrue(shown.startswith("C:\\"))
+        self.assertTrue(shown.endswith(".raw"))
 
     def test_set_mission_session_path_label_enables_copy(self) -> None:
         class Win:

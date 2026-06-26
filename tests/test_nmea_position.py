@@ -41,6 +41,21 @@ class TestNmeaPosition(unittest.TestCase):
         assert state[0] is not None
         self.assertAlmostEqual(state[0]["lat"], 36.007039, places=5)
 
+    def test_ddm_display_matches_simulator(self) -> None:
+        from nmea_position import format_dm_field
+
+        self.assertEqual(format_dm_field("4436.77826", "N"), "44° 36.77826' N")
+        self.assertEqual(format_dm_field("12013.66857", "W"), "120° 13.66857' W")
+
+    def test_gga_wire_fields_in_position_dict(self) -> None:
+        pos = parse_gga_position(
+            "$GPGGA,123519,4436.77826,N,12013.66857,W,1,08,0.9,545.4,M,46.9,M,,*47"
+        )
+        assert pos is not None
+        d = pos.to_dict()
+        self.assertEqual(d["lat_dm"], "4436.77826")
+        self.assertEqual(d["lon_dm"], "12013.66857")
+
 
 if __name__ == "__main__":
     unittest.main()

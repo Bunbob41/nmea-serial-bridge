@@ -39,6 +39,8 @@ class WebSessionState:
     gnss_stream_idle: bool = False
     position_lat: Optional[float] = None
     position_lon: Optional[float] = None
+    position_lat_ddm: str = ""
+    position_lon_ddm: str = ""
     position_source: str = ""
     position_stale: bool = True
     last_error: Optional[str] = None

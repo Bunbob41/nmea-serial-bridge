@@ -5,14 +5,12 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-WorkingDirectory=%h/nmea-serial-bridge
+# Set INSTALL_DIR to your extract/clone path (see headless.env.example)
+EnvironmentFile=-/etc/serial-link/headless.env
+EnvironmentFile=-%h/.config/serial-link/headless.env
 Environment=PYTHONUNBUFFERED=1
-# Adjust paths and flags for your site:
-ExecStart=%h/nmea-serial-bridge/packaging/linux/run-headless.sh \
-  --serial /dev/ttyUSB0 \
-  --baud 115200 \
-  --udp-port 10110 \
-  --web-port 8765
+WorkingDirectory=%E{INSTALL_DIR}
+ExecStart=%E{INSTALL_DIR}/packaging/linux/run-headless.sh
 Restart=on-failure
 RestartSec=5
 

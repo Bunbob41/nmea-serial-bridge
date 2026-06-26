@@ -34,6 +34,10 @@
     </div>
     <div class="com-lock-chip com-lock-chip-header" id="header-com-lock-chip" role="status" hidden></div>
     <div class="inline-alert header-run-alert" id="run-alert" hidden role="status"></div>
+    <div class="headless-setup-banner" id="headless-setup-banner" hidden role="status">
+      <strong>Bridge stopped.</strong> Set serial port and network listen below, then click <strong>Start</strong>.
+      <span id="headless-setup-extra"></span>
+    </div>
   </header>
 
   <main class="dashboard" id="dashboard-panels">
@@ -248,6 +252,7 @@
         </div>
         <div class="config-form-actions">
           <button type="button" class="btn btn-start" id="btn-save-config" onclick="saveConfig()">Save configuration</button>
+          <button type="button" class="btn btn-secondary" id="btn-save-boot" onclick="saveBootDefaults()" hidden>Save boot defaults</button>
         </div>
       </form>
       <div class="inline-alert" id="config-alert" hidden></div>
@@ -270,6 +275,9 @@
 
       <!-- Token settings — shown when LAN / remote access is enabled on the PC -->
       <div class="token-section" id="token-section" hidden>
+        <p class="token-hint headless-tools-hint" id="headless-tools-hint" hidden>
+          Headless Linux: token is printed at service start — check SSH or <code>journalctl</code>, not Tools → Phone.
+        </p>
         <label class="token-label" for="token-input">API Token (X-Bridge-Token)</label>
         <div class="token-row">
           <input class="token-input" id="token-input" type="password"

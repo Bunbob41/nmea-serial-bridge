@@ -867,6 +867,7 @@ def create_log_panel(
     parent.log_view = QtWidgets.QPlainTextEdit()
     parent.log_view.setObjectName("logView")
     parent.log_view.setReadOnly(True)
+    parent.log_view.setLineWrapMode(QtWidgets.QPlainTextEdit.LineWrapMode.WidgetWidth)
     parent.log_view.setMaximumBlockCount(UI_VIEW_MAX_BLOCK_COUNT)
     lay.addWidget(parent.log_view, 1)
     if show_toggle:

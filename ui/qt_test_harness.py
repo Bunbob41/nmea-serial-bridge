@@ -50,22 +50,45 @@ def is_windows_qt_shutdown_exit(exit_code: int | None) -> bool:
     return code_u == (WINDOWS_QT_SHUTDOWN_EXIT & 0xFFFFFFFF)
 
 
+def unittest_dot_progress(stdout: str, stderr: str) -> str:
+    """Unittest dot-mode progress chars only (``.FEs`` lines), excluding tracebacks."""
+    import re
+
+    chars: list[str] = []
+    for line in (stdout or "").splitlines() + (stderr or "").splitlines():
+        stripped = line.strip()
+        if not stripped:
+            continue
+        if stripped.startswith("Traceback (most recent call last):"):
+            continue
+        if set(stripped) <= set(".FEs"):
+            chars.append(stripped)
+    return "".join(chars)
+
+
+def unittest_output_has_failures(stdout: str, stderr: str) -> bool:
+    import re
+
+    combined = (stdout or "") + (stderr or "")
+    if re.search(r"^FAILED\b", combined, re.MULTILINE):
+        return True
+    if re.search(r"^FAIL:", combined, re.MULTILINE):
+        return True
+    if re.search(r"FAILED \(", combined):
+        return True
+    if re.search(r"^ERROR:", combined, re.MULTILINE):
+        return True
+    progress = unittest_dot_progress(stdout, stderr)
+    return "F" in progress or "E" in progress
+
+
 def unittest_output_indicates_ok(stdout: str, stderr: str) -> bool:
     import re
 
     combined = (stdout or "") + (stderr or "")
     if not combined.strip():
         return False
-    if re.search(r"^FAILED\b", combined, re.MULTILINE):
-        return False
-    if re.search(r"^FAIL:", combined, re.MULTILINE):
-        return False
-    if re.search(r"FAILED \(", combined):
-        return False
-    if re.search(r"^ERROR:", combined, re.MULTILINE):
-        return False
-    # Unittest dot-mode progress only (.F. / .E.) — not ".F" inside words like "False".
-    if re.search(r"\.F(?=\.)", combined) or re.search(r"\.E(?=\.)", combined):
+    if unittest_output_has_failures(stdout, stderr):
         return False
     # Normal completion (when Qt teardown does not fast-fail first).
     if re.search(r"Ran \d+ tests\b", combined) and re.search(r"^OK\s*$", combined, re.MULTILINE):

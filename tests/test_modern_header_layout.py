@@ -47,7 +47,9 @@ class TestModernHeaderLayout(unittest.TestCase):
         )
         need = measure_status_capsule_width(lbl, "stopped", include_dot=True)
         self.assertGreaterEqual(plan.sizes[1], need)
-        self.assertGreaterEqual(plan.sizes[2], 56)
+        from ui.modern_header_split import header_split_mins
+
+        self.assertGreaterEqual(plan.sizes[2], header_split_mins()[2])
 
     def test_plan_compacts_start_when_tight(self) -> None:
         cluster = QtWidgets.QWidget()
@@ -77,7 +79,8 @@ class TestModernHeaderLayout(unittest.TestCase):
             chips_mode="auto",
         )
         self.assertLessEqual(tight.sizes[0], wide.sizes[0])
-        self.assertTrue(tight.start_compact or tight.force_chips_icon_only)
+        self.assertTrue(tight.start_compact)
+        self.assertIsNone(tight.force_chips_icon_only)
 
 
 if __name__ == "__main__":

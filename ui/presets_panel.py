@@ -110,14 +110,25 @@ def create_presets_tab(
     net_box.setObjectName("modernToolsFormGroup")
     nf = QtWidgets.QFormLayout(net_box)
     nf.setFieldGrowthPolicy(
-        QtWidgets.QFormLayout.FieldGrowthPolicy.FieldsStayAtSizeHint
+        QtWidgets.QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow
     )
+    nf.setLabelAlignment(
+        QtCore.Qt.AlignmentFlag.AlignRight | QtCore.Qt.AlignmentFlag.AlignVCenter
+    )
+    nf.setFormAlignment(
+        QtCore.Qt.AlignmentFlag.AlignLeft | QtCore.Qt.AlignmentFlag.AlignTop
+    )
+    nf.setHorizontalSpacing(12)
+    nf.setVerticalSpacing(8)
     parent.preset_pc_ip = _preset_ip_field(QtWidgets.QLineEdit())
     parent.preset_subnet = _preset_ip_field(QtWidgets.QLineEdit())
     parent.preset_ins_ip = _preset_ip_field(QtWidgets.QLineEdit())
     parent.preset_notes = QtWidgets.QPlainTextEdit()
-    parent.preset_notes.setMaximumHeight(72)
-    parent.preset_notes.setMaximumWidth(_PRESET_IP_FIELD_MAX_W)
+    parent.preset_notes.setMinimumHeight(96)
+    parent.preset_notes.setSizePolicy(
+        QtWidgets.QSizePolicy.Policy.Expanding,
+        QtWidgets.QSizePolicy.Policy.Expanding,
+    )
     nf.addRow("Survey PC IP:", parent.preset_pc_ip)
     nf.addRow("Subnet mask:", parent.preset_subnet)
     nf.addRow("INS IP (reference):", parent.preset_ins_ip)
@@ -128,7 +139,7 @@ def create_presets_tab(
         nf.addRow(parent.preset_notes)
     else:
         nf.addRow("Notes:", parent.preset_notes)
-    right_lay.addWidget(net_box)
+    right_lay.addWidget(net_box, 1)
 
     if include_advanced_net:
         adv = QtWidgets.QGroupBox("Advanced network (TCP / UDP remote)")

@@ -1,6 +1,7 @@
 """In-app operator manuals (bundled docs/*.md) — offline, no external browser."""
 from __future__ import annotations
 
+import os
 import re
 import sys
 from pathlib import Path
@@ -68,16 +69,27 @@ def normalize_doc_rel(rel: str) -> str:
     return f"docs/{name}"
 
 
+def _path_within_docs(path: Path, docs_root: Path) -> bool:
+    """True when ``path`` resolves under ``docs_root`` (Windows short/long paths)."""
+    try:
+        path.resolve().relative_to(docs_root.resolve())
+        return True
+    except ValueError:
+        pass
+    child = os.path.normcase(os.path.abspath(str(path)))
+    parent = os.path.normcase(os.path.abspath(str(docs_root)))
+    return child == parent or child.startswith(parent + os.sep)
+
+
 def resolve_bundled_doc(rel: str) -> Optional[Path]:
     """Resolve ``docs/FOO.md`` under the bundle; returns None if missing or unsafe."""
     norm = normalize_doc_rel(rel)
     if not norm:
         return None
-    root = docs_dir().resolve()
-    path = (bundle_root() / norm).resolve()
-    try:
-        path.relative_to(root)
-    except ValueError:
+    base = bundle_root().resolve()
+    docs = (base / "docs").resolve()
+    path = (base / norm).resolve()
+    if not _path_within_docs(path, docs):
         return None
     return path if path.is_file() else None
 

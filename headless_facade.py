@@ -5,6 +5,7 @@ import asyncio
 import threading
 import time
 from collections import deque
+from pathlib import Path
 from typing import Any, Deque, List, Optional
 
 from bridge_core import NetMode, SerialNetBridge
@@ -63,6 +64,11 @@ class HeadlessBridgeFacade:
         self._log_paused = False
         self._log_paused_dropped = 0
         self._last_facade_error: Optional[str] = None
+        self._site_config_path: Optional[Path] = None
+        self._site_web_port: int = 8765
+        self._site_lan_bind: bool = False
+        self._site_token: str = ""
+        self._site_autostart: bool = False
         self._seed_snapshot_from_config()
         self._refresh_discovery_locked()
 
@@ -80,6 +86,66 @@ class HeadlessBridgeFacade:
 
     def commands_ready(self) -> bool:
         return True
+
+    def set_site_context(
+        self,
+        *,
+        config_path: Optional[Path],
+        web_port: int,
+        lan_bind: bool,
+        token: str,
+        autostart: bool,
+    ) -> None:
+        self._site_config_path = config_path
+        self._site_web_port = int(web_port)
+        self._site_lan_bind = bool(lan_bind)
+        self._site_token = str(token or "").strip()
+        self._site_autostart = bool(autostart)
+
+    def persist_site_config(self) -> WebCommandResult:
+        path = self._site_config_path
+        if path is None:
+            return WebCommandResult(
+                False,
+                "No site config path — set CONFIG_FILE or --config",
+                "no_config_path",
+            )
+        with self._lock:
+            if self._runner.bridge_running():
+                return WebCommandResult(
+                    False,
+                    "Stop the bridge before saving boot defaults",
+                    "running_guard",
+                )
+            cfg = WebConfigPayload(**self._config.to_dict())
+        from headless_config import HeadlessRuntimeConfig, save_site_config
+
+        runtime = HeadlessRuntimeConfig(
+            config_path=path,
+            serial=str(cfg.com_port).strip(),
+            baud=int(cfg.baud),
+            udp_host=str(cfg.udp_listen_host).strip() or "0.0.0.0",
+            udp_port=int(cfg.udp_listen_port),
+            network_mode=str(cfg.network_mode),
+            remote_host=str(cfg.remote_host).strip(),
+            remote_port=int(cfg.remote_port),
+            nmea_mode=str(cfg.nmea_mode),
+            web_host="0.0.0.0" if self._site_lan_bind else "127.0.0.1",
+            web_port=int(self._site_web_port),
+            lan_bind=bool(self._site_lan_bind),
+            token=self._site_token,
+            start_bridge=bool(self._site_autostart),
+        )
+        try:
+            save_site_config(path, runtime)
+        except OSError as exc:
+            return WebCommandResult(False, f"Could not write config: {exc}", "io_error")
+        return WebCommandResult(
+            True,
+            f"Saved boot defaults to {path}",
+            None,
+            "ok",
+        )
 
     def get_status(self) -> WebSessionState:
         with self._lock:
@@ -209,7 +275,7 @@ class HeadlessBridgeFacade:
 
     def get_discovery(self) -> WebDiscoveryPayload:
         with self._discovery_lock:
-            return WebDiscoveryPayload(**self._discovery_payload.to_dict())
+            return self._discovery_payload
 
     def set_discovery_scan_busy(self, busy: bool) -> None:
         with self._discovery_lock:

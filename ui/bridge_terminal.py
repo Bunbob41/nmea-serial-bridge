@@ -103,6 +103,8 @@ class _NmeaHighlighter(QtGui.QSyntaxHighlighter):
         self._f_hex_byte  = _fmt(_ACCENT_BLUE)
         self._f_raw_label = _fmt(_ACCENT_AMBER, bold=True)
         self._f_event     = _fmt(_MUTED, bold=True)
+        self._f_event_ok  = _fmt(_ACCENT_GREEN)
+        self._f_event_web = _fmt(_ACCENT_BLUE)
         self._f_warn      = _fmt("#f87171", bold=True)
 
         # pre-compiled patterns
@@ -140,9 +142,21 @@ class _NmeaHighlighter(QtGui.QSyntaxHighlighter):
             self.setFormat(m.start(), m.end() - m.start(), fmt)
 
         event_body = self._re_event_body.search(text)
-        if event_body and self._re_warn.search(text):
-            start = event_body.end()
-            self.setFormat(start, len(text) - start, self._f_warn)
+        if event_body:
+            body_start = event_body.end()
+            body = text[body_start:]
+            if self._re_warn.search(body):
+                self.setFormat(body_start, len(text) - body_start, self._f_warn)
+            elif re.search(r"\[Web\]|Web API|dashboard", body, re.IGNORECASE):
+                self.setFormat(body_start, len(text) - body_start, self._f_event_web)
+            elif re.search(
+                r"listening|started|running|ready|self-check|opened|connected",
+                body,
+                re.IGNORECASE,
+            ):
+                self.setFormat(body_start, len(text) - body_start, self._f_event_ok)
+            else:
+                self.setFormat(body_start, len(text) - body_start, self._f_field)
 
         # NMEA sentence body
         m = self._re_start.search(text)
@@ -264,15 +278,23 @@ class BridgeTerminalPanel(QtWidgets.QWidget):
         filter_lay.addStretch(1)
 
         # right-side icon actions
+        sp = self.style().StandardPixmap
+        trash = getattr(sp, "SP_TrashIcon", sp.SP_DialogDiscardButton)
         self._btn_wrap = self._icon_btn(
-            "⏎", "Toggle line wrap (long lines vs. horizontal scroll)", checkable=True
+            sp.SP_FileDialogListView,
+            "Toggle line wrap (long lines vs. horizontal scroll)",
+            checkable=True,
         )
         self._btn_wrap.setToolTip("Wrap long lines  (click to toggle)")
         self._btn_wrap.toggled.connect(self._on_wrap_toggled)
-        self._btn_pause = self._icon_btn("⏸", "Pause live display (bridge keeps running)", checkable=True)
+        self._btn_pause = self._icon_btn(
+            sp.SP_MediaPause,
+            "Pause live display (bridge keeps running)",
+            checkable=True,
+        )
         self._btn_pause.toggled.connect(self._on_pause_toggled)
-        btn_clear = self._icon_btn("⌫", "Clear display")
-        self._btn_save = self._icon_btn("💾", "Save visible traffic to file")
+        btn_clear = self._icon_btn(trash, "Clear display")
+        self._btn_save = self._icon_btn(sp.SP_DialogSaveButton, "Save visible traffic to file")
         btn_clear.clicked.connect(self._on_clear)
         self._btn_save.clicked.connect(self._on_save)
 
@@ -336,7 +358,7 @@ class BridgeTerminalPanel(QtWidgets.QWidget):
         self._view.setObjectName("wireTerminalView")
         self._view.setReadOnly(True)
         self._view.setMaximumBlockCount(_MAX_LINES)
-        self._view.setLineWrapMode(QtWidgets.QPlainTextEdit.LineWrapMode.NoWrap)
+        self._view.setLineWrapMode(QtWidgets.QPlainTextEdit.LineWrapMode.WidgetWidth)
         self._view.setUndoRedoEnabled(False)
         from ui.fonts import monospace_ui_font
         self._view.setFont(monospace_ui_font())
@@ -366,6 +388,7 @@ class BridgeTerminalPanel(QtWidgets.QWidget):
         self._flush_timer.start()
 
         self._wire_feed.connect(self._feed_gui, QtCore.Qt.ConnectionType.QueuedConnection)
+        self._btn_wrap.setChecked(True)
         self.sync_transport_status({})
 
     # ── toolbar helpers ───────────────────────────────────────────────────────
@@ -450,16 +473,21 @@ class BridgeTerminalPanel(QtWidgets.QWidget):
         return btn
 
     def _icon_btn(
-        self, glyph: str, tooltip: str, *, checkable: bool = False
+        self,
+        pixmap: QtWidgets.QStyle.StandardPixmap,
+        tooltip: str,
+        *,
+        checkable: bool = False,
     ) -> QtWidgets.QToolButton:
-        btn = QtWidgets.QToolButton()
-        btn.setObjectName("wireIconBtn")
-        btn.setText(glyph)
-        btn.setToolTip(tooltip)
-        btn.setFixedSize(28, 28)
-        if checkable:
-            btn.setCheckable(True)
-        return btn
+        from ui.qt_icons import icon_tool_button
+
+        return icon_tool_button(
+            self.style(),
+            pixmap,
+            tooltip,
+            object_name="wireIconBtn",
+            checkable=checkable,
+        )
 
     def _on_dir_segment_clicked(self, btn: QtWidgets.QAbstractButton) -> None:
         key = btn.property("directionKey")

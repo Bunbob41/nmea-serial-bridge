@@ -27,7 +27,8 @@ class TestWebStaticPaths(unittest.TestCase):
                 with patch.object(sys, "_MEIPASS", str(root), create=True):
                     with patch.object(sys, "executable", str(root / "serial-link.exe"), create=True):
                         found = resolve_static_dir()
-        self.assertEqual(found, static)
+                        self.assertIsNotNone(found)
+                        self.assertEqual(found.resolve(), static.resolve())
 
     def test_frozen_internal_folder_layout(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -40,7 +41,8 @@ class TestWebStaticPaths(unittest.TestCase):
                 with patch.object(sys, "_MEIPASS", str(internal), create=True):
                     with patch.object(sys, "executable", str(root / "serial-link.exe"), create=True):
                         found = resolve_static_dir()
-        self.assertEqual(found, static)
+                        self.assertIsNotNone(found)
+                        self.assertEqual(found.resolve(), static.resolve())
 
 
 if __name__ == "__main__":

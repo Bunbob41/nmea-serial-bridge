@@ -31,7 +31,7 @@ from nmea_codec import (
     format_binary_log_preview,
     parse_nmea_utc,
 )
-from nmea_position import feed_nmea_position
+from nmea_position import feed_nmea_position, format_position_ddm
 from core.local_logger import LocalSerialBackup, default_local_backup_dir
 from survey_quality import (
     feed_nmea_navigation_quality,
@@ -613,12 +613,18 @@ class SerialNetBridge:
         if not pos:
             return {"position_stale": True}
         stale = nav_quality_stale(self._nav_quality_state[0])
-        return {
+        lat_ddm, lon_ddm = format_position_ddm(pos)
+        out: dict[str, Any] = {
             "position_lat": float(pos["lat"]),
             "position_lon": float(pos["lon"]),
             "position_source": str(pos.get("source") or ""),
             "position_stale": stale,
         }
+        if lat_ddm:
+            out["position_lat_ddm"] = lat_ddm
+        if lon_ddm:
+            out["position_lon_ddm"] = lon_ddm
+        return out
 
     def navigation_quality_stats(self) -> dict:
         """Stats-bar / HUD fields from latest GGA (excludes internal monotonic timestamp)."""

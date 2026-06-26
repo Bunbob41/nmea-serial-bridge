@@ -89,11 +89,12 @@ def mount_local_backup_location_row(
         "Root folder for black-box backups. Leave blank for the default logs/ folder."
     )
     win.local_backup_path.editingFinished.connect(win._save_local_backup_path_from_ui)
-    btn_browse = QtWidgets.QPushButton("Browse…")
-    btn_browse.setToolTip("Pick the backup root folder.")
-    btn_browse.clicked.connect(win._browse_local_backup_dir)
-    path_row.addWidget(win.local_backup_path, 1)
-    path_row.addWidget(btn_browse)
+    win.btn_local_backup_browse = QtWidgets.QPushButton("Browse…")
+    win.btn_local_backup_browse.setToolTip("Pick the backup root folder.")
+    win.btn_local_backup_browse.clicked.connect(win._browse_local_backup_dir)
+    path_row.addWidget(win.local_backup_path, 0)
+    path_row.addWidget(win.btn_local_backup_browse, 0)
+    path_row.addStretch(1)
     lay.addLayout(path_row)
 
     win.chk_local_backup_session_folders = QtWidgets.QCheckBox(
@@ -106,12 +107,12 @@ def mount_local_backup_location_row(
     lay.addWidget(win.chk_local_backup_session_folders)
 
     folder_row = QtWidgets.QHBoxLayout()
-    btn_new_folder = QtWidgets.QPushButton("New dated folder…")
-    btn_new_folder.setToolTip(
+    win.btn_local_backup_new_folder = QtWidgets.QPushButton("New dated folder…")
+    win.btn_local_backup_new_folder.setToolTip(
         "Create a new timestamped folder under the backup root and select it for the next session."
     )
-    btn_new_folder.clicked.connect(win._create_local_backup_dated_folder)
-    folder_row.addWidget(btn_new_folder)
+    win.btn_local_backup_new_folder.clicked.connect(win._create_local_backup_dated_folder)
+    folder_row.addWidget(win.btn_local_backup_new_folder)
     folder_row.addStretch(1)
     lay.addLayout(folder_row)
 

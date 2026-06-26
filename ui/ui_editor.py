@@ -1,7 +1,7 @@
 """Workspace UI editor — top bar tiles, Connect sections, and main tabs."""
 from __future__ import annotations
 
-from typing import Callable, Optional
+from typing import Optional
 
 from PySide6 import QtCore, QtGui, QtWidgets
 
@@ -79,10 +79,10 @@ DEFAULT_TOPBAR_HIDDEN_CHIPS: frozenset[str] = frozenset(
 MODERN_HEADER_CHIP_KEYS: frozenset[str] = frozenset({"view", "hud", "ui_switch"})
 MODERN_HEADER_CHIP_ORDER: tuple[str, ...] = ("view", "hud", "ui_switch")
 
-_EDITOR_DIALOG_MIN_W = 680
-_EDITOR_DIALOG_MIN_H = 460
-_EDITOR_DIALOG_DEFAULT_W = 760
-_EDITOR_DIALOG_DEFAULT_H = 540
+_EDITOR_DIALOG_MIN_W = 520
+_EDITOR_DIALOG_MIN_H = 480
+_EDITOR_DIALOG_DEFAULT_W = 620
+_EDITOR_DIALOG_DEFAULT_H = 580
 
 
 def migrate_topbar_order(order: list[str]) -> list[str]:
@@ -191,8 +191,8 @@ def build_connect_toolbar_rows(ui_mode: str) -> list[tuple[str, str, str, bool, 
     return rows
 
 
-class _EditorRow(QtWidgets.QFrame):
-    """One checklist row with ↑ ↓ reorder buttons."""
+class _DragListItem(QtWidgets.QWidget):
+    """A single row in the drag-drop list: gripper · checkbox · title + subtitle."""
 
     def __init__(
         self,
@@ -202,59 +202,40 @@ class _EditorRow(QtWidgets.QFrame):
         *,
         visible: bool,
         hideable: bool,
-        on_move: Callable[[str, int], None],
         parent: Optional[QtWidgets.QWidget] = None,
     ) -> None:
         super().__init__(parent)
-        self.setObjectName("uiEditorRow")
         self._key = key
-        self._on_move = on_move
-        row_lay = QtWidgets.QHBoxLayout(self)
-        row_lay.setContentsMargins(8, 6, 8, 6)
-        row_lay.setSpacing(8)
+        lay = QtWidgets.QHBoxLayout(self)
+        lay.setContentsMargins(6, 4, 8, 4)
+        lay.setSpacing(10)
+
+        grip = QtWidgets.QLabel("⠿")
+        grip.setObjectName("uiEditorGrip")
+        grip.setToolTip("Drag to reorder")
+        grip.setFixedWidth(14)
+        lay.addWidget(grip, 0)
 
         self._chk = QtWidgets.QCheckBox()
         self._chk.setChecked(visible)
         self._chk.setEnabled(hideable)
-        if hideable:
-            self._chk.setToolTip(f"Show «{title}»")
-        else:
+        self._chk.setToolTip(
+            "Always shown" if not hideable else f"Show '{title}' in the app"
+        )
+        if not hideable:
             self._chk.setChecked(True)
-            self._chk.setToolTip("Always shown (reorder with ↑ ↓ only)")
-        row_lay.addWidget(self._chk, 0)
+        lay.addWidget(self._chk, 0)
 
-        text_col = QtWidgets.QVBoxLayout()
-        text_col.setSpacing(2)
-        title_lbl = QtWidgets.QLabel(title)
-        title_lbl.setWordWrap(True)
-        title_lbl.setObjectName("uiEditorRowTitle")
-        text_col.addWidget(title_lbl)
+        text = QtWidgets.QVBoxLayout()
+        text.setSpacing(1)
+        t = QtWidgets.QLabel(title)
+        t.setObjectName("uiEditorRowTitle")
+        text.addWidget(t)
         if subtitle.strip():
-            sub_lbl = QtWidgets.QLabel(subtitle.strip())
-            sub_lbl.setWordWrap(True)
-            sub_lbl.setObjectName("tabNote")
-            text_col.addWidget(sub_lbl)
-        row_lay.addLayout(text_col, 1)
-
-        btn_col = QtWidgets.QVBoxLayout()
-        btn_col.setSpacing(2)
-        self._btn_up = QtWidgets.QToolButton()
-        self._btn_up.setText("↑")
-        self._btn_up.setToolTip("Move up")
-        self._btn_up.setFixedSize(32, 26)
-        self._btn_up.clicked.connect(lambda: self._on_move(self._key, -1))
-        self._btn_down = QtWidgets.QToolButton()
-        self._btn_down.setText("↓")
-        self._btn_down.setToolTip("Move down")
-        self._btn_down.setFixedSize(32, 26)
-        self._btn_down.clicked.connect(lambda: self._on_move(self._key, 1))
-        btn_col.addWidget(self._btn_up)
-        btn_col.addWidget(self._btn_down)
-        row_lay.addLayout(btn_col, 0)
-
-    def set_move_enabled(self, *, up: bool, down: bool) -> None:
-        self._btn_up.setEnabled(up)
-        self._btn_down.setEnabled(down)
+            s = QtWidgets.QLabel(subtitle.strip())
+            s.setObjectName("tabNote")
+            text.addWidget(s)
+        lay.addLayout(text, 1)
 
     @property
     def key(self) -> str:
@@ -264,76 +245,87 @@ class _EditorRow(QtWidgets.QFrame):
         return self._chk.isChecked()
 
 
+class _DragList(QtWidgets.QListWidget):
+    """QListWidget with drag-and-drop reordering and embedded _DragListItem widgets."""
+
+    def __init__(self, parent: Optional[QtWidgets.QWidget] = None) -> None:
+        super().__init__(parent)
+        self.setObjectName("uiEditorDragList")
+        self.setDragDropMode(QtWidgets.QAbstractItemView.DragDropMode.InternalMove)
+        self.setDefaultDropAction(QtCore.Qt.DropAction.MoveAction)
+        self.setSelectionMode(QtWidgets.QAbstractItemView.SelectionMode.SingleSelection)
+        self.setSpacing(2)
+        self.setFrameShape(QtWidgets.QFrame.Shape.NoFrame)
+        self.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+
+    def _add_item(self, item_widget: _DragListItem) -> None:
+        li = QtWidgets.QListWidgetItem(self)
+        li.setSizeHint(item_widget.sizeHint())
+        li.setData(QtCore.Qt.ItemDataRole.UserRole, item_widget.key)
+        self.addItem(li)
+        self.setItemWidget(li, item_widget)
+
+    def populate(
+        self,
+        rows: list[tuple[str, str, str, bool, bool]],
+        *,
+        locked_keys: frozenset[str] = frozenset(),
+    ) -> None:
+        self.clear()
+        for key, title, subtitle, visible, _enabled in rows:
+            w = _DragListItem(
+                key, title, subtitle,
+                visible=visible,
+                hideable=key not in locked_keys,
+            )
+            self._add_item(w)
+
+    def ordered_checked(self) -> tuple[list[str], set[str]]:
+        order: list[str] = []
+        hidden: set[str] = set()
+        for i in range(self.count()):
+            item = self.item(i)
+            if item is None:
+                continue
+            w = self.itemWidget(item)
+            if not isinstance(w, _DragListItem):
+                continue
+            order.append(w.key)
+            if not w.is_visible():
+                hidden.add(w.key)
+        return order, hidden
+
+
 class _EditorListPage(QtWidgets.QWidget):
-    """Checklist page with ↑ ↓ reorder (replaces drag-and-drop list)."""
+    """Tab page: description label + drag-and-drop checklist."""
 
     def __init__(
         self,
         intro: str,
         *,
-        legend: str = "↑ ↓ reorder rows. Checkbox = visible in the app.",
+        legend: str = "Drag rows to reorder · checkbox = visible in the app",
         parent: Optional[QtWidgets.QWidget] = None,
     ) -> None:
         super().__init__(parent)
         lay = QtWidgets.QVBoxLayout(self)
+        lay.setContentsMargins(0, 8, 0, 0)
         lay.setSpacing(8)
-        hint = QtWidgets.QLabel(intro)
-        hint.setWordWrap(True)
-        hint.setObjectName("tabHint")
-        lay.addWidget(hint)
-        legend_lbl = QtWidgets.QLabel(legend)
-        legend_lbl.setWordWrap(True)
-        legend_lbl.setObjectName("tabNote")
-        lay.addWidget(legend_lbl)
 
-        scroll = QtWidgets.QScrollArea()
-        scroll.setObjectName("uiEditorScroll")
-        scroll.setWidgetResizable(True)
-        scroll.setFrameShape(QtWidgets.QFrame.Shape.StyledPanel)
-        scroll.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        self._container = QtWidgets.QWidget()
-        self._container.setObjectName("uiEditorListHost")
-        self._list_lay = QtWidgets.QVBoxLayout(self._container)
-        self._list_lay.setContentsMargins(4, 4, 4, 4)
-        self._list_lay.setSpacing(4)
-        self._list_lay.addStretch(0)
-        scroll.setWidget(self._container)
-        scroll.setMinimumHeight(260)
-        lay.addWidget(scroll, 1)
-        self._rows: list[_EditorRow] = []
+        desc = QtWidgets.QLabel(intro)
+        desc.setWordWrap(True)
+        desc.setObjectName("tabHint")
+        desc.setContentsMargins(4, 0, 4, 0)
+        lay.addWidget(desc)
 
-    def _clear_rows(self) -> None:
-        for row in self._rows:
-            row.setParent(None)
-            row.deleteLater()
-        self._rows.clear()
-        while self._list_lay.count() > 1:
-            item = self._list_lay.takeAt(0)
-            if item is not None:
-                w = item.widget()
-                if w is not None:
-                    w.setParent(None)
+        tip = QtWidgets.QLabel(legend)
+        tip.setWordWrap(True)
+        tip.setObjectName("tabNote")
+        tip.setContentsMargins(4, 0, 4, 4)
+        lay.addWidget(tip)
 
-    def _move_row(self, key: str, delta: int) -> None:
-        keys = [r.key for r in self._rows]
-        try:
-            idx = keys.index(key)
-        except ValueError:
-            return
-        new_idx = idx + delta
-        if new_idx < 0 or new_idx >= len(self._rows):
-            return
-        self._rows[idx], self._rows[new_idx] = self._rows[new_idx], self._rows[idx]
-        self._relayout_rows()
-
-    def _relayout_rows(self) -> None:
-        while self._list_lay.count() > 1:
-            self._list_lay.takeAt(0)
-        n = len(self._rows)
-        for i, row in enumerate(self._rows):
-            self._list_lay.insertWidget(i, row)
-            row.set_move_enabled(up=i > 0, down=i < n - 1)
-        self._list_lay.addStretch(0)
+        self._list = _DragList()
+        lay.addWidget(self._list, 1)
+        self._locked_keys: frozenset[str] = frozenset()
 
     def set_rows(
         self,
@@ -342,21 +334,13 @@ class _EditorListPage(QtWidgets.QWidget):
         locked_keys: frozenset[str] = frozenset(),
         subtitles: dict[str, str] | None = None,
     ) -> None:
-        self._clear_rows()
+        self._locked_keys = locked_keys
         subs = subtitles or {}
-        for key, label, checked, _enabled in rows:
-            self._rows.append(
-                _EditorRow(
-                    key,
-                    label,
-                    subs.get(key, ""),
-                    visible=checked,
-                    hideable=key not in locked_keys,
-                    on_move=self._move_row,
-                    parent=self._container,
-                )
-            )
-        self._relayout_rows()
+        tab_rows = [
+            (key, label, subs.get(key, ""), checked, True)
+            for key, label, checked, _e in rows
+        ]
+        self._list.populate(tab_rows, locked_keys=locked_keys)
 
     def set_tab_rows(
         self,
@@ -364,25 +348,11 @@ class _EditorListPage(QtWidgets.QWidget):
         *,
         locked_keys: frozenset[str] = frozenset(),
     ) -> None:
-        self._clear_rows()
-        for key, title, subtitle, visible, _enabled in rows:
-            self._rows.append(
-                _EditorRow(
-                    key,
-                    title,
-                    subtitle,
-                    visible=visible,
-                    hideable=key not in locked_keys,
-                    on_move=self._move_row,
-                    parent=self._container,
-                )
-            )
-        self._relayout_rows()
+        self._locked_keys = locked_keys
+        self._list.populate(rows, locked_keys=locked_keys)
 
     def ordered_checked(self) -> tuple[list[str], set[str]]:
-        order = [r.key for r in self._rows]
-        hidden = {r.key for r in self._rows if not r.is_visible()}
-        return order, hidden
+        return self._list.ordered_checked()
 
 
 _CheckListPage = _EditorListPage
@@ -405,14 +375,20 @@ class UiEditorDialog(QtWidgets.QDialog):
 
         ui_mode = getattr(win, "_ui_mode", "standard")
         root = QtWidgets.QVBoxLayout(self)
-        root.setContentsMargins(14, 12, 14, 12)
-        root.setSpacing(10)
+        root.setContentsMargins(0, 0, 0, 0)
+        root.setSpacing(0)
 
+        # ── Header banner ──────────────────────────────────────────────────
+        banner = QtWidgets.QFrame()
+        banner.setObjectName("uiEditorBanner")
+        banner_lay = QtWidgets.QVBoxLayout(banner)
+        banner_lay.setContentsMargins(20, 14, 20, 12)
+        banner_lay.setSpacing(4)
         if ui_mode == "standard":
             intro_text = (
                 "Customize the <b>Standard</b> layout: survey top bar, Connect sections, "
-                "and main tabs. Use <b>↑ ↓</b> on each row to reorder; checkboxes show or hide. "
-                "<b>OK</b> applies. <b>Restore defaults</b> resets only the tab you are viewing."
+                "and main tabs. Connect section order applies to Standard layout only. "
+                "<b>OK</b> applies."
             )
         elif ui_mode == "modern":
             intro_text = (
@@ -430,12 +406,22 @@ class UiEditorDialog(QtWidgets.QDialog):
         intro = QtWidgets.QLabel(intro_text)
         intro.setWordWrap(True)
         intro.setObjectName("tabHint")
-        root.addWidget(intro)
+        banner_lay.addWidget(intro)
+        root.addWidget(banner)
 
+        # ── Tab widget ─────────────────────────────────────────────────────
         self._tabs = QtWidgets.QTabWidget()
         self._tabs.setDocumentMode(True)
         self._tabs.setUsesScrollButtons(True)
-        root.addWidget(self._tabs, 1)
+        self._tabs.setContentsMargins(0, 0, 0, 0)
+        # Wrap tab content in a padded frame
+        tab_frame = QtWidgets.QFrame()
+        tab_frame.setObjectName("uiEditorTabFrame")
+        tab_frame_lay = QtWidgets.QVBoxLayout(tab_frame)
+        tab_frame_lay.setContentsMargins(16, 0, 16, 0)
+        tab_frame_lay.setSpacing(0)
+        tab_frame_lay.addWidget(self._tabs, 1)
+        root.addWidget(tab_frame, 1)
 
         bar = getattr(win, "_survey_top_bar", None)
         labels: dict[str, str] = dict(TOP_BAR_CHIP_LABELS)
@@ -550,8 +536,14 @@ class UiEditorDialog(QtWidgets.QDialog):
             self._tools_tabs_page.set_tab_rows(tab_rows)
             self._tabs.addTab(self._tools_tabs_page, tools_tab_label)
 
-        btn_row = QtWidgets.QHBoxLayout()
+        # ── Footer button bar ──────────────────────────────────────────────
+        footer = QtWidgets.QFrame()
+        footer.setObjectName("uiEditorFooter")
+        btn_row = QtWidgets.QHBoxLayout(footer)
+        btn_row.setContentsMargins(20, 10, 20, 14)
+        btn_row.setSpacing(8)
         btn_defaults = QtWidgets.QPushButton("Restore defaults")
+        btn_defaults.setObjectName("uiEditorRestoreBtn")
         btn_defaults.setToolTip("Reset the current tab to recommended defaults.")
         btn_defaults.clicked.connect(self._restore_defaults)
         btn_row.addWidget(btn_defaults)
@@ -563,7 +555,7 @@ class UiEditorDialog(QtWidgets.QDialog):
         buttons.accepted.connect(self._apply)
         buttons.rejected.connect(self.reject)
         btn_row.addWidget(buttons)
-        root.addLayout(btn_row)
+        root.addWidget(footer)
 
         if 0 <= initial_tab < self._tabs.count():
             self._tabs.setCurrentIndex(initial_tab)

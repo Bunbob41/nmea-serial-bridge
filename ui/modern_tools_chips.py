@@ -5,15 +5,31 @@ from collections.abc import Callable, Sequence
 
 from PySide6 import QtCore, QtGui, QtWidgets
 
-_HEADER_EMBEDDED_CHIP_H = 30
-_HEADER_ICON_ONLY_CHIP_W = 30
-_HEADER_ICON_ONLY_DROPDOWN_W = 38
+from ui.fonts import emoji_ui_font
+from ui.nav_chip_icons import NAV_CHIP_TILE_SIZE, apply_squircle_nav_chip
+
+HEADER_EMBEDDED_CHIP_H = max(32, NAV_CHIP_TILE_SIZE)
+_HEADER_EMBEDDED_CHIP_H = HEADER_EMBEDDED_CHIP_H
+_HEADER_ICON_ONLY_CHIP_W = NAV_CHIP_TILE_SIZE
+_HEADER_ICON_ONLY_DROPDOWN_W = NAV_CHIP_TILE_SIZE
 _HEADER_CHIP_LABEL_PAD = 22
 _HEADER_DROPDOWN_MENU_PAD = 24
 _HEADER_CHIP_ROW_PAD = 4
 _NAV_DROPDOWN_ARROW = "\u25be"  # ▾ — inline; native indicator hidden via QSS
 _ICON_ONLY_ENTER_SLACK = 8
 _ICON_ONLY_EXIT_SLACK = 16
+_SQUIRCLE_CHIP_SPACING = 5
+
+
+def _remove_squircle_filter(btn: QtWidgets.QWidget) -> None:
+    """Remove the hover border filter installed by apply_squircle_nav_chip, if any."""
+    filt = getattr(btn, "_squircle_hover_filter", None)
+    if filt is not None:
+        btn.removeEventFilter(filt)
+        try:
+            del btn._squircle_hover_filter  # type: ignore[attr-defined]
+        except AttributeError:
+            pass
 
 
 def format_chip_dropdown_text(icon: str, label: str) -> str:
@@ -321,13 +337,16 @@ def should_use_header_icon_only(
     avail_width: int,
     labeled_width: int,
     *,
+    icon_width: int = 0,
     currently_icon_only: bool,
 ) -> bool:
-    if labeled_width <= 0:
-        return currently_icon_only
+    """Auto mode: prefer scrollable labeled chips; icons only when the pane is very narrow."""
+    row_w = max(96, int(icon_width or 0))
+    if row_w <= 96 and labeled_width > 0:
+        row_w = max(96, min(int(labeled_width), 280))
     if currently_icon_only:
-        return avail_width < labeled_width + _ICON_ONLY_EXIT_SLACK
-    return avail_width < labeled_width - _ICON_ONLY_ENTER_SLACK
+        return avail_width < row_w + _ICON_ONLY_EXIT_SLACK
+    return avail_width < row_w
 
 
 def apply_embedded_header_chip_style(
@@ -338,26 +357,35 @@ def apply_embedded_header_chip_style(
 ) -> None:
     label = str(btn.property("navLabel") or btn.toolTip() or "").strip()
     icon = str(btn.property("navIcon") or "").strip()
-    if compact and icon_only:
-        btn.setText(icon or (label[:1] if label else "?"))
+    sid = str(btn.property("navSid") or "").strip()
+    if icon_only:
+        if sid:
+            apply_squircle_nav_chip(
+                btn, sid=sid, style=btn.style(), emoji_fallback=icon
+            )
+        else:
+            btn.setText(icon or (label[:1] if label else "?"))
+            btn.setFont(emoji_ui_font(point_size=11.0))
+            btn.setFixedHeight(HEADER_EMBEDDED_CHIP_H)
+            btn.setFixedWidth(_HEADER_ICON_ONLY_CHIP_W)
         if label:
             btn.setToolTip(label)
-        btn.setProperty("headerCompact", True)
+        btn.setProperty("headerCompact", compact)
         btn.setProperty("headerIconOnly", True)
-        btn.setFixedHeight(_HEADER_EMBEDDED_CHIP_H)
-        btn.setFixedWidth(_HEADER_ICON_ONLY_CHIP_W)
         btn.setSizePolicy(
             QtWidgets.QSizePolicy.Policy.Fixed,
             QtWidgets.QSizePolicy.Policy.Fixed,
         )
     elif compact:
+        btn.setIcon(QtGui.QIcon())
         text = _embedded_chip_text(icon, label)
         btn.setText(text)
         if label:
             btn.setToolTip(label)
         btn.setProperty("headerCompact", True)
         btn.setProperty("headerIconOnly", False)
-        btn.setFixedHeight(_HEADER_EMBEDDED_CHIP_H)
+        btn.setFont(emoji_ui_font(point_size=8.5))
+        btn.setFixedHeight(HEADER_EMBEDDED_CHIP_H)
         btn_w = _chip_button_metrics(btn).horizontalAdvance(text) + _HEADER_CHIP_LABEL_PAD
         btn.setFixedWidth(max(btn_w, _HEADER_ICON_ONLY_CHIP_W))
         btn.setSizePolicy(
@@ -365,15 +393,21 @@ def apply_embedded_header_chip_style(
             QtWidgets.QSizePolicy.Policy.Fixed,
         )
     else:
+        # Clear any squircle inline stylesheet and hover filter before showing label
+        btn.setStyleSheet("")
+        _remove_squircle_filter(btn)
+        btn.setIcon(QtGui.QIcon())
         text = f"{icon}  {label}".strip() if icon else label
         btn.setText(text)
         btn.setProperty("headerCompact", False)
         btn.setProperty("headerIconOnly", False)
-        btn.setFixedHeight(32)
-        btn.setMinimumWidth(0)
-        btn.setMaximumWidth(16777215)
+        btn.setProperty("navGeminiTile", "false")
+        btn.setFont(emoji_ui_font(point_size=9.0))
+        btn.setFixedHeight(HEADER_EMBEDDED_CHIP_H)
+        btn_w = _chip_button_metrics(btn).horizontalAdvance(text) + _HEADER_CHIP_LABEL_PAD
+        btn.setFixedWidth(btn_w)
         btn.setSizePolicy(
-            QtWidgets.QSizePolicy.Policy.Maximum,
+            QtWidgets.QSizePolicy.Policy.Fixed,
             QtWidgets.QSizePolicy.Policy.Fixed,
         )
     style = btn.style()
@@ -388,28 +422,47 @@ def apply_embedded_header_dropdown_style(
     icon_only: bool = False,
     active_icon: str = "",
     active_label: str = "",
+    active_sid: str = "",
 ) -> None:
     default = str(btn.property("navDefaultText") or btn.text() or "").strip()
     tier_icon, tier_label = parse_dropdown_default_parts(default)
     icon = active_icon.strip() or tier_icon
     label = active_label.strip() or tier_label
-    if compact and icon_only:
-        text = ensure_dropdown_arrow(icon or (label[:1] if label else "?"))
-        btn.setText(text)
-        btn.setProperty("headerCompact", True)
+    if icon_only:
+        tile_sid = (
+            str(active_sid or "").strip()
+            or str(btn.property("navSid") or "").strip()
+            or str(btn.property("navTierKey") or "").strip()
+        )
+        if tile_sid:
+            apply_squircle_nav_chip(
+                btn,
+                sid=tile_sid,
+                style=btn.style(),
+                emoji_fallback=icon,
+            )
+        else:
+            text = icon or (label[:1] if label else "?")
+            btn.setText(text)
+            btn.setFont(emoji_ui_font(point_size=11.0))
+            btn.setFixedHeight(HEADER_EMBEDDED_CHIP_H)
+            btn.setFixedWidth(_HEADER_ICON_ONLY_DROPDOWN_W)
+        btn.setPopupMode(QtWidgets.QToolButton.ToolButtonPopupMode.InstantPopup)
+        btn.setProperty("headerCompact", compact)
         btn.setProperty("headerIconOnly", True)
-        btn.setFixedHeight(_HEADER_EMBEDDED_CHIP_H)
-        btn.setFixedWidth(_HEADER_ICON_ONLY_DROPDOWN_W)
         btn.setSizePolicy(
             QtWidgets.QSizePolicy.Policy.Fixed,
             QtWidgets.QSizePolicy.Policy.Fixed,
         )
     elif compact:
+        btn.setIcon(QtGui.QIcon())
+        btn.setPopupMode(QtWidgets.QToolButton.ToolButtonPopupMode.MenuButtonPopup)
         text = ensure_dropdown_arrow(_embedded_chip_text(icon, label))
         btn.setText(text)
         btn.setProperty("headerCompact", True)
         btn.setProperty("headerIconOnly", False)
-        btn.setFixedHeight(_HEADER_EMBEDDED_CHIP_H)
+        btn.setFont(emoji_ui_font(point_size=8.5))
+        btn.setFixedHeight(HEADER_EMBEDDED_CHIP_H)
         btn_w = _chip_button_metrics(btn).horizontalAdvance(text) + _HEADER_DROPDOWN_MENU_PAD
         btn.setFixedWidth(max(btn_w, _HEADER_ICON_ONLY_DROPDOWN_W))
         btn.setSizePolicy(
@@ -417,12 +470,20 @@ def apply_embedded_header_dropdown_style(
             QtWidgets.QSizePolicy.Policy.Fixed,
         )
     else:
-        btn.setText(ensure_dropdown_arrow(default))
+        # Clear any squircle inline stylesheet and hover filter before showing label
+        btn.setStyleSheet("")
+        _remove_squircle_filter(btn)
+        btn.setIcon(QtGui.QIcon())
+        text = ensure_dropdown_arrow(default)
+        btn.setText(text)
         btn.setProperty("headerCompact", False)
         btn.setProperty("headerIconOnly", False)
-        btn.setFixedHeight(32)
-        btn.setMinimumWidth(0)
-        btn.setMaximumWidth(16777215)
+        btn.setProperty("navGeminiTile", "false")
+        btn.setFont(emoji_ui_font(point_size=9.0))
+        btn.setFixedHeight(HEADER_EMBEDDED_CHIP_H)
+        btn_w = _chip_button_metrics(btn).horizontalAdvance(text) + _HEADER_DROPDOWN_MENU_PAD
+        btn.setFixedWidth(max(btn_w, _HEADER_ICON_ONLY_DROPDOWN_W))
+        btn.setPopupMode(QtWidgets.QToolButton.ToolButtonPopupMode.MenuButtonPopup)
     style = btn.style()
     style.unpolish(btn)
     style.polish(btn)
@@ -494,6 +555,7 @@ def make_chip_dropdown_button(
     btn.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
     btn.setFixedHeight(32)
     btn.setProperty("navTierKey", tier_key)
+    btn.setProperty("navSid", tier_key)
     btn.setProperty("navActive", False)
     btn.setProperty("navDefaultText", text)
     child_sids = [sid for sid, _lbl, _icon, _idx in children]

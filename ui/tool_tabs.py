@@ -1025,7 +1025,7 @@ def build_phone_dashboard_tab(parent: QtWidgets.QWidget) -> QtWidgets.QWidget:
 
     parent.lbl_web_token_qr = QtWidgets.QLabel()
     parent.lbl_web_token_qr.setObjectName("webTokenQr")
-    parent.lbl_web_token_qr.setFixedSize(184, 184)
+    parent.lbl_web_token_qr.setFixedSize(148, 148)
     parent.lbl_web_token_qr.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
     parent.lbl_web_token_qr.setFrameShape(QtWidgets.QFrame.Shape.NoFrame)
     parent.lbl_web_token_qr.setVisible(parent.chk_web_show_qr.isChecked())
@@ -1038,7 +1038,7 @@ def build_phone_dashboard_tab(parent: QtWidgets.QWidget) -> QtWidgets.QWidget:
     qr_col.setContentsMargins(0, 0, 0, 10)
     qr_col.setSpacing(8)
     qr_col.addWidget(_phone_field_anchor(parent.chk_web_show_qr), 0)
-    qr_col.addWidget(parent.lbl_web_token_qr, 0, QtCore.Qt.AlignmentFlag.AlignLeft)
+    qr_col.addWidget(parent.lbl_web_token_qr, 0, QtCore.Qt.AlignmentFlag.AlignHCenter)
 
     phone_form.addRow(
         _phone_form_label(
@@ -1584,9 +1584,15 @@ def _mount_black_box_ui(parent: QtWidgets.QWidget, lay: QtWidgets.QVBoxLayout) -
         "GIS and hydro tools recognize .nmea without renaming."
     )
     lay.addWidget(parent.chk_local_backup)
+    parent._local_backup_options = QtWidgets.QWidget()
+    parent._local_backup_options.setObjectName("modernBlackBoxOptions")
+    opts_lay = QtWidgets.QVBoxLayout(parent._local_backup_options)
+    opts_lay.setContentsMargins(0, 0, 0, 0)
+    opts_lay.setSpacing(8)
     from ui.local_backup_settings import mount_local_backup_location_row
 
-    mount_local_backup_location_row(parent, lay, show_session_file=False)
+    mount_local_backup_location_row(parent, opts_lay, show_session_file=False)
+    lay.addWidget(parent._local_backup_options)
     backup_note = QtWidgets.QLabel(
         "One new backup_*.nmea file per Start (inside the folder above). Survey UDP→COM traffic is "
         "included. Use Mission Review Quick Export to save as .log or .txt for older tools."
@@ -1596,8 +1602,12 @@ def _mount_black_box_ui(parent: QtWidgets.QWidget, lay: QtWidgets.QVBoxLayout) -
     lay.addWidget(backup_note)
     if hasattr(parent, "_restore_local_backup_prefs_ui"):
         parent.chk_local_backup.toggled.connect(parent._save_local_backup_pref)
+    if hasattr(parent, "_sync_local_backup_controls_enabled"):
+        parent.chk_local_backup.toggled.connect(parent._sync_local_backup_controls_enabled)
     if hasattr(parent, "_refresh_tools_page_status"):
         parent.chk_local_backup.toggled.connect(lambda *_: parent._refresh_tools_page_status())
+    if hasattr(parent, "_sync_local_backup_controls_enabled"):
+        parent._sync_local_backup_controls_enabled()
 
 
 def _mount_file_log_ui(parent: QtWidgets.QWidget, lay: QtWidgets.QVBoxLayout) -> None:
@@ -1608,16 +1618,25 @@ def _mount_file_log_ui(parent: QtWidgets.QWidget, lay: QtWidgets.QVBoxLayout) ->
         "Appends each bridged line to the path below. Separate from the Activity panel."
     )
     lay.addWidget(parent.chk_file_log)
+
+    parent._file_log_options = QtWidgets.QWidget()
+    parent._file_log_options.setObjectName("modernFileLogOptions")
+    opts_lay = QtWidgets.QVBoxLayout(parent._file_log_options)
+    opts_lay.setContentsMargins(0, 0, 0, 0)
+    opts_lay.setSpacing(8)
+
     path_row = QtWidgets.QHBoxLayout()
     parent.file_log_path = QtWidgets.QLineEdit(str(Path.home() / "bridge_survey.log"))
+    parent.file_log_path.setObjectName("modernFileLogPath")
     parent.file_log_path.setPlaceholderText("Path to .log file")
     parent.file_log_path.setToolTip(
         "Active log file. When it fills up, it is renamed .log.1, .log.2, …"
     )
     parent.btn_browse = QtWidgets.QPushButton("Browse…")
-    path_row.addWidget(parent.file_log_path, 1)
-    path_row.addWidget(parent.btn_browse)
-    lay.addLayout(path_row)
+    path_row.addWidget(parent.file_log_path, 0)
+    path_row.addWidget(parent.btn_browse, 0)
+    path_row.addStretch(1)
+    opts_lay.addLayout(path_row)
     size_row = QtWidgets.QHBoxLayout()
     size_row.addWidget(QtWidgets.QLabel("Roll at:"))
     parent.cmb_file_log_mb = QtWidgets.QComboBox()
@@ -1635,17 +1654,23 @@ def _mount_file_log_ui(parent: QtWidgets.QWidget, lay: QtWidgets.QVBoxLayout) ->
         "Otherwise keep that many rotated copies (e.g. .log.1, .log.2); oldest are deleted."
     )
     size_row.addWidget(parent.cmb_file_log_backups, 0)
-    lay.addLayout(size_row)
+    opts_lay.addLayout(size_row)
     parent.lbl_file_log_retention = QtWidgets.QLabel(file_log_retention_hint(10, 5))
     parent.lbl_file_log_retention.setWordWrap(True)
     parent.lbl_file_log_retention.setObjectName("tabNote")
-    lay.addWidget(parent.lbl_file_log_retention)
+    opts_lay.addWidget(parent.lbl_file_log_retention)
+    lay.addWidget(parent._file_log_options)
+
     if hasattr(parent, "_refresh_file_log_retention_hint"):
         parent.cmb_file_log_mb.currentIndexChanged.connect(parent._refresh_file_log_retention_hint)
         parent.cmb_file_log_backups.currentIndexChanged.connect(parent._refresh_file_log_retention_hint)
+    if hasattr(parent, "_sync_file_log_controls_enabled"):
+        parent.chk_file_log.toggled.connect(parent._sync_file_log_controls_enabled)
     if hasattr(parent, "_refresh_tools_page_status"):
         parent.chk_file_log.toggled.connect(lambda *_: parent._refresh_tools_page_status())
         parent.file_log_path.textChanged.connect(lambda *_: parent._refresh_tools_page_status())
+    if hasattr(parent, "_sync_file_log_controls_enabled"):
+        parent._sync_file_log_controls_enabled()
 
 
 def _mount_activity_clear_ui(parent: QtWidgets.QWidget, lay: QtWidgets.QVBoxLayout) -> None:
@@ -1916,19 +1941,20 @@ def build_modern_tools_nav() -> list[tuple[str, str, str]]:
 
 
 def order_modern_tools_nav_names(visible_names: list[str]) -> list[str]:
-    """Keep sidebar groups contiguous (Setup once, etc.) regardless of saved tab order."""
-    visible = set(visible_names)
-    ordered: list[str] = []
+    """Respect the user's saved order; only fill in any unlisted items at the end."""
     seen: set[str] = set()
-    for _group, items in build_modern_tools_nav_groups():
-        for _sid, label, _icon in items:
-            if label in visible and label not in seen:
-                ordered.append(label)
-                seen.add(label)
+    ordered: list[str] = []
+    # Primary: user-saved order takes precedence
     for name in visible_names:
         if name not in seen:
             ordered.append(name)
             seen.add(name)
+    # Fallback: any canonical items not yet placed (newly added tools, etc.)
+    for _group, items in build_modern_tools_nav_groups():
+        for _sid, label, _icon in items:
+            if label in set(visible_names) and label not in seen:
+                ordered.append(label)
+                seen.add(label)
     return ordered
 
 

@@ -1,0 +1,20 @@
+{
+  "serial": {
+    "port": "/dev/ttyUSB0",
+    "baud": 115200
+  },
+  "network": {
+    "mode": "udp_listen",
+    "udp_host": "0.0.0.0",
+    "udp_port": 10110
+  },
+  "nmea_mode": "passthrough",
+  "web": {
+    "host": "127.0.0.1",
+    "port": 8765,
+    "lan_bind": false
+  },
+  "bridge": {
+    "autostart": false
+  }
+}

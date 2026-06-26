@@ -28,6 +28,8 @@ from ui.fonts import FONT_FAMILY_QSS
 
 
 def modern_stylesheet() -> str:
+    from ui.nav_chip_icons import nav_chip_squircle_stylesheet
+
     _ff = FONT_FAMILY_QSS
     return f"""
 /* ═══ Root ════════════════════════════════════════════════════════════════ */
@@ -94,7 +96,10 @@ QFrame#modernGlobalHeader[startCompact="true"] QPushButton#modernStopBtn {{
     min-width: 56px;
 }}
 QFrame#modernGlobalHeader[toolsChipsEmbedded="true"] {{
-    min-height: 42px;
+    min-height: 38px;
+}}
+QFrame#modernGlobalHeader[toolsChipsEmbedded="false"][topChipsNavStrip="true"] {{
+    border-bottom: 1px solid rgba(59, 130, 246, 0.10);
 }}
 QFrame#modernGlobalHeader[sessionMode="true"] {{
     min-height: 34px;
@@ -129,8 +134,12 @@ QToolButton#modernHeaderQrBtn {{
     color: {MODERN_TEXT};
     border: 1px solid {MODERN_BORDER};
     border-radius: 6px;
-    font-size: 11pt;
+    font-size: 12pt;
     padding: 0px;
+    min-width: 30px;
+    max-width: 30px;
+    min-height: 30px;
+    max-height: 30px;
 }}
 QToolButton#modernHeaderQrBtn:hover {{
     border-color: {MODERN_ACCENT};
@@ -505,21 +514,60 @@ QWidget#modernControlTab {{
 QWidget#modernControlTab QLabel {{
     color: {MODERN_TEXT};
 }}
+QWidget#modernControlStoppedViewport {{
+    background-color: transparent;
+}}
+QWidget#modernControlStoppedPanel {{
+    background-color: transparent;
+}}
+QWidget#modernControlStoppedFormsHost {{
+QWidget#modernControlFormsCenter {{
+    background-color: transparent;
+}}
+QWidget#modernControlFormsBand {{
+    background-color: transparent;
+}}
+QWidget#modernControlLeftCol {{
+    background-color: transparent;
+}}
 QFrame#modernControlFormCard {{
     background-color: {MODERN_SURFACE};
     border: 1px solid rgba(51, 65, 85, 0.45);
     border-radius: 12px;
 }}
+QFrame#modernControlFormCard[serialLinkState="reconnecting"] {{
+    background-color: rgba(30, 27, 18, 0.92);
+    border: 1px solid rgba(251, 191, 36, 0.55);
+}}
+QLabel#modernSerialLinkBadge {{
+    color: #0f172a;
+    background-color: {MODERN_ACCENT_AMBER};
+    border-radius: 6px;
+    padding: 2px 10px;
+    font-size: 8.5pt;
+    font-weight: 800;
+    letter-spacing: 0.02em;
+}}
 QLabel#modernControlSectionIcon {{
-    font-size: 14pt;
-    min-width: 22px;
-    padding-top: 1px;
+    font-family: "Segoe UI Emoji", "Segoe UI Symbol", "Apple Color Emoji", "Noto Color Emoji", sans-serif;
+    font-size: 12pt;
+    min-width: 18px;
+    padding-top: 0px;
 }}
 QLabel#modernControlSectionTitle {{
     color: {MODERN_TEXT};
-    font-size: 11pt;
-    font-weight: 700;
-    letter-spacing: 0.01em;
+    font-size: 12pt;
+    font-weight: 800;
+    letter-spacing: 0.02em;
+}}
+QFrame#modernControlFormCard[controlFormCompact="true"] {{
+    padding: 0px;
+}}
+QLabel#modernControlFormSummary {{
+    color: {MODERN_TEXT};
+    font-size: 10pt;
+    font-weight: 600;
+    padding: 2px 0 4px 0;
 }}
 QFrame#modernControlSectionSep {{
     color: rgba(51, 65, 85, 0.55);
@@ -528,7 +576,7 @@ QFrame#modernControlSectionSep {{
 }}
 QLabel#modernControlFormLabel {{
     color: {MODERN_TEXT_MUTED};
-    font-size: 9pt;
+    font-size: 8.5pt;
     font-weight: 600;
     min-width: 88px;
 }}
@@ -847,6 +895,9 @@ QTableWidget#modernFleetTable {{
 QTableWidget#modernFleetTable::item {{
     padding: 1px 6px;
 }}
+QTableWidget#modernFleetTable::item:alternate {{
+    background-color: rgba(30, 41, 59, 0.45);
+}}
 QTableWidget#modernFleetTable QHeaderView::section {{
     background-color: {MODERN_SURFACE_ALT};
     color: #e2e8f0;
@@ -966,8 +1017,17 @@ QFrame#endpointCard[selected="true"] {{
     border: 2px solid {MODERN_ACCENT};
     background-color: #172554;
 }}
-QFrame#endpointCard QLabel#endpointCardTitle {{ color: {MODERN_TEXT}; font-weight: 700; }}
-QFrame#endpointCard QLabel#endpointCardSubtitle {{ color: {MODERN_TEXT_MUTED}; }}
+QFrame#endpointCard QLabel#endpointCardTitle {{
+    color: {MODERN_TEXT};
+    font-size: 12pt;
+    font-weight: 800;
+    letter-spacing: 0.02em;
+}}
+QFrame#endpointCard QLabel#endpointCardSubtitle {{
+    color: {MODERN_TEXT_MUTED};
+    font-size: 8.5pt;
+    line-height: 125%;
+}}
 QFrame#endpointCard QLabel#endpointCardStatus {{
     border-radius: 6px;
     padding: 2px 8px;
@@ -1075,6 +1135,12 @@ QFrame#modernToolsChipRail {{
     background-color: {MODERN_SURFACE};
     border-bottom: 1px solid {MODERN_BORDER};
 }}
+QFrame#modernToolsChipRail[squircleNavStrip="true"] {{
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+        stop:0 {MODERN_SURFACE}, stop:1 {MODERN_BG});
+    border-top: none;
+    border-bottom: 2px solid rgba(59, 130, 246, 0.25);
+}}
 QLabel#modernToolsChipRailLabel {{
     color: {MODERN_TEXT_MUTED};
     font-size: 7.5pt;
@@ -1111,21 +1177,25 @@ QPushButton#modernToolsNavChip[headerCompact="true"] {{
     border-radius: 12px;
     font-size: 8pt;
     min-height: 0;
-    max-height: 30px;
+    max-height: 34px;
 }}
-QPushButton#modernToolsNavChip[headerIconOnly="true"] {{
-    padding: 2px 4px;
-    border-radius: 8px;
-    font-size: 10pt;
+QPushButton#modernToolsNavChip[headerIconOnly="true"]:not([navGeminiTile="true"]) {{
+    padding: 1px 3px;
+    border-radius: 7px;
+    font-family: "Segoe UI Emoji", "Segoe UI Symbol", "Apple Color Emoji", "Noto Color Emoji", sans-serif;
+    font-size: 11pt;
+    text-align: center;
     min-width: 28px;
     max-width: 32px;
+    min-height: 26px;
+    max-height: 30px;
 }}
 QToolButton#modernToolsNavChipMenu[headerCompact="true"] {{
     padding: 2px 10px 2px 8px;
     border-radius: 12px;
     font-size: 8pt;
     min-height: 0;
-    max-height: 30px;
+    max-height: 34px;
 }}
 QToolButton#modernToolsNavChipMenu[headerCompact="true"]::menu-button {{
     background-color: transparent;
@@ -1142,15 +1212,21 @@ QToolButton#modernToolsNavChipMenu[headerCompact="true"]::menu-button:pressed {{
     background-color: transparent;
     border: none;
 }}
-QToolButton#modernToolsNavChipMenu[headerIconOnly="true"] {{
-    padding: 2px 4px 2px 6px;
-    border-radius: 8px;
-    font-size: 10pt;
-    min-width: 32px;
-    max-width: 38px;
+QToolButton#modernToolsNavChipMenu[headerIconOnly="true"]:not([navGeminiTile="true"]) {{
+    padding: 1px 3px;
+    border-radius: 7px;
+    font-family: "Segoe UI Emoji", "Segoe UI Symbol", "Apple Color Emoji", "Noto Color Emoji", sans-serif;
+    font-size: 11pt;
+    text-align: center;
+    min-width: 28px;
+    max-width: 32px;
+    min-height: 26px;
+    max-height: 30px;
 }}
 QToolButton#modernToolsNavChipMenu[headerIconOnly="true"]::menu-button {{
-    width: 14px;
+    width: 0;
+    padding: 0;
+    border: none;
 }}
 QPushButton#modernToolsNavChip {{
     background-color: {MODERN_SURFACE_ALT};
@@ -1334,7 +1410,7 @@ QStackedWidget#modernSettingsStack QGroupBox {{
     border: 1px solid {MODERN_BORDER};
     border-radius: 8px;
     margin-top: 16px;
-    padding: 14px 12px 10px 12px;
+    padding: 18px 16px 14px 16px;
     font-size: 9pt;
     font-weight: 600;
     color: {MODERN_TEXT};
@@ -1345,8 +1421,8 @@ QStackedWidget#modernSettingsStack QGroupBox::title {{
     left: 12px;
     top: -2px;
     color: {MODERN_ACCENT_BRIGHT};
-    font-size: 8.5pt;
-    font-weight: 700;
+    font-size: 9pt;
+    font-weight: 800;
     letter-spacing: 0.5px;
     background-color: {MODERN_SURFACE};
     padding: 0 6px;
@@ -1469,14 +1545,15 @@ QFrame#modernToolsPageHeader {{
     border-bottom: 1px solid {MODERN_BORDER};
 }}
 QLabel#modernToolsPageIcon {{
-    font-size: 22pt;
+    font-family: "Segoe UI Emoji", "Segoe UI Symbol", "Apple Color Emoji", "Noto Color Emoji", sans-serif;
+    font-size: 16pt;
     padding: 0;
     margin: 0;
-    min-width: 28px;
+    min-width: 22px;
 }}
 QLabel#modernToolsPageTitle {{
     color: {MODERN_TEXT};
-    font-size: 16pt;
+    font-size: 13pt;
     font-weight: 700;
     letter-spacing: 0.02em;
 }}
@@ -1673,12 +1750,14 @@ QGroupBox#modernToolsFormGroup {{
     border: 1px solid {MODERN_BORDER};
     border-radius: 8px;
     margin-top: 8px;
-    padding-top: 14px;
+    padding: 18px 14px 14px 14px;
 }}
 QGroupBox#modernToolsFormGroup::title {{
     subcontrol-origin: margin;
     left: 12px;
     padding: 0 6px;
+    font-size: 9pt;
+    font-weight: 800;
 }}
 
 QFrame#modernNmeaModeCard {{
@@ -1756,6 +1835,14 @@ QCheckBox#modernNmeaTypeChip::indicator {{
 QCheckBox#modernNmeaTypeChip::indicator:checked {{
     background-color: {MODERN_ACCENT};
     border-color: {MODERN_ACCENT};
+}}
+QLabel#modernNmeaTypeGroup {{
+    color: {MODERN_ACCENT_BRIGHT};
+    font-size: 9pt;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    padding-top: 2px;
+    min-width: 88px;
 }}
 QLabel#modernToolsLiveStatus[statusKind="error"] {{
     color: #f87171;
@@ -1989,8 +2076,45 @@ QLabel#webTokenQr {{
     background-color: #ffffff;
     border: 1px solid {MODERN_BORDER};
     border-radius: 8px;
-    padding: 10px;
-    margin: 4px 0 8px 0;
+    padding: 8px;
+    margin: 4px auto 8px auto;
+    max-width: 152px;
+    max-height: 152px;
+}}
+QWidget#modernFileLogOptions[enabled="false"] QLabel,
+QWidget#modernFileLogOptions[enabled="false"] QLineEdit,
+QWidget#modernFileLogOptions[enabled="false"] QComboBox,
+QWidget#modernFileLogOptions[enabled="false"] QPushButton {{
+    color: {MODERN_TEXT_MUTED};
+}}
+QWidget#modernBlackBoxOptions[enabled="false"] QLabel,
+QWidget#modernBlackBoxOptions[enabled="false"] QLineEdit,
+QWidget#modernBlackBoxOptions[enabled="false"] QCheckBox,
+QWidget#modernBlackBoxOptions[enabled="false"] QPushButton {{
+    color: {MODERN_TEXT_MUTED};
+}}
+QFrame#endpointCard QLabel#endpointCardIcon {{
+    min-width: 22px;
+    max-width: 22px;
+}}
+QLineEdit#modernPathField,
+QLineEdit#modernFileLogPath {{
+    max-width: 520px;
+}}
+QPlainTextEdit#systemTerminalScreen {{
+    background-color: #000000;
+    color: {MODERN_TERMINAL_TEXT};
+    border: 1px solid {MODERN_BORDER};
+    border-radius: 6px;
+    font-family: {_ff};
+    font-size: 9.5pt;
+    padding: 8px 10px;
+    selection-background-color: {MODERN_ACCENT};
+}}
+QWidget#terminalConsoleWrap {{
+    background-color: #000000;
+    border: 1px solid {MODERN_BORDER};
+    border-radius: 6px;
 }}
 QScrollArea#phoneDashboardScroll,
 QScrollArea#phoneDashboardScroll > QWidget > QWidget {{
@@ -2102,6 +2226,37 @@ QLabel#lblStats {{
 QLabel#lblStats[bridgeRunning="true"] {{
     color: {MODERN_ACCENT_AMBER};
     font-weight: 700;
+}}
+QLabel#modernFooterBridgeDot {{
+    min-width: 8px;
+    max-width: 8px;
+    min-height: 8px;
+    max-height: 8px;
+    border-radius: 4px;
+    background-color: #64748b;
+}}
+QLabel#modernFooterBridgeDot[pulseOn="true"] {{
+    background-color: {MODERN_ACCENT_GREEN};
+}}
+QLabel#modernFooterBridgeState {{
+    color: {MODERN_TEXT_MUTED};
+    font-size: 9pt;
+    font-weight: 700;
+    min-width: 52px;
+}}
+QLabel#modernFooterBridgeState[running="true"] {{
+    color: {MODERN_ACCENT_GREEN};
+}}
+QLabel#modernFooterUptime {{
+    color: {MODERN_TEXT_MUTED};
+    font-size: 9pt;
+    font-weight: 600;
+    min-width: 64px;
+}}
+QLabel#modernFooterSep {{
+    color: #334155;
+    font-size: 9pt;
+    padding: 0 2px;
 }}
 
 /* ═══ Wire terminal tab ══════════════════════════════════════════════════ */
@@ -2253,8 +2408,8 @@ QToolButton#wireIconBtn {{
     color: {MODERN_TEXT};
     border: 1px solid {MODERN_BORDER};
     border-radius: 6px;
-    font-size: 11pt;
-    padding: 0px;
+    padding: 4px;
+    icon-size: 16px;
 }}
 QToolButton#wireIconBtn:hover {{
     background-color: #1e3a5f;
@@ -2366,16 +2521,52 @@ QWidget#modernMissionReview {{ background-color: {MODERN_BG}; }}
 QWidget#missionReviewBody {{
     background-color: transparent;
 }}
+QFrame#missionSummaryGrid {{
+    background-color: {MODERN_SURFACE};
+    border: 1px solid {MODERN_BORDER};
+    border-radius: 12px;
+}}
+QLabel#missionSummaryValue {{
+    color: #e0f2fe;
+    font-size: 18pt;
+    font-weight: 800;
+}}
+QLabel#missionSummaryUnit {{
+    color: {MODERN_TEXT_MUTED};
+    font-size: 9pt;
+    font-weight: 600;
+    padding-top: 6px;
+}}
+QLabel#missionSummaryLabel {{
+    color: {MODERN_TEXT_MUTED};
+    font-size: 7.5pt;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+}}
 QFrame#missionMetricChip {{
     background-color: {MODERN_SURFACE};
     border: 1px solid {MODERN_BORDER};
     border-radius: 10px;
     min-width: 108px;
 }}
+QFrame#missionMetricChip[metricKind="warn"] {{
+    border-color: {MODERN_ACCENT_AMBER};
+    background-color: rgba(251, 191, 36, 0.08);
+}}
+QFrame#missionMetricChip[metricKind="error"] {{
+    border-color: #f87171;
+    background-color: rgba(248, 113, 113, 0.1);
+}}
 QLabel#missionMetricValue {{
     color: #e0f2fe;
     font-size: 14pt;
     font-weight: 700;
+}}
+QLabel#missionMetricValue[metricKind="warn"] {{
+    color: {MODERN_ACCENT_AMBER};
+}}
+QLabel#missionMetricValue[metricKind="error"] {{
+    color: #f87171;
 }}
 QLabel#missionMetricLabel {{
     color: {MODERN_TEXT_MUTED};
@@ -2387,11 +2578,68 @@ QFrame#missionChartsRow {{
     background-color: transparent;
     border: none;
 }}
-QWidget#missionThroughputChart,
-QWidget#missionHealthTimeline {{
+QFrame#missionChartPanel {{
+    background-color: {MODERN_SURFACE};
     border: 1px solid {MODERN_BORDER};
-    border-radius: 10px;
+    border-radius: 12px;
+}}
+QWidget#missionThroughputChart,
+QWidget#missionHealthTimeline,
+QWidget#missionIntegrityHeatmap {{
+    border: 1px solid rgba(51, 65, 85, 0.55);
+    border-radius: 8px;
     background-color: #050a12;
+}}
+QFrame#missionTimelinePanel {{
+    background-color: transparent;
+    border: none;
+}}
+QSlider#missionTimelineSlider::groove:horizontal {{
+    height: 6px;
+    background: {MODERN_SURFACE_ALT};
+    border-radius: 3px;
+}}
+QSlider#missionTimelineSlider::handle:horizontal {{
+    width: 14px;
+    margin: -5px 0;
+    background: {MODERN_ACCENT};
+    border-radius: 7px;
+}}
+QLabel#missionScrubRuler {{
+    color: {MODERN_TEXT_MUTED};
+    font-size: 8.5pt;
+    min-width: 36px;
+}}
+QLabel#missionScrubCaption {{
+    color: {MODERN_TEXT_MUTED};
+    font-size: 9pt;
+}}
+QFrame#missionQuickExportPanel {{
+    background-color: {MODERN_SURFACE};
+    border: 1px solid {MODERN_BORDER};
+    border-radius: 12px;
+    padding: 16px;
+}}
+QPushButton#missionExportBtn {{
+    background-color: {MODERN_ACCENT};
+    color: #0f172a;
+    border: none;
+    border-radius: 8px;
+    padding: 12px 10px;
+    font-size: 10pt;
+    font-weight: 800;
+    min-height: 44px;
+}}
+QPushButton#missionExportBtn:hover {{
+    background-color: {MODERN_ACCENT_BRIGHT};
+}}
+QPushButton#missionExportBtnSecondary {{
+    background-color: {MODERN_SURFACE_ALT};
+    color: {MODERN_TEXT};
+    border: 1px solid {MODERN_BORDER};
+    border-radius: 8px;
+    padding: 8px 12px;
+    font-weight: 600;
 }}
 QLabel#missionSessionPathValue {{
     color: {MODERN_TEXT};
@@ -2475,7 +2723,7 @@ QWidget#toolTabScrollHost[themeStudio="true"] QPushButton#themeStudioZoneSwatch 
     min-height: 22px;
     border-radius: 4px;
 }}
-"""
+""" + nav_chip_squircle_stylesheet()
 
 
 def _brighten_hex(color: str, *, lift: float = 0.14) -> str:

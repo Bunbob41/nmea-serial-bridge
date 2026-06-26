@@ -1,12 +1,16 @@
 #!/usr/bin/env bash
-# Run Serial Link headless from the repo venv.
+# Run Serial Link headless from the repo venv (loads CONFIG_FILE when set).
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$ROOT"
-if [[ ! -d .venv ]]; then
-  echo "Missing .venv — run ./packaging/linux/install.sh first." >&2
+# shellcheck disable=SC1091
+source "$(dirname "$0")/venv.sh"
+if ! activate_serial_link_venv "$ROOT"; then
   exit 1
 fi
-# shellcheck disable=SC1091
-source .venv/bin/activate
+if [[ -n "${CONFIG_FILE:-}" && -f "${CONFIG_FILE}" ]]; then
+  set -- --config "${CONFIG_FILE}" "$@"
+elif [[ -n "${SERIAL_LINK_CONFIG:-}" && -f "${SERIAL_LINK_CONFIG}" ]]; then
+  set -- --config "${SERIAL_LINK_CONFIG}" "$@"
+fi
 exec python serial_link_headless.py "$@"

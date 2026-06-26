@@ -19,7 +19,11 @@ from pathlib import Path
 from bench_config import load_bench_defaults
 from bench_udp_test import port_has_listener
 from py_interpreter import cli_python_executable, subprocess_no_console_kwargs, subprocess_script_argv
-from ui.qt_test_harness import is_windows_qt_shutdown_exit, unittest_output_indicates_ok
+from ui.qt_test_harness import (
+    is_windows_qt_shutdown_exit,
+    unittest_output_has_failures,
+    unittest_output_indicates_ok,
+)
 
 ROOT = Path(__file__).resolve().parent
 PY = cli_python_executable()
@@ -67,21 +71,24 @@ def _step_success(
     *,
     tb_seen: bool,
 ) -> bool:
-    if name == "unittest" and unittest_output_indicates_ok(stdout, stderr):
-        if is_windows_qt_shutdown_exit(code):
-            print(
-                "[verify_all] NOTE: unittest Qt shutdown fast-fail (0xC0000409) after OK — treated as pass.",
-                flush=True,
-            )
-            return True
-        if code == 0 and tb_seen:
-            print(
-                "[verify_all] NOTE: unittest logged expected handler tracebacks — treated as pass.",
-                flush=True,
-            )
-            return True
-        if code == 0:
-            return True
+    if name == "unittest":
+        if unittest_output_has_failures(stdout, stderr):
+            return False
+        if unittest_output_indicates_ok(stdout, stderr):
+            if is_windows_qt_shutdown_exit(code):
+                print(
+                    "[verify_all] NOTE: unittest Qt shutdown fast-fail (0xC0000409) after OK — treated as pass.",
+                    flush=True,
+                )
+                return True
+            if code == 0 and tb_seen:
+                print(
+                    "[verify_all] NOTE: unittest logged expected handler tracebacks — treated as pass.",
+                    flush=True,
+                )
+                return True
+            if code == 0:
+                return True
     if name == "bench_gui_smoke" and "All UIs OK" in (stdout or ""):
         if is_windows_qt_shutdown_exit(code) or code == 0:
             if is_windows_qt_shutdown_exit(code):

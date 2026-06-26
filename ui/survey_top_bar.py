@@ -70,9 +70,9 @@ TOPBAR_LAYOUT_SPRING = "spring"
 TOPBAR_LAYOUT_CLUSTER = "cluster"
 # Floors for embedded Modern header chips (prevents «L…t» elision under compression).
 _CLUSTER_CHIP_MIN_WIDTH: dict[str, int] = {
-    "view": 54,
-    "hud": 52,
-    "ui_switch": 98,
+    "view": 46,
+    "hud": 44,
+    "ui_switch": 80,
 }
 _EMBEDDED_QSS_HPAD = 20  # modernHeaderNav surveyQuickBtn padding: 10px left + right
 

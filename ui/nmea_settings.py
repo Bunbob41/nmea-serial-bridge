@@ -150,20 +150,46 @@ def build_modern_nmea_settings(parent: QtWidgets.QWidget) -> QtWidgets.QWidget:
     types_box = QtWidgets.QGroupBox("Allowed sentence types")
     types_box.setObjectName("modernNmeaTypesBox")
     parent._nmea_strict_types_box = types_box
-    grid = QtWidgets.QGridLayout(types_box)
-    grid.setHorizontalSpacing(16)
-    grid.setVerticalSpacing(6)
-    for col in range(4):
-        grid.setColumnMinimumWidth(col, 76)
+    types_outer = QtWidgets.QVBoxLayout(types_box)
+    types_outer.setSpacing(8)
     parent._nmea_type_checks = {}
-    for i, st in enumerate(NMEA_SENTENCE_TYPES):
-        cb = QtWidgets.QCheckBox(st)
-        cb.setObjectName("modernNmeaTypeChip")
-        cb.setChecked(st in _SURVEY_TYPES)
-        cb.setToolTip(f"Allow ${st}… sentences through strict filter")
-        cb.toggled.connect(lambda _checked, p=parent: _on_type_check_toggled(p))
-        parent._nmea_type_checks[st] = cb
-        grid.addWidget(cb, i // 4, i % 4)
+    _grouped: tuple[tuple[str, tuple[str, ...]], ...] = (
+        ("Position", ("GGA", "GLL", "GSA", "GST")),
+        ("Navigation", ("RMC", "ZDA", "VTG")),
+        ("Heading", ("HDT", "HDG")),
+    )
+    _grouped_types = {st for _title, items in _grouped for st in items}
+    _other = tuple(st for st in NMEA_SENTENCE_TYPES if st not in _grouped_types)
+
+    types_grid = QtWidgets.QGridLayout()
+    types_grid.setHorizontalSpacing(12)
+    types_grid.setVerticalSpacing(10)
+    types_grid.setColumnMinimumWidth(0, 96)
+    for col in range(1, 5):
+        types_grid.setColumnMinimumWidth(col, 84)
+    types_grid.setColumnStretch(5, 1)
+
+    grid_row = 0
+    for group_title, items in (*_grouped, ("Other", _other)):
+        if not items:
+            continue
+        rows_needed = max(1, (len(items) + 3) // 4)
+        group_lbl = QtWidgets.QLabel(group_title)
+        group_lbl.setObjectName("modernNmeaTypeGroup")
+        group_lbl.setAlignment(
+            QtCore.Qt.AlignmentFlag.AlignLeft | QtCore.Qt.AlignmentFlag.AlignTop
+        )
+        types_grid.addWidget(group_lbl, grid_row, 0, rows_needed, 1)
+        for i, st in enumerate(items):
+            cb = QtWidgets.QCheckBox(st)
+            cb.setObjectName("modernNmeaTypeChip")
+            cb.setChecked(st in _SURVEY_TYPES)
+            cb.setToolTip(f"Allow ${st}… sentences through strict filter")
+            cb.toggled.connect(lambda _checked, p=parent: _on_type_check_toggled(p))
+            parent._nmea_type_checks[st] = cb
+            types_grid.addWidget(cb, grid_row + (i // 4), 1 + (i % 4))
+        grid_row += rows_needed
+    types_outer.addLayout(types_grid)
     sp.addWidget(types_box)
 
     types_note = QtWidgets.QLabel(
@@ -225,8 +251,6 @@ def build_modern_nmea_settings(parent: QtWidgets.QWidget) -> QtWidgets.QWidget:
     raw_lbl.setObjectName("tabNote")
     rn.addWidget(raw_lbl)
     root.addWidget(raw_note)
-
-    root.addStretch(1)
 
     parent._nmea_widgets = [
         parent.rb_nmea_passthrough,

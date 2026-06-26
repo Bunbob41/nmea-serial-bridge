@@ -5,6 +5,176 @@ High-level notes for **this fork / branch** (`2034-ui-journey-modernization` and
 
 ---
 
+---
+
+---
+
+---
+
+## v1.47.3
+
+- **Control tab — stopped centering fix** — stopped viewport now expands to full tab width (Expanding size policy) so the 960px form block actually centers; fixed init early-return that skipped mount layout on first paint.
+
+## v1.47.2
+
+- **Control tab — stopped layout** — Serial link and Network path sit in a 960px-wide panel centered in the tab viewport (not hugging the left rail); running state restores the compact left column + map split with immediate layout activation on toggle.
+
+## v1.47.1
+
+- **Control tab layout** — running state stacks compact Serial/Network cards in a left rail that stretches with the map; stopped state centers expanded forms in a 960px band; visibility toggles trigger explicit layout relayout for smooth geometry.
+
+## v1.47.0
+
+- **Control — dynamic map layout** — Position track stays hidden until the bridge is running with a live GGA fix; Serial link and Network path cards expand (centered) while idle, then collapse to read-only summaries when the map takes over.
+- **Mission Review — summary grid** — Safeguarded, Dropped, Duration, and Hz use a styled QGridLayout card instead of a concatenated summary line; throughput and integrity charts share matching panel bounds with centered empty states.
+- **Modern UI polish** — roomier card padding, bolder section headers, muted unit labels, and centered placeholder icons on map/chart idle states.
+
+## v1.46.0
+
+- **Mission Review — post-run debrief** — session timeline scrubber updates duration/volume/error cards, throughput chart, and integrity heatmap; green continuity bar with red/amber fault ticks; Quick Export buttons for `.TXT`, `.CSV`, and `.KML` plus save-as-`.NMEA`.
+
+## v1.45.5
+
+- **COM disconnect alerts** — tray warning when serial drops to auto-reconnect (minimized/hidden or on a non-Control tab, 90s cooldown); Modern Control **Serial link** card dims with an amber **Reconnecting…** badge while retry runs.
+
+## v1.45.4
+
+- **Modern footer — live session strip** — persistent bottom bar shows Running/Stopped badge, session uptime, and the live Hz/transport stats line on every tab (reuses existing bridge counters; version stays right-aligned).
+
+## v1.45.3
+
+- **Modern sidebar — no duplicate section headers** — Control / Setup / Logging / Bench Tools labels render once each, even when saved tab order interleaves groups.
+
+## v1.45.2
+
+- **NMEA tab — aligned sentence grid** — Position / Navigation / Heading / Other share one rigid 4-column grid so GGA, RMC, HDT, and GSV line up vertically; removed bottom stretch dead space.
+
+## v1.45.1
+
+- **Modern UI polish (audit follow-up)** — Hub cards show Iconly serial/network glyphs beside COM and preset titles; Black box path and folder controls disable when backup is unchecked (matching File log behavior).
+
+## v1.45.0
+
+- **Modern UI polish (10-tab audit)** — Control map idle text wraps without overlapping the icon; Presets form uses strict `QFormLayout` alignment and an expanding notes field; Hub cards emphasize COM/network IDs with 2-line subtitle clamp; Fleet table zebra striping + balanced columns; NMEA sentence types grouped (Position / Navigation / Heading / Other); File log options disable when logging is off; path fields capped at 520px; Dashboard QR scaled down and centered; Activity EVENT lines color-coded (Web / OK / warn); system Terminal console uses a distinct near-black panel.
+
+## v1.44.9
+
+- **Qt shutdown warnings** — stop calling `deleteLater()` on `QThread` workers (COM lock probe, auto-discovery); join threads before clearing refs; brief `QThreadPool` / event-loop drain before process exit to reduce `QThreadStorage: entry destroyed before end of thread` noise on quit.
+
+## v1.44.8
+
+- **Position map — wire-accurate DDM** — map caption now formats lat/lon from the raw GGA/RMC `DDMM.mmmmm` fields on the wire (no decimal round-trip), so labels match the simulator’s transmitted NMEA digits.
+
+## v1.44.7
+
+- **Position map caption — DDM format** — Control tab and web dashboard now show lat/lon in degrees + decimal minutes (`44° 36.76727' N · 120° 13.71040' W`) matching NMEA Simulator; decimal degrees remain on hover tooltip.
+
+## v1.44.6
+
+- **Web dashboard Start from localhost** — header 📱 and **Open dashboard** now ensure the Web API is running and append `#bridge-token=…` when LAN bind is enabled (fixes 401 on Start/Stop); clearer 401 message in the browser; phone tooltip explains Start is disabled when desktop bridge is already running.
+- **Position track coords** — map caption uses 6 decimal places; hover tooltip shows full decimal + DDM (matches NMEA Simulator degree/minute display).
+
+## v1.44.5
+
+- **Field layout Fleet tab — fully wired** — `_init_fleet_supervisor` moved from `modern.py` to `BridgeLogicMixin` (shared); Field's `_on_ui_ready` now calls it so `attach_supervisor` fires and all buttons (Add stream, Start all, Stop all, Delete, row start/stop) work; fleet-panel QSS (`modernFleetTable`, `modernToolsPrimaryBtn/SecondaryBtn`, `fleetStreamEditDialog`) added to the field stylesheet in maroon-theme colours via `_FLEET_PANEL_FIELD_CSS`.
+
+## v1.44.4
+
+- **Field layout — Fleet tab added** — `build_fleet_panel` (same panel as Modern Tools) is now available in the Field drawer under "Fleet".
+- **Field layout audit fixes** — tab order rationalised: operational tabs first (Presets → Fleet → Phone → NMEA → Inject → Diagnostics → Terminal → Theme), Guide moved last as a reference doc; all 9 tabs now have descriptive hover tooltips; drawer button tooltip updated; `_FIELD_STRIP_DRAWER_EXTRA` increased 284 → 340 and drawer min-height 320 → 360 to give Fleet's table room.
+
+## v1.44.3
+
+- **Icon refinements** — Presets: briefcase → bookmark (saved configs); NMEA: signal bars → funnel (data filtering); Dashboard: 2×2 grid → monitor screen+stand (web interface). Floppy disk (Black box) and lightning bolt (Inject) from v1.44.2 also land here.
+
+## v1.44.2
+
+- **Full sidebar icon coverage** — added placeholder icons for the 7 previously un-iconed sections: NMEA (signal bars), Black box (archive box), File log (document with lines), Dashboard (2×2 grid), Inject (upload arrow), Terminal (`>_` prompt), Checks (checkmark); all 13 sidebar entries now have SVG icons.
+
+## v1.44.1
+
+- **Dual icon bug fix** — replaced `QPushButton.setIcon()` (which conflicted with `text-align:left` QSS and re-rendered emoji via `_apply_modern_sidebar_collapsed`) with a custom `_SvgNavButton` subclass that draws the SVG pixmap directly in `paintEvent`; removed `navIcon` property from SVG-backed buttons; collapse handler updated to skip emoji injection for `_SvgNavButton` instances.
+
+## v1.44.0
+
+- **Layout update bug fixed** — `order_modern_tools_nav_names()` was discarding the user's saved order and re-applying canonical group order; now respects the saved order with canonical as fallback only. Explicit `updateGeometry()`/`update()` calls added after sidebar rebuild to force immediate repaint.
+- **UI Editor redesign** — replaced clunky ↑↓ row widgets with a native drag-and-drop `QListWidget`; cleaner banner + footer chrome; margins/spacing tightened; dark/light QSS updated for new `uiEditorDragList`, `uiEditorBanner`, `uiEditorFooter` selectors.
+- **Sidebar SVG icons** — added `ui/sidebar_icons.py` with 6 Iconly V3.0 Outline icons (Swap · Send · Scan · Setting · Activity · Work) sourced from the Figma community file; sidebar buttons for Control/Activity/Presets/Hub/Fleet/Theme now render crisp 18 px SVG icons with dim/bright two-state coloring; emoji fallback preserved for unmapped items.
+
+## v1.43.3
+
+- **Nav chips — own row** — squircle tiles now live in a **dedicated strip below the header**, not crammed into the session bar; header stays clean (Start/Stop · Status · View/HUD/Layout only); 36px colored tiles, 16pt emoji, centered vertically in 52px strip.
+
+## v1.43.2
+
+- **Modern squircle chips (fix)** — inline `setStyleSheet()` per button so tile colours always apply regardless of Qt property selector matching; 32px tiles, emoji glyphs, hover white-ring border, auto spacing.
+
+## v1.43.1
+
+- **Modern header chips (icons-only)** — squircle tiles with per-tool accent colors and white Qt glyphs (Gemini-style), replacing emoji in the embedded top chip rail.
+
+## v1.43.0 — Linux headless Phase B
+
+- **Dashboard configure-before-start** — headless mode shows a stopped-state banner, “Save boot defaults” writes `bridge.json`, and Tools copy points operators to journal/SSH for the API token.
+- **`POST /config/persist`** — headless-only route to persist runtime config to the site file; `/meta` exposes `headless`, `platform`, `config_path`, and `config_writable`.
+- **Install script** — `packaging/linux/install.sh` skips recreating `.venv` when it already exists.
+
+## v1.42.0 — Linux headless Phase A
+
+- **Site config** — `bridge.json` + `--config` / `CONFIG_FILE` / auto-discover under `~/.config/serial-link/` or `/etc/serial-link/`; CLI and `SERIAL_LINK_*` env overrides.
+- **Tailnet-ready startup** — banner prints local + Tailnet/LAN URLs, API token, setup link, and explicit **Bridge: STOPPED** until dashboard Start.
+- **Packaging** — `bridge.json.example`, `headless.env.example`, updated systemd unit and `packaging/linux/README.md`.
+
+## v1.41.25
+
+- **Headless web dashboard** — fix `/discovery` crash when network cards are plain dicts (`AttributeError: 'dict' object has no attribute 'to_dict'`); localhost mode no longer inherits stale LAN/token prefs; `--token` is printed at startup when using `--lan-bind`.
+
+## v1.41.24
+
+- **Launch focus** — startup foreground runs once only; minimizing the window no longer fights you (was re-triggered from `showEvent` + repeated focus timers).
+- **`run_gui.cmd` / `run_gui.ps1`** — run `python bridge_gui.py` directly (not detached `pythonw` / Windows Store stub).
+
+## v1.41.23
+
+- **Launch reliability** — main window is re-focused after layout timers (fixes invisible `pythonw` / off-screen starts); added `run_gui.ps1` for a clean dev launch.
+
+## v1.41.22
+
+- **Crisp toolbar icons** — Activity wire toolbar uses Qt standard icons instead of emoji in monospace; header/page chip emoji render with a proper color-emoji font (Segoe UI Emoji on Windows).
+
+## v1.41.21
+
+- **Fix startup crash** — `HEADER_EMBEDDED_CHIP_H` imported at module level in `ui/modern.py` so Modern UI header chip mount cannot raise `NameError`.
+
+## v1.41.20
+
+- **Quarter-screen Modern layout** — smaller header tool chips (32×30px), lower trail/chip pane minimums, and header nav widths no longer ratchet up after resize (window can shrink again).
+- **Control tab** — Serial/Network stack vertically below 700px width; form cards no longer force a 320px minimum height that clipped the bottom of the window.
+
+## v1.41.19
+
+- **Icons-only header chips** — embedded chip row height 34px (was 30px); QSS no longer caps emoji at 30px so icons are not vertically clipped.
+
+## v1.41.18
+
+- **Header chips — Auto mode** — no longer collapses to icon-only just because the full labeled row is wider than the chip pane; labeled chips scroll horizontally instead (icons only when the pane is narrower than the icon row).
+
+## v1.41.17
+
+- **Activity log wrap** — Modern Activity / wire terminal wraps long lines by default (startup self-check paths no longer hard-clip at the window edge). Toggle with the ⏎ button in the log toolbar.
+- **Icons-only header chips** — slightly wider (36px), centered emoji, dropdown chips open the menu on click (no split-button clip).
+
+## v1.41.16
+
+- **Modern header — icons-only chips** — dropdown chips no longer cram emoji + inline ▾ into 30px; icon-only cells are slightly wider with the menu chevron on the split button only.
+
+## v1.41.15
+
+- **CI verify (unittest)** — `run_unittests.py` re-runs with `-v` on failure and prints `FAIL:`/`ERROR:` lines; dot-progress detection handles `FF` and ignores traceback `False` noise (`unittest_dot_progress`).
+- **Frozen doc paths** — `resolve_bundled_doc` uses Windows-safe containment (`normcase` fallback); frozen layout tests assert inside the temp bundle with resolved paths.
+- **Header splitter tests** — account for QSplitter handle width when asserting pane totals (fixes flaky `sum(sizes)` on Windows/Qt).
+- **Mission Review test** — `test_elides_long_windows_path` no longer requires a specific filename tail; Qt font metrics (offscreen on CI) can elide to `.raw` instead of `1426.raw`.
+
 ## v1.41.14
 
 - **CI verify (root cause)** — `unittest_output_indicates_ok` no longer treats `.F` inside the word **False** as a dot-mode failure; restores pass detection for long verbose runs on GitHub Actions.

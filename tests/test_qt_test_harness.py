@@ -3,7 +3,11 @@ from __future__ import annotations
 
 import unittest
 
-from ui.qt_test_harness import unittest_output_indicates_ok
+from ui.qt_test_harness import (
+    unittest_dot_progress,
+    unittest_output_has_failures,
+    unittest_output_indicates_ok,
+)
 
 
 class TestUnittestOutputIndicatesOk(unittest.TestCase):
@@ -25,6 +29,16 @@ class TestUnittestOutputIndicatesOk(unittest.TestCase):
 
     def test_false_in_traceback_does_not_count_as_dot_failure(self) -> None:
         out = "AssertionError: False is not true\n" + ("." * 80)
+        self.assertTrue(unittest_output_indicates_ok(out, ""))
+
+    def test_consecutive_dot_failures(self) -> None:
+        out = ("." * 40) + "FF" + ("." * 10)
+        self.assertTrue(unittest_output_has_failures(out, ""))
+        self.assertFalse(unittest_output_indicates_ok(out, ""))
+
+    def test_dot_progress_ignores_traceback_lines(self) -> None:
+        out = ("." * 80) + "\nTraceback (most recent call last):\nAssertionError: False\n" + ("." * 80)
+        self.assertEqual(unittest_dot_progress(out, ""), "." * 160)
         self.assertTrue(unittest_output_indicates_ok(out, ""))
 
 

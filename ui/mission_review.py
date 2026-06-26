@@ -61,21 +61,6 @@ def _draw_max_value_pill(
     )
 
 
-def _mission_metric_chip(label: str, value: str) -> tuple[QtWidgets.QFrame, QtWidgets.QLabel]:
-    card = QtWidgets.QFrame()
-    card.setObjectName("missionMetricChip")
-    lay = QtWidgets.QVBoxLayout(card)
-    lay.setContentsMargins(12, 8, 12, 8)
-    lay.setSpacing(2)
-    value_lbl = QtWidgets.QLabel(value)
-    value_lbl.setObjectName("missionMetricValue")
-    title_lbl = QtWidgets.QLabel(label.upper())
-    title_lbl.setObjectName("missionMetricLabel")
-    lay.addWidget(value_lbl)
-    lay.addWidget(title_lbl)
-    return card, value_lbl
-
-
 class ThroughputBarChart(QtWidgets.QWidget):
     """Small bar chart — backup bytes per 5 s bucket."""
 
@@ -83,6 +68,7 @@ class ThroughputBarChart(QtWidgets.QWidget):
         super().__init__(parent)
         self.setObjectName("missionThroughputChart")
         self._values: list[int] = []
+        self._scrub_index = -1
         self.setMinimumHeight(76)
         self.setMaximumHeight(108)
         self.setSizePolicy(
@@ -90,8 +76,16 @@ class ThroughputBarChart(QtWidgets.QWidget):
             QtWidgets.QSizePolicy.Policy.Fixed,
         )
 
+    def set_scrub_index(self, index: int) -> None:
+        if not self._values:
+            self._scrub_index = -1
+        else:
+            self._scrub_index = max(0, min(int(index), len(self._values) - 1))
+        self.update()
+
     def set_values(self, values: list[int]) -> None:
         self._values = [max(0, int(v)) for v in values]
+        self._scrub_index = max(0, len(self._values) - 1)
         n = len(self._values)
         if n <= 1:
             self.setFixedHeight(76)
@@ -127,8 +121,36 @@ class ThroughputBarChart(QtWidgets.QWidget):
         )
 
         if not self._values or chart_rect.width() <= 4 or chart_rect.height() <= 4:
+            block_h = min(chart_rect.height(), 56)
+            block_top = chart_rect.top() + max(0, (chart_rect.height() - block_h) // 2)
+            block = QtCore.QRect(
+                chart_rect.left(),
+                block_top,
+                chart_rect.width(),
+                block_h,
+            )
+            icon_rect = QtCore.QRect(block.left(), block.top(), block.width(), 22)
+            msg_rect = QtCore.QRect(
+                block.left(),
+                icon_rect.bottom() + 2,
+                block.width(),
+                max(16, block.bottom() - icon_rect.bottom() - 2),
+            )
+            p.setPen(QtGui.QColor("#64748b"))
+            icon_font = app_ui_font(point_size=14)
+            p.setFont(icon_font)
+            p.drawText(
+                icon_rect,
+                int(QtCore.Qt.AlignmentFlag.AlignHCenter | QtCore.Qt.AlignmentFlag.AlignVCenter),
+                "📊",
+            )
             p.setPen(QtGui.QColor("#94a3b8"))
-            p.drawText(chart_rect, QtCore.Qt.AlignmentFlag.AlignCenter, "No throughput samples")
+            p.setFont(app_ui_font(point_size=8))
+            p.drawText(
+                msg_rect,
+                int(QtCore.Qt.AlignmentFlag.AlignHCenter | QtCore.Qt.AlignmentFlag.AlignTop),
+                "No throughput samples",
+            )
             p.end()
             return
 
@@ -151,7 +173,13 @@ class ThroughputBarChart(QtWidgets.QWidget):
             else:
                 h = 0
             bar_rect = QtCore.QRect(x, chart_rect.bottom() - h, bar_w, h)
-            color = _CHART_BAR_HI if val == peak and val > 0 else _CHART_BAR
+            past = self._scrub_index >= 0 and i > self._scrub_index
+            if past:
+                color = "#1e3a5f"
+            elif val == peak and val > 0:
+                color = _CHART_BAR_HI
+            else:
+                color = _CHART_BAR
             p.fillRect(bar_rect, QtGui.QColor(color))
             x += bar_w + gap
 
@@ -231,6 +259,242 @@ class HealthTimeline(QtWidgets.QWidget):
         p.end()
 
 
+class MissionIntegrityHeatmap(QtWidgets.QWidget):
+    """Horizontal continuity bar — green baseline with fault ticks + scrub playhead."""
+
+    def __init__(self, parent: QtWidgets.QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setObjectName("missionIntegrityHeatmap")
+        self._ticks: list[str] = []
+        self._scrub_index = 0
+        self.setMinimumHeight(52)
+        self.setMaximumHeight(64)
+        self.setFixedHeight(56)
+        self.setSizePolicy(
+            QtWidgets.QSizePolicy.Policy.Expanding,
+            QtWidgets.QSizePolicy.Policy.Fixed,
+        )
+
+    def set_ticks(self, ticks: list[str]) -> None:
+        self._ticks = list(ticks)
+        if self._ticks:
+            self._scrub_index = min(self._scrub_index, len(self._ticks) - 1)
+        self.update()
+
+    def set_scrub_index(self, index: int) -> None:
+        if not self._ticks:
+            self._scrub_index = 0
+        else:
+            self._scrub_index = max(0, min(int(index), len(self._ticks) - 1))
+        self.update()
+
+    def paintEvent(self, _event: QtGui.QPaintEvent) -> None:
+        p = QtGui.QPainter(self)
+        p.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
+        p.fillRect(self.rect(), QtGui.QColor(_CHART_BG))
+        chart_rect = self.rect().adjusted(8, _CHART_TITLE_BAND + 2, -8, -10)
+
+        p.setPen(QtGui.QColor(_CHART_TEXT))
+        from ui.fonts import app_ui_font
+
+        title_font = app_ui_font(point_size=9)
+        title_font.setWeight(QtGui.QFont.Weight.DemiBold)
+        p.setFont(title_font)
+        p.drawText(8, 20, "Data integrity heatmap")
+
+        if not self._ticks or chart_rect.width() <= 4:
+            block_h = min(chart_rect.height(), 48)
+            block_top = chart_rect.top() + max(0, (chart_rect.height() - block_h) // 2)
+            block = QtCore.QRect(
+                chart_rect.left(),
+                block_top,
+                chart_rect.width(),
+                block_h,
+            )
+            icon_rect = QtCore.QRect(block.left(), block.top(), block.width(), 20)
+            msg_rect = QtCore.QRect(
+                block.left(),
+                icon_rect.bottom() + 2,
+                block.width(),
+                max(14, block.bottom() - icon_rect.bottom() - 2),
+            )
+            p.setPen(QtGui.QColor("#64748b"))
+            icon_font = app_ui_font(point_size=13)
+            p.setFont(icon_font)
+            p.drawText(
+                icon_rect,
+                int(QtCore.Qt.AlignmentFlag.AlignHCenter | QtCore.Qt.AlignmentFlag.AlignVCenter),
+                "🩺",
+            )
+            p.setPen(QtGui.QColor("#94a3b8"))
+            p.setFont(app_ui_font(point_size=8))
+            p.drawText(
+                msg_rect,
+                int(QtCore.Qt.AlignmentFlag.AlignHCenter | QtCore.Qt.AlignmentFlag.AlignTop),
+                "No health windows",
+            )
+            p.end()
+            return
+
+        p.fillRect(chart_rect, QtGui.QColor(_TICK_OK))
+        n = len(self._ticks)
+        cell_w = chart_rect.width() / n
+        for i, tick in enumerate(self._ticks):
+            cx = int(chart_rect.left() + (i + 0.5) * cell_w)
+            if tick == "bad":
+                p.setPen(QtGui.QPen(QtGui.QColor(_TICK_BAD), 3))
+                p.drawLine(cx, chart_rect.top(), cx, chart_rect.bottom())
+            elif tick == "warn":
+                p.setPen(QtGui.QPen(QtGui.QColor(_TICK_WARN), 2))
+                p.drawLine(cx, chart_rect.top() + 2, cx, chart_rect.bottom() - 2)
+
+        play_x = int(chart_rect.left() + (self._scrub_index + 0.5) * cell_w)
+        p.setPen(QtGui.QPen(QtGui.QColor("#38bdf8"), 2))
+        p.drawLine(play_x, chart_rect.top() - 2, play_x, chart_rect.bottom() + 2)
+        p.end()
+
+
+def _split_human_bytes(n: int) -> tuple[str, str]:
+    text = _human_bytes(n)
+    if " " in text:
+        val, unit = text.rsplit(" ", 1)
+        return val, unit
+    return text, ""
+
+
+def _mission_summary_metric(
+    label: str,
+) -> tuple[QtWidgets.QWidget, QtWidgets.QLabel, QtWidgets.QLabel | None]:
+    cell = QtWidgets.QWidget()
+    cell.setObjectName("missionSummaryCell")
+    lay = QtWidgets.QVBoxLayout(cell)
+    lay.setContentsMargins(0, 0, 0, 0)
+    lay.setSpacing(4)
+    val_row = QtWidgets.QHBoxLayout()
+    val_row.setContentsMargins(0, 0, 0, 0)
+    val_row.setSpacing(4)
+    value_lbl = QtWidgets.QLabel("—")
+    value_lbl.setObjectName("missionSummaryValue")
+    unit_lbl = QtWidgets.QLabel("")
+    unit_lbl.setObjectName("missionSummaryUnit")
+    val_row.addWidget(value_lbl, 0)
+    val_row.addWidget(unit_lbl, 0)
+    val_row.addStretch(1)
+    title_lbl = QtWidgets.QLabel(label.upper())
+    title_lbl.setObjectName("missionSummaryLabel")
+    lay.addLayout(val_row)
+    lay.addWidget(title_lbl)
+    return cell, value_lbl, unit_lbl
+
+
+def _build_mission_summary_grid(win: BridgeLogicMixin) -> QtWidgets.QFrame:
+    card = QtWidgets.QFrame()
+    card.setObjectName("missionSummaryGrid")
+    grid = QtWidgets.QGridLayout(card)
+    grid.setContentsMargins(20, 18, 20, 18)
+    grid.setHorizontalSpacing(18)
+    grid.setVerticalSpacing(6)
+    specs = (
+        ("Safeguarded", "_mission_sum_safeguarded_val", "_mission_sum_safeguarded_unit"),
+        ("Dropped", "_mission_sum_dropped_val", "_mission_sum_dropped_unit"),
+        ("Duration", "_mission_sum_duration_val", "_mission_sum_duration_unit"),
+        ("Hz", "_mission_sum_hz_val", "_mission_sum_hz_unit"),
+    )
+    for col, (label, val_attr, unit_attr) in enumerate(specs):
+        cell, val_lbl, unit_lbl = _mission_summary_metric(label)
+        setattr(win, val_attr, val_lbl)
+        setattr(win, unit_attr, unit_lbl)
+        grid.addWidget(cell, 0, col)
+    for col in range(len(specs)):
+        grid.setColumnStretch(col, 1)
+    return card
+
+
+def _update_mission_summary_grid(
+    win: BridgeLogicMixin,
+    *,
+    safeguarded_bytes: int,
+    dropped: int,
+    duration_s: float,
+    hz: float,
+) -> None:
+    val = getattr(win, "_mission_sum_safeguarded_val", None)
+    unit = getattr(win, "_mission_sum_safeguarded_unit", None)
+    if val is not None:
+        num, suffix = _split_human_bytes(safeguarded_bytes)
+        val.setText(num)
+        if unit is not None:
+            unit.setText(suffix)
+    val = getattr(win, "_mission_sum_dropped_val", None)
+    unit = getattr(win, "_mission_sum_dropped_unit", None)
+    if val is not None:
+        val.setText(f"{dropped:,}")
+        if unit is not None:
+            unit.setText("pkts" if dropped != 1 else "pkt")
+    from ui.mission_timeline import format_mission_duration_hms
+
+    val = getattr(win, "_mission_sum_duration_val", None)
+    unit = getattr(win, "_mission_sum_duration_unit", None)
+    if val is not None:
+        val.setText(format_mission_duration_hms(duration_s))
+        if unit is not None:
+            unit.setText("")
+    val = getattr(win, "_mission_sum_hz_val", None)
+    unit = getattr(win, "_mission_sum_hz_unit", None)
+    if val is not None:
+        val.setText(f"{hz:.1f}" if hz > 0 else "0.0")
+        if unit is not None:
+            unit.setText("Hz")
+
+
+def _mission_chart_panel(child: QtWidgets.QWidget) -> QtWidgets.QFrame:
+    box = QtWidgets.QFrame()
+    box.setObjectName("missionChartPanel")
+    lay = QtWidgets.QVBoxLayout(box)
+    lay.setContentsMargins(14, 12, 14, 12)
+    lay.setSpacing(0)
+    lay.addWidget(child)
+    return box
+
+
+def apply_mission_scrub(win: BridgeLogicMixin, bucket_index: int) -> None:
+    record = getattr(win, "_mission_session_record", None)
+    if record is None:
+        return
+    from ui.mission_timeline import (
+        integrity_note_for_scrub,
+        scrub_snapshot,
+    )
+
+    snap = scrub_snapshot(record, bucket_index)
+    heatmap = getattr(win, "_mission_integrity_heatmap", None)
+    if heatmap is not None:
+        heatmap.set_scrub_index(snap.bucket_index)
+    chart = getattr(win, "_mission_throughput_chart", None)
+    if chart is not None:
+        chart.set_scrub_index(snap.bucket_index)
+    scrub_lbl = getattr(win, "_mission_scrub_time", None)
+    if scrub_lbl is not None:
+        scrub_lbl.setText(
+            f"{snap.elapsed_label} / {snap.end_label} · "
+            f"window {snap.bucket_index + 1}/{snap.bucket_count}"
+        )
+    at_end = snap.bucket_index >= snap.bucket_count - 1
+    dropped = int(getattr(win, "_mission_session_summary", {}).get("dropped") or 0)
+    _update_mission_summary_grid(
+        win,
+        safeguarded_bytes=record.total_bytes if at_end else snap.cumulative_bytes,
+        dropped=dropped,
+        duration_s=record.duration_s if at_end else snap.elapsed_s,
+        hz=record.avg_hz_up,
+    )
+    note = getattr(win, "_mission_integrity_note", None)
+    if note is not None:
+        text, color = integrity_note_for_scrub(record, snap)
+        note.setText(text)
+        note.setStyleSheet(f"color: {color};")
+
+
 def create_mission_review_tab(win: BridgeLogicMixin) -> QtWidgets.QWidget:
     """Build the Mission Review panel (hidden until post-stop reveal)."""
     panel = QtWidgets.QWidget()
@@ -252,30 +516,43 @@ def create_mission_review_tab(win: BridgeLogicMixin) -> QtWidgets.QWidget:
     head_row.addWidget(win._mission_review_headline, 1)
     lay.addLayout(head_row)
 
-    metrics = QtWidgets.QHBoxLayout()
-    metrics.setSpacing(8)
-    _b, win._mission_metric_bytes = _mission_metric_chip("Safeguarded", "—")
-    metrics.addWidget(_b, 1)
-    _d, win._mission_metric_drops = _mission_metric_chip("Dropped", "—")
-    metrics.addWidget(_d, 1)
-    _t, win._mission_metric_duration = _mission_metric_chip("Duration", "—")
-    metrics.addWidget(_t, 1)
-    _h, win._mission_metric_hz = _mission_metric_chip("COM→net", "—")
-    metrics.addWidget(_h, 1)
-    lay.addLayout(metrics)
+    lay.addWidget(_build_mission_summary_grid(win))
 
-    win._mission_review_summary = QtWidgets.QLabel()
-    win._mission_review_summary.setObjectName("modernIntentHint")
-    win._mission_review_summary.setWordWrap(True)
-    lay.addWidget(win._mission_review_summary)
-
-    charts_row = QtWidgets.QHBoxLayout()
-    charts_row.setSpacing(10)
+    charts_col = QtWidgets.QVBoxLayout()
+    charts_col.setSpacing(10)
     win._mission_throughput_chart = ThroughputBarChart()
-    charts_row.addWidget(win._mission_throughput_chart, 3)
-    win._mission_health_timeline = HealthTimeline()
-    charts_row.addWidget(win._mission_health_timeline, 2)
-    lay.addLayout(charts_row)
+    charts_col.addWidget(_mission_chart_panel(win._mission_throughput_chart))
+
+    timeline_box = QtWidgets.QFrame()
+    timeline_box.setObjectName("missionTimelinePanel")
+    tl = QtWidgets.QVBoxLayout(timeline_box)
+    tl.setContentsMargins(0, 0, 0, 0)
+    tl.setSpacing(6)
+    win._mission_integrity_heatmap = MissionIntegrityHeatmap()
+    tl.addWidget(win._mission_integrity_heatmap)
+    scrub_row = QtWidgets.QHBoxLayout()
+    scrub_row.setSpacing(8)
+    win._mission_scrub_start = QtWidgets.QLabel("0:00")
+    win._mission_scrub_start.setObjectName("missionScrubRuler")
+    scrub_row.addWidget(win._mission_scrub_start, 0)
+    win._mission_timeline_slider = QtWidgets.QSlider(QtCore.Qt.Orientation.Horizontal)
+    win._mission_timeline_slider.setObjectName("missionTimelineSlider")
+    win._mission_timeline_slider.setMinimum(0)
+    win._mission_timeline_slider.setMaximum(0)
+    win._mission_timeline_slider.setValue(0)
+    win._mission_timeline_slider.setToolTip(
+        "Scrub the session timeline — updates summary cards and charts for that moment."
+    )
+    scrub_row.addWidget(win._mission_timeline_slider, 1)
+    win._mission_scrub_end = QtWidgets.QLabel("0:00")
+    win._mission_scrub_end.setObjectName("missionScrubRuler")
+    scrub_row.addWidget(win._mission_scrub_end, 0)
+    tl.addLayout(scrub_row)
+    win._mission_scrub_time = QtWidgets.QLabel("")
+    win._mission_scrub_time.setObjectName("missionScrubCaption")
+    tl.addWidget(win._mission_scrub_time)
+    charts_col.addWidget(_mission_chart_panel(timeline_box))
+    lay.addLayout(charts_col)
 
     win._mission_integrity_note = QtWidgets.QLabel()
     win._mission_integrity_note.setObjectName("modernIntentHint")
@@ -294,16 +571,61 @@ def create_mission_review_tab(win: BridgeLogicMixin) -> QtWidgets.QWidget:
     mount_local_backup_location_row(win, backup_lay, show_session_file=True)
     lay.addWidget(win._mission_backup_location_box)
 
+    export_box = QtWidgets.QFrame()
+    export_box.setObjectName("missionQuickExportPanel")
+    export_lay = QtWidgets.QVBoxLayout(export_box)
+    export_lay.setContentsMargins(0, 0, 0, 0)
+    export_lay.setSpacing(8)
+    export_title = QtWidgets.QLabel("Quick export")
+    export_title.setObjectName("modernToolsSectionTitle")
+    export_lay.addWidget(export_title)
+    export_hint = QtWidgets.QLabel(
+        "Save the raw session backup for GIS, hydro, or survey-office handoff."
+    )
+    export_hint.setObjectName("tabNote")
+    export_hint.setWordWrap(True)
+    export_lay.addWidget(export_hint)
+    export_btns = QtWidgets.QHBoxLayout()
+    export_btns.setSpacing(10)
+    win._mission_btn_export_txt = QtWidgets.QPushButton("Export to .TXT")
+    win._mission_btn_export_txt.setObjectName("missionExportBtn")
+    win._mission_btn_export_txt.setToolTip("Copy raw NMEA backup as plain text.")
+    win._mission_btn_export_csv = QtWidgets.QPushButton("Export to .CSV")
+    win._mission_btn_export_csv.setObjectName("missionExportBtn")
+    win._mission_btn_export_csv.setToolTip("One row per NMEA sentence with type and raw line.")
+    win._mission_btn_export_kml = QtWidgets.QPushButton("Export to .KML")
+    win._mission_btn_export_kml.setObjectName("missionExportBtn")
+    win._mission_btn_export_kml.setToolTip("Track line from GGA/RMC fixes for Google Earth / GIS.")
+    for btn in (
+        win._mission_btn_export_txt,
+        win._mission_btn_export_csv,
+        win._mission_btn_export_kml,
+    ):
+        export_btns.addWidget(btn, 1)
+    export_lay.addLayout(export_btns)
+    win._mission_btn_quick_export = QtWidgets.QPushButton("Save as .NMEA…")
+    win._mission_btn_quick_export.setObjectName("missionExportBtnSecondary")
+    win._mission_btn_quick_export.setToolTip(
+        "Choose path and extension (.nmea, .log, .txt) for the raw backup file."
+    )
+    export_lay.addWidget(win._mission_btn_quick_export)
+    lay.addWidget(export_box)
+
+    if hasattr(win, "_on_mission_export_txt"):
+        win._mission_btn_export_txt.clicked.connect(win._on_mission_export_txt)
+    if hasattr(win, "_on_mission_export_csv"):
+        win._mission_btn_export_csv.clicked.connect(win._on_mission_export_csv)
+    if hasattr(win, "_on_mission_export_kml"):
+        win._mission_btn_export_kml.clicked.connect(win._on_mission_export_kml)
+    if hasattr(win, "_on_mission_quick_export"):
+        win._mission_btn_quick_export.clicked.connect(win._on_mission_quick_export)
+    win._mission_timeline_slider.valueChanged.connect(
+        lambda v: apply_mission_scrub(win, int(v))
+    )
+
     actions = QtWidgets.QHBoxLayout()
     actions.setSpacing(8)
     actions.addStretch(1)
-    win._mission_btn_quick_export = QtWidgets.QPushButton("Quick Export")
-    win._mission_btn_quick_export.setObjectName("modernToolsPrimaryBtn")
-    win._mission_btn_quick_export.setToolTip(
-        "Save the session NMEA backup as .nmea, .log, or .txt for GIS / hydro tools."
-    )
-    win._mission_btn_quick_export.clicked.connect(win._on_mission_quick_export)
-    actions.addWidget(win._mission_btn_quick_export, 0)
     btn_pipeline = QtWidgets.QPushButton("Back to Activity")
     btn_pipeline.setObjectName("modernToolsSecondaryBtn")
     btn_pipeline.setToolTip("Return to the Activity wire-tap view.")
@@ -321,75 +643,67 @@ def populate_mission_review(
     summary: dict[str, object],
 ) -> None:
     """Fill charts and copy after Stop bridge."""
-    from ui.mission_summary import format_mission_summary_line, verify_backup_on_disk
+    from ui.mission_summary import verify_backup_on_disk
+    from ui.mission_timeline import (
+        format_scrub_clock,
+        timeline_bucket_count,
+    )
 
     _disk, warn, detail = verify_backup_on_disk(summary)
-    line = format_mission_summary_line(summary)
-    mins = int(record.duration_s // 60)
-    secs = int(record.duration_s % 60)
 
-    bytes_lbl = getattr(win, "_mission_metric_bytes", None)
-    drops_lbl = getattr(win, "_mission_metric_drops", None)
-    dur_lbl = getattr(win, "_mission_metric_duration", None)
-    hz_lbl = getattr(win, "_mission_metric_hz", None)
     nbytes = int(summary.get("bytes") or summary.get("nbytes") or 0)
-    drops = int(summary.get("dropped") or summary.get("drops") or 0)
-    if bytes_lbl is not None:
-        bytes_lbl.setText(_human_bytes(nbytes))
-    if drops_lbl is not None:
-        drops_lbl.setText(str(drops))
-    if dur_lbl is not None:
-        from ui.transport_status import format_duration_s
-
-        dur_lbl.setText(f"{mins}m {secs}s")
-        if record.com_active_s > 0 and record.duration_s > 0:
-            active = format_duration_s(record.com_active_s)
-            dur_lbl.setToolTip(
-                f"Running {mins}m {secs}s · COM data active ~{active}"
-            )
-        else:
-            dur_lbl.setToolTip(f"Session running time: {mins}m {secs}s")
-    if hz_lbl is not None:
-        hz_lbl.setText(f"{record.avg_hz_up:.1f} Hz")
-
+    dropped = int(summary.get("dropped") or summary.get("drops") or 0)
     path = str(summary.get("path") or record.backup_path or "").strip()
+    _update_mission_summary_grid(
+        win,
+        safeguarded_bytes=nbytes,
+        dropped=dropped,
+        duration_s=record.duration_s,
+        hz=record.avg_hz_up,
+    )
+    val = getattr(win, "_mission_sum_safeguarded_val", None)
+    if val is not None and path:
+        val.setToolTip(path)
+
     transport_note = ""
     if record.com_active_s > 0 and record.duration_s > record.com_active_s + 5:
         from ui.transport_status import format_duration_s
 
         transport_note = (
-            f"\nCOM data active ~{format_duration_s(record.com_active_s)} "
+            f"COM data active ~{format_duration_s(record.com_active_s)} "
             f"of {format_duration_s(record.duration_s)} running."
         )
-    win._mission_review_summary.setText(
-        (line if line else "Session complete.") + transport_note
-    )
-    if path:
-        win._mission_review_summary.setToolTip(path)
-    else:
-        win._mission_review_summary.setToolTip("")
     win._mission_throughput_chart.set_values(record.throughput_buckets)
-    win._mission_health_timeline.set_ticks(record.health_ticks)
+    heatmap = getattr(win, "_mission_integrity_heatmap", None)
+    if heatmap is not None:
+        heatmap.set_ticks(record.health_ticks)
+    slider = getattr(win, "_mission_timeline_slider", None)
+    bucket_n = timeline_bucket_count(record)
+    if slider is not None:
+        slider.blockSignals(True)
+        slider.setMaximum(max(0, bucket_n - 1))
+        slider.setValue(max(0, bucket_n - 1))
+        slider.blockSignals(False)
+    start_lbl = getattr(win, "_mission_scrub_start", None)
+    end_lbl = getattr(win, "_mission_scrub_end", None)
+    if start_lbl is not None:
+        start_lbl.setText("0:00")
+    if end_lbl is not None:
+        end_lbl.setText(format_scrub_clock(record.duration_s))
 
-    bad = sum(1 for t in record.health_ticks if t == "bad")
-    warn_n = sum(1 for t in record.health_ticks if t == "warn")
     if warn:
-        win._mission_integrity_note.setText(
-            f"⚠ Integrity warning: {detail}\n"
-            f"Timeline: {bad} critical / {warn_n} caution windows before export."
+        note_text = (
+            f"Integrity warning: {detail}\n"
+            "Scrub the timeline to inspect fault windows before export."
         )
+        if transport_note:
+            note_text = f"{transport_note}\n\n{note_text}"
+        win._mission_integrity_note.setText(note_text)
         win._mission_integrity_note.setStyleSheet("color: #fbbf24;")
-    elif bad > 0:
-        win._mission_integrity_note.setText(
-            f"Timeline shows {bad} critical window(s) with drops or write stress. "
-            "Review before post-processing."
-        )
-        win._mission_integrity_note.setStyleSheet("color: #fbbf24;")
-    else:
-        win._mission_integrity_note.setText(
-            "Data health timeline looks clean — ready for Quick Export to the survey office."
-        )
+    elif transport_note:
+        win._mission_integrity_note.setText(transport_note)
         win._mission_integrity_note.setStyleSheet("color: #94a3b8;")
+    apply_mission_scrub(win, max(0, bucket_n - 1))
 
     win._mission_session_record = record
     win._mission_session_summary = dict(summary)

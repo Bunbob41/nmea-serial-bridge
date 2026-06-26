@@ -16,6 +16,8 @@ if _helper_code is not None:
 
 from PySide6 import QtWidgets
 
+from ui.window_present import schedule_launch_focus
+
 from bridge_core import (  # noqa: F401 — re-export for older scripts
     NetMode,
     SerialNetBridge,
@@ -38,34 +40,8 @@ def _launch_log(msg: str) -> None:
         pass
 
 
-def _present_main_window(win: QtWidgets.QWidget) -> None:
-    """Ensure the main window is visible, on-screen, and focused."""
-    win.showNormal()
-    if sys.platform == "win32":
-        try:
-            import ctypes
-
-            user32 = ctypes.windll.user32
-            user32.ShowWindow(int(win.winId()), 9)  # SW_RESTORE
-            user32.SetForegroundWindow(int(win.winId()))
-        except Exception:
-            pass
-    else:
-        try:
-            win.raise_()
-        except Exception:
-            pass
-        win.activateWindow()
-
-    app = QtWidgets.QApplication.instance()
-    screen = win.screen() or (app.primaryScreen() if app is not None else None)
-    if screen is None:
-        return
-    available = screen.availableGeometry()
-    frame = win.frameGeometry()
-    if not available.intersects(frame):
-        frame.moveCenter(available.center())
-        win.move(frame.topLeft())
+def _schedule_present_main_window(win: QtWidgets.QWidget) -> None:
+    schedule_launch_focus(win)
 
 
 def _minimize_launch_console() -> None:
@@ -169,7 +145,7 @@ def main() -> None:
     try:
         w = create_window(ui_id)
         w.show()
-        _present_main_window(w)
+        _schedule_present_main_window(w)
         if _should_minimize_launch_console(foreground=bool(args.foreground)):
             _minimize_launch_console()
         _launch_log(
@@ -181,6 +157,13 @@ def main() -> None:
         raise
     # os._exit: lingering QThreads can block a normal sys.exit after app.quit().
     code = app.exec()
+    try:
+        from PySide6 import QtCore
+
+        QtCore.QThreadPool.globalInstance().waitForDone(1500)
+        app.processEvents(QtCore.QEventLoop.ProcessEventsFlag.AllEvents, 100)
+    except Exception:
+        pass
     os._exit(int(code) if isinstance(code, int) else 0)
 
 

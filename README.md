@@ -21,6 +21,7 @@
 
 | Doc | Audience |
 | --- | -------- |
+| [`docs/CAPABILITIES.md`](docs/CAPABILITIES.md) | System architecture & feature matrix (v1.43.0) |
 | [`docs/LINUX_HEADLESS.md`](docs/LINUX_HEADLESS.md) | Linux headless service + browser dashboard |
 | [`docs/GETTING_STARTED.md`](docs/GETTING_STARTED.md) | First install + 15-minute bench walkthrough |
 | [`docs/OPERATOR_GUIDE.md`](docs/OPERATOR_GUIDE.md) | Full operator manual |

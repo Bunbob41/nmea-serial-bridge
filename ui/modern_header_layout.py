@@ -137,17 +137,15 @@ def plan_header_layout(
         return run + status_w + trail_w + chips
 
     chips_pick = chips_icon if icon_only else chips_labeled
+    if mode == "icons" and icon_only:
+        # Forced icons-only: reserve full tile row width when the window allows it.
+        chips_pick = max(chips_pick, chips_icon)
     if _total(run_w, chips_pick) > avail:
         start_compact = True
         run_w = run_compact
-        chips_pick = chips_icon if icon_only else chips_labeled
-        if _total(run_w, chips_pick) > avail and mode == "auto" and not icon_only:
-            icon_only = True
-            force_icon = True
-            chips_pick = chips_icon
 
     remaining = avail - run_w - status_w - trail_w
-    chips_w = max(mins[2], min(chips_pick, remaining if remaining > 0 else mins[2]))
+    chips_w = max(mins[2], remaining if remaining > 0 else mins[2])
 
     header_tight = start_compact or _total(run_w, chips_w) > avail - 4
 

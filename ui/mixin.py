@@ -227,6 +227,8 @@ class BridgeLogicMixin:
         self._diag_current_title = ""
         self._ui_log_serial_dup_last: Optional[str] = None
         self._ui_log_serial_dup_mono: float = 0.0
+        self._last_serial_link_state: str = "closed"
+        self._serial_disconnect_notify_mono: float = 0.0
         self._theme_id = load_theme_choice()
         self._theme_actions: dict[str, QtGui.QAction] = {}
         self._theme_random_current_action: Optional[QtGui.QAction] = None
@@ -362,6 +364,21 @@ class BridgeLogicMixin:
         self._worker = None
         self.bridge = None
 
+    def _init_fleet_supervisor(self) -> None:
+        """Create the FleetSupervisor and attach it to any FleetPanelWidget on self.
+
+        Safe to call from any layout's _on_ui_ready — idempotent.
+        """
+        from core.fleet.supervisor import FleetSupervisor
+        from ui.fleet_panel import FleetPanelWidget
+
+        if getattr(self, "_fleet_supervisor", None) is not None:
+            return
+        self._fleet_supervisor = FleetSupervisor(self)
+        panel = getattr(self, "_fleet_panel", None)
+        if isinstance(panel, FleetPanelWidget):
+            panel.attach_supervisor(self._fleet_supervisor)
+
     def _stop_fleet_supervisor(self) -> None:
         """Stop all Fleet tab bridge workers (releases extra COM/UDP binds)."""
         sup = getattr(self, "_fleet_supervisor", None)
@@ -410,6 +427,12 @@ class BridgeLogicMixin:
     def _on_application_about_to_quit(self) -> None:
         self._teardown_all_background_work(wait_ms=2500)
         app = QtWidgets.QApplication.instance()
+        if app is not None:
+            try:
+                QtCore.QThreadPool.globalInstance().waitForDone(1500)
+                app.processEvents(QtCore.QEventLoop.ProcessEventsFlag.AllEvents, 100)
+            except Exception:
+                pass
         lock = getattr(app, "_instance_lock", None) if app is not None else None
         if lock is not None and lock.isLocked():
             try:
@@ -3010,6 +3033,22 @@ class BridgeLogicMixin:
         p = int(port if port is not None else self._web_port_from_ui())
         return f"http://127.0.0.1:{p}/"
 
+    def _web_dashboard_browser_url(self, port: int | None = None) -> str:
+        """Local dashboard URL; includes #bridge-token when LAN bind requires auth."""
+        base = self._web_dashboard_local_url(port).rstrip("/") + "/"
+        if not self._web_lan_bind_from_ui():
+            return base
+        token = self._web_token_from_ui()
+        if not token:
+            from ui.ui_prefs import load_web_ui_prefs
+
+            token = str(load_web_ui_prefs().get("token") or "").strip() or None
+        if not token:
+            return base
+        from web.token_setup import build_setup_url
+
+        return build_setup_url(base.rstrip("/"), token)
+
     def _sync_phone_url_port(self, port: int) -> None:
         """Keep Phone dashboard URL port aligned when the spin box changes."""
         edit = getattr(self, "edit_web_phone_url", None)
@@ -3422,12 +3461,25 @@ class BridgeLogicMixin:
         )
 
     def _on_web_open_dashboard(self) -> None:
-        base = self._web_dashboard_local_url()
-        if not base:
+        chk = getattr(self, "chk_web_enabled", None)
+        if chk is not None and not chk.isChecked():
+            self._log_ui(
+                "[Web] Enable Web API (Tools → Phone), then open the dashboard again."
+            )
+            return
+        self._ensure_web_server_running()
+        url = self._web_dashboard_browser_url()
+        if not url:
             self._log_ui("[Web] Set a valid Web API port, then open the dashboard again.")
             return
-        QtGui.QDesktopServices.openUrl(QtCore.QUrl(base.rstrip("/") + "/"))
-        self._log_ui(f"[Web] Opened dashboard in browser ({base}).")
+        QtGui.QDesktopServices.openUrl(QtCore.QUrl(url))
+        if self._web_lan_bind_from_ui() and "#bridge-token=" in url:
+            self._log_ui(
+                f"[Web] Opened dashboard in browser ({url.split('#', 1)[0]}) — "
+                "API token included for Start/Stop."
+            )
+        else:
+            self._log_ui(f"[Web] Opened dashboard in browser ({url}).")
 
     def _on_web_open_phone_url(self) -> None:
         raw = (self.edit_web_phone_url.text() or "").strip()
@@ -4352,6 +4404,7 @@ class BridgeLogicMixin:
             worker.result_ready.disconnect(self._on_com_lock_probe_done)
         except (RuntimeError, TypeError):
             pass
+        self._join_qthread(worker, wait_ms=2000, label="com_lock_probe")
         self._com_lock_worker = None
 
     def _com_lock_probe_watchdog(self) -> None:
@@ -4408,6 +4461,7 @@ class BridgeLogicMixin:
             reason=reason,
         )
         self._sync_run_button_state()
+        self._detach_com_lock_worker()
 
     def _run_com_lock_probe(self) -> None:
         if self._is_bridge_running() or self._starting:
@@ -4437,7 +4491,6 @@ class BridgeLogicMixin:
             self._on_com_lock_probe_done,
             QtCore.Qt.ConnectionType.QueuedConnection,
         )
-        worker.finished.connect(worker.deleteLater)
         watchdog = getattr(self, "_com_lock_probe_watchdog_timer", None)
         if watchdog is not None:
             watchdog.start()
@@ -4894,6 +4947,30 @@ class BridgeLogicMixin:
                 combo_bk.setCurrentIndex(i)
                 break
         self._refresh_file_log_retention_hint()
+        self._sync_file_log_controls_enabled()
+
+    def _sync_file_log_controls_enabled(self, *_args: object) -> None:
+        """Grey out rotating-log fields when file logging is off."""
+        host = getattr(self, "_file_log_options", None)
+        chk = getattr(self, "chk_file_log", None)
+        enabled = bool(chk is not None and chk.isChecked())
+        for name in (
+            "file_log_path",
+            "btn_browse",
+            "cmb_file_log_mb",
+            "cmb_file_log_backups",
+            "lbl_file_log_retention",
+        ):
+            widget = getattr(self, name, None)
+            if widget is not None:
+                widget.setEnabled(enabled)
+        if host is not None:
+            host.setProperty("enabled", "true" if enabled else "false")
+            host.setEnabled(True)
+            style = host.style()
+            if style is not None:
+                style.unpolish(host)
+                style.polish(host)
 
     def _refresh_file_log_retention_hint(self) -> None:
         lbl = getattr(self, "lbl_file_log_retention", None)
@@ -4920,6 +4997,30 @@ class BridgeLogicMixin:
 
         sync_local_backup_location_ui(self)
         self._refresh_backup_status_label()
+        self._sync_local_backup_controls_enabled()
+
+    def _sync_local_backup_controls_enabled(self, *_args: object) -> None:
+        """Grey out black-box path fields when backup is off."""
+        from PySide6 import QtWidgets
+
+        host = getattr(self, "_local_backup_options", None)
+        chk = getattr(self, "chk_local_backup", None)
+        if host is None or chk is None:
+            return
+        enabled = bool(chk.isChecked())
+        for widget in host.findChildren(QtWidgets.QWidget):
+            if widget is host:
+                continue
+            if isinstance(widget, QtWidgets.QLabel) and widget.objectName() == "modernIntentHint":
+                widget.setEnabled(True)
+                continue
+            widget.setEnabled(enabled)
+        host.setProperty("enabled", "true" if enabled else "false")
+        host.setEnabled(True)
+        style = host.style()
+        if style is not None:
+            style.unpolish(host)
+            style.polish(host)
 
     def _save_local_backup_pref(self, *_args: object) -> None:
         chk = getattr(self, "chk_local_backup", None)
@@ -6369,36 +6470,59 @@ class BridgeLogicMixin:
         self._refresh_control_map(merged)
         self._refresh_stats_popout()
         self._refresh_dashboard()
+        from ui.serial_link_alerts import sync_serial_link_alerts
+
+        sync_serial_link_alerts(self, merged)
 
     def _refresh_control_map(self, merged: dict | None = None) -> None:
         widget = getattr(self, "control_position_map", None)
         if widget is None:
             return
-        if not self._is_bridge_running():
+        running = self._is_bridge_running()
+        has_gga = False
+        if not running:
             widget.set_session_idle("Stopped — map updates when bridge runs")
-            return
-        if self._nmea_mode_label() == "raw":
+        elif self._nmea_mode_label() == "raw":
             widget.set_session_idle("Raw binary — no GGA/RMC map")
-            return
-        stats = merged if merged is not None else getattr(self, "_bridge_stats_cache", {})
-        if not isinstance(stats, dict):
-            stats = {}
-        q_raw = stats.get("quality")
-        quality_i: int | None = None
-        if q_raw is not None:
+        else:
+            stats = merged if merged is not None else getattr(self, "_bridge_stats_cache", {})
+            if not isinstance(stats, dict):
+                stats = {}
+            q_raw = stats.get("quality")
+            quality_i: int | None = None
+            if q_raw is not None:
+                try:
+                    quality_i = int(q_raw)
+                except (TypeError, ValueError):
+                    quality_i = None
+            widget.update_position(
+                lat=stats.get("position_lat"),
+                lon=stats.get("position_lon"),
+                stale=bool(stats.get("position_stale")) or bool(stats.get("nav_stale")),
+                stream_idle=bool(stats.get("stream_idle")),
+                quality=quality_i,
+                source=str(stats.get("position_source") or ""),
+                fix_label=str(stats.get("fix_label") or ""),
+                lat_ddm=str(stats.get("position_lat_ddm") or ""),
+                lon_ddm=str(stats.get("position_lon_ddm") or ""),
+            )
+            src = str(stats.get("position_source") or "").strip().lower()
+            lat = stats.get("position_lat")
+            lon = stats.get("position_lon")
             try:
-                quality_i = int(q_raw)
+                lat_ok = lat is not None and float(lat) == float(lat)
+                lon_ok = lon is not None and float(lon) == float(lon)
             except (TypeError, ValueError):
-                quality_i = None
-        widget.update_position(
-            lat=stats.get("position_lat"),
-            lon=stats.get("position_lon"),
-            stale=bool(stats.get("position_stale")) or bool(stats.get("nav_stale")),
-            stream_idle=bool(stats.get("stream_idle")),
-            quality=quality_i,
-            source=str(stats.get("position_source") or ""),
-            fix_label=str(stats.get("fix_label") or ""),
-        )
+                lat_ok = lon_ok = False
+            has_gga = (
+                src == "gga"
+                and lat_ok
+                and lon_ok
+                and not bool(stats.get("stream_idle"))
+            )
+        sync = getattr(self, "_sync_control_map_visibility", None)
+        if callable(sync):
+            sync(running=running, has_gga=has_gga)
 
     def _tick_stats(self) -> None:
         if self._is_bridge_running():
@@ -7507,31 +7631,104 @@ class BridgeLogicMixin:
 
         present_mission_summary(self, summary)
 
-    def _on_mission_quick_export(self) -> None:
+    def _mission_export_record_or_warn(self):
         record = getattr(self, "_mission_session_record", None)
         if record is None:
             QtWidgets.QMessageBox.warning(
                 self,
-                "Quick Export",
+                "Mission export",
                 "No mission session to export. Stop the bridge after a backup-enabled run first.",
             )
-            return
-        from ui.mission_export import (
-            QUICK_EXPORT_SAVE_FILTER,
-            export_session_backup_copy,
-            resolve_session_backup_path,
-            suggest_quick_export_path,
-        )
+            return None
+        from ui.mission_export import resolve_session_backup_path
 
         try:
             source = resolve_session_backup_path(record)
         except (OSError, FileNotFoundError) as exc:
-            QtWidgets.QMessageBox.critical(
-                self,
-                "Quick Export failed",
-                str(exc),
-            )
+            QtWidgets.QMessageBox.critical(self, "Mission export failed", str(exc))
+            return None
+        return record, source
+
+    def _on_mission_export_txt(self) -> None:
+        resolved = self._mission_export_record_or_warn()
+        if resolved is None:
             return
+        record, source = resolved
+        from ui.mission_export import TXT_EXPORT_FILTER, export_session_backup_copy, suggest_quick_export_path
+
+        default_path = str(suggest_quick_export_path(record, default_ext=".txt"))
+        dest, _ = QtWidgets.QFileDialog.getSaveFileName(
+            self,
+            "Export session log as text",
+            default_path,
+            TXT_EXPORT_FILTER,
+        )
+        if not dest:
+            return
+        try:
+            out = export_session_backup_copy(source, Path(dest))
+        except OSError as exc:
+            QtWidgets.QMessageBox.critical(self, "Export failed", str(exc))
+            return
+        self._log_ui(f"Mission export TXT: {out}")
+
+    def _on_mission_export_csv(self) -> None:
+        resolved = self._mission_export_record_or_warn()
+        if resolved is None:
+            return
+        record, source = resolved
+        from ui.mission_export import CSV_EXPORT_FILTER, export_session_nmea_csv, suggest_quick_export_path
+
+        default_path = str(suggest_quick_export_path(record, default_ext=".csv"))
+        dest, _ = QtWidgets.QFileDialog.getSaveFileName(
+            self,
+            "Export session log as CSV",
+            default_path,
+            CSV_EXPORT_FILTER,
+        )
+        if not dest:
+            return
+        try:
+            out = export_session_nmea_csv(source, Path(dest))
+        except (OSError, ValueError) as exc:
+            QtWidgets.QMessageBox.critical(self, "Export failed", str(exc))
+            return
+        self._log_ui(f"Mission export CSV: {out}")
+
+    def _on_mission_export_kml(self) -> None:
+        resolved = self._mission_export_record_or_warn()
+        if resolved is None:
+            return
+        record, source = resolved
+        from ui.mission_export import KML_EXPORT_FILTER, export_session_track_kml, suggest_quick_export_path
+
+        default_path = str(suggest_quick_export_path(record, default_ext=".kml"))
+        dest, _ = QtWidgets.QFileDialog.getSaveFileName(
+            self,
+            "Export mission track as KML",
+            default_path,
+            KML_EXPORT_FILTER,
+        )
+        if not dest:
+            return
+        try:
+            out = export_session_track_kml(source, Path(dest))
+        except (OSError, ValueError) as exc:
+            QtWidgets.QMessageBox.critical(self, "Export failed", str(exc))
+            return
+        self._log_ui(f"Mission export KML: {out}")
+
+    def _on_mission_quick_export(self) -> None:
+        resolved = self._mission_export_record_or_warn()
+        if resolved is None:
+            return
+        record, source = resolved
+        from ui.mission_export import (
+            QUICK_EXPORT_SAVE_FILTER,
+            export_session_backup_copy,
+            suggest_quick_export_path,
+        )
+
         default_path = str(suggest_quick_export_path(record))
         dest, _selected_filter = QtWidgets.QFileDialog.getSaveFileName(
             self,
@@ -7604,6 +7801,9 @@ class BridgeLogicMixin:
         from ui.tray_support import sync_tray_menu_state
 
         sync_tray_menu_state(self)
+        from ui.serial_link_alerts import reset_serial_link_alert_state
+
+        reset_serial_link_alert_state(self)
 
     def closeEvent(self, event: QtGui.QCloseEvent) -> None:
         if not getattr(self, "_force_quit", False):
@@ -7648,10 +7848,6 @@ class BridgeLogicMixin:
             pass
         thread.stop()
         self._join_qthread(thread, wait_ms=4000, label="auto_discovery")
-        try:
-            thread.deleteLater()
-        except RuntimeError:
-            pass
         self._auto_discovery_thread = None
 
     def _restore_auto_discover_pref(self) -> None:

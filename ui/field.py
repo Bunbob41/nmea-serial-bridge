@@ -15,6 +15,7 @@ from ui.controls import (
     create_system_terminal_tab,
     create_theme_controls,
 )
+from ui.fleet_panel import build_fleet_panel
 from ui.log_view import PRESET_CUSTOM, PRESET_LABELS, TOOLBAR_PRESETS, LogViewState
 from ui.mixin import BridgeLogicMixin
 from ui.styles import bridge_stylesheet
@@ -26,7 +27,7 @@ from version import __version__
 # Default log / control-strip split for ~960×580 (strip ≈ COM + status + preset + tool row).
 _FIELD_DEFAULT_SPLITTER_SIZES = [500, 148]
 _FIELD_STRIP_MIN_CLOSED = 118
-_FIELD_STRIP_DRAWER_EXTRA = 284
+_FIELD_STRIP_DRAWER_EXTRA = 340  # Fleet table needs more vertical room than the old 284
 
 _FIELD_LOG_PRESET_HELP: dict[str, str] = {
     "ops": (
@@ -98,32 +99,68 @@ class BridgeWindowField(BridgeLogicMixin, QtWidgets.QWidget):
         self._drawer_btn = drawer
         drawer.setText("Tools ▾")
         drawer.setToolTip(
-            "Presets (TCP/UDP modes), NMEA mode, manual Send, and Diagnostics bench checks."
+            "Presets · Fleet · Phone · NMEA · Inject · Diagnostics · Terminal · Theme · Guide"
         )
         drawer.setCheckable(True)
         drawer_tabs = QtWidgets.QTabWidget()
         self._drawer_tabs = drawer_tabs
         drawer_tabs.setUsesScrollButtons(True)
+
+        # ── Tab order: most-used networking/config first, reference docs last ──
         drawer_tabs.addTab(create_presets_tab(self), "Presets")
+        drawer_tabs.setTabToolTip(0, "Network mode presets — UDP listen, TCP client/server")
+
+        drawer_tabs.addTab(build_fleet_panel(self), "Fleet")
+        drawer_tabs.setTabToolTip(
+            drawer_tabs.count() - 1,
+            "Multi-stream — run parallel COM→network pipes simultaneously",
+        )
+
         drawer_tabs.addTab(create_phone_dashboard_tab(self), "Phone")
-        drawer_tabs.setTabToolTip(1, "Phone dashboard — Web API, token, QR (Tailscale/LAN)")
+        drawer_tabs.setTabToolTip(
+            drawer_tabs.count() - 1,
+            "Phone dashboard — Web API, token, QR code (Tailscale / LAN)",
+        )
+
         drawer_tabs.addTab(create_nmea_controls(self), "NMEA")
-        drawer_tabs.addTab(create_theme_controls(self), "Theme")
-        drawer_tabs.addTab(create_guide_tab(self), "Guide")
+        drawer_tabs.setTabToolTip(
+            drawer_tabs.count() - 1,
+            "NMEA processing mode — passthrough, strict filter, or raw binary",
+        )
+
+        drawer_tabs.addTab(create_send_controls(self), "Inject")
+        drawer_tabs.setTabToolTip(
+            drawer_tabs.count() - 1,
+            "Send test NMEA sentences to serial / network while Running",
+        )
+
+        drawer_tabs.addTab(create_diagnostics_controls(self), "Diagnostics")
+        drawer_tabs.setTabToolTip(
+            drawer_tabs.count() - 1,
+            "Automated bench checks — COM loopback, UDP round-trip, latency",
+        )
+
         drawer_tabs.addTab(create_system_terminal_tab(self), "Terminal")
         drawer_tabs.setTabToolTip(
             drawer_tabs.count() - 1,
             "Local PowerShell / cmd on this PC",
         )
-        drawer_tabs.addTab(create_send_controls(self), "Inject")
+
+        drawer_tabs.addTab(create_theme_controls(self), "Theme")
         drawer_tabs.setTabToolTip(
             drawer_tabs.count() - 1,
-            "Send test NMEA to serial / network while Running",
+            "Colour theme and UI appearance",
         )
-        drawer_tabs.addTab(create_diagnostics_controls(self), "Diagnostics")
+
+        drawer_tabs.addTab(create_guide_tab(self), "Guide")
+        drawer_tabs.setTabToolTip(
+            drawer_tabs.count() - 1,
+            "Operator guide — quick reference for setup and field use",
+        )
+
         self._setup_reorderable_tabs(drawer_tabs, "tools_tabs")
         drawer_tabs.setVisible(False)
-        drawer_tabs.setMinimumHeight(320)
+        drawer_tabs.setMinimumHeight(360)
 
         def _toggle(on: bool) -> None:
             drawer_tabs.setVisible(on)
@@ -337,6 +374,10 @@ class BridgeWindowField(BridgeLogicMixin, QtWidgets.QWidget):
         self._set_status_banner("stopped", "Stopped")
         self._refresh_intent_hint()
         self._ensure_readable_top_bar()
+        self._init_fleet_supervisor()
+        sup = getattr(self, "_fleet_supervisor", None)
+        if sup is not None:
+            sup.apply_auto_start_if_enabled()
 
     def _field_strip_min_height(self) -> int:
         if self._drawer_btn.isChecked():

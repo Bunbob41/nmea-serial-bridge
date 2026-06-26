@@ -431,16 +431,24 @@ class ModernToolsChipCompressionTests(unittest.TestCase):
         from ui.modern_tools_chips import should_use_header_icon_only
 
         self.assertTrue(
-            should_use_header_icon_only(200, 300, currently_icon_only=False)
+            should_use_header_icon_only(
+                200, 600, icon_width=280, currently_icon_only=False
+            )
         )
         self.assertFalse(
-            should_use_header_icon_only(320, 300, currently_icon_only=False)
+            should_use_header_icon_only(
+                320, 600, icon_width=280, currently_icon_only=False
+            )
         )
         self.assertTrue(
-            should_use_header_icon_only(310, 300, currently_icon_only=True)
+            should_use_header_icon_only(
+                290, 600, icon_width=280, currently_icon_only=True
+            )
         )
         self.assertFalse(
-            should_use_header_icon_only(330, 300, currently_icon_only=True)
+            should_use_header_icon_only(
+                330, 600, icon_width=280, currently_icon_only=True
+            )
         )
 
     def test_icon_only_chip_shows_icon_not_label(self) -> None:

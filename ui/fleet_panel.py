@@ -518,6 +518,7 @@ class FleetPanelWidget(QtWidgets.QWidget):
         lay.addLayout(toolbar)
         self._table = QtWidgets.QTableWidget(0, 9)
         self._table.setObjectName("modernFleetTable")
+        self._table.setAlternatingRowColors(True)
         self._table.setHorizontalHeaderLabels(
             [
                 "Label",
@@ -545,9 +546,9 @@ class FleetPanelWidget(QtWidgets.QWidget):
             QtCore.Qt.ScrollBarPolicy.ScrollBarAsNeeded
         )
         hdr = self._table.horizontalHeader()
-        hdr.setSectionResizeMode(_COL_LABEL, QtWidgets.QHeaderView.ResizeMode.Interactive)
+        hdr.setSectionResizeMode(_COL_LABEL, QtWidgets.QHeaderView.ResizeMode.Stretch)
         hdr.setSectionResizeMode(_COL_COM, QtWidgets.QHeaderView.ResizeMode.Interactive)
-        hdr.setSectionResizeMode(_COL_NETWORK, QtWidgets.QHeaderView.ResizeMode.Stretch)
+        hdr.setSectionResizeMode(_COL_NETWORK, QtWidgets.QHeaderView.ResizeMode.Interactive)
         for col in (_COL_MODE, _COL_MIRROR, _COL_STATE, _COL_BACKLOG, _COL_ACTIVITY):
             hdr.setSectionResizeMode(
                 col, QtWidgets.QHeaderView.ResizeMode.ResizeToContents
@@ -563,6 +564,7 @@ class FleetPanelWidget(QtWidgets.QWidget):
             )
         self._table.setColumnWidth(_COL_LABEL, 120)
         self._table.setColumnWidth(_COL_COM, 132)
+        self._table.setColumnWidth(_COL_NETWORK, 200)
         self._table.setColumnWidth(_COL_ACTIONS, 96)
         vhdr = self._table.verticalHeader()
         vhdr.setVisible(False)

@@ -22,6 +22,9 @@ class TestModernHeaderSplit(unittest.TestCase):
         mins = header_split_mins()
         self.assertGreaterEqual(mins[0], 110)
 
+    def _splitter_handle_budget(self, splitter: ModernHeaderSplitter) -> int:
+        return splitter.handleWidth() * max(0, splitter.count() - 1)
+
     def test_set_clamped_sizes_gives_slack_to_chips_when_bar_grows(self) -> None:
         host = QtWidgets.QWidget()
         host.resize(900, 48)
@@ -32,9 +35,10 @@ class TestModernHeaderSplit(unittest.TestCase):
         splitter.set_clamped_sizes([106, 122, 755, 274])
         sizes = splitter.sizes()
         mins = header_split_mins()
+        handles = self._splitter_handle_budget(splitter)
         self.assertGreaterEqual(sizes[2], mins[2])
         self.assertGreaterEqual(sizes[3], mins[3] - 8)
-        self.assertAlmostEqual(sum(sizes), 900, delta=12)
+        self.assertAlmostEqual(sum(sizes) + handles, 900, delta=4)
 
     def test_set_clamped_sizes_shrinks_trail_before_chips_when_tight(self) -> None:
         host = QtWidgets.QWidget()
@@ -46,10 +50,11 @@ class TestModernHeaderSplit(unittest.TestCase):
         splitter.set_clamped_sizes([106, 122, 755, 274])
         sizes = splitter.sizes()
         mins = header_split_mins()
+        handles = self._splitter_handle_budget(splitter)
         self.assertGreaterEqual(sizes[2], mins[2])
         self.assertGreaterEqual(sizes[3], mins[3] - 8)
         self.assertLessEqual(sizes[3], 274)
-        self.assertAlmostEqual(sum(sizes), 780, delta=12)
+        self.assertAlmostEqual(sum(sizes) + handles, 780, delta=4)
 
 
 class TestModernToolsChipScroll(unittest.TestCase):

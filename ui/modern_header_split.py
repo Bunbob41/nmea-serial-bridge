@@ -8,8 +8,8 @@ HEADER_HANDLE_LOCKED = 1
 HEADER_HANDLE_UNLOCKED = 7
 
 _HEADER_STATUS_MIN = 72
-_HEADER_CHIPS_MIN = 56
-_STATIC_TRAIL_MIN = 240
+_HEADER_CHIPS_MIN = 36
+_STATIC_TRAIL_MIN = 168
 _SESSION_RUN_MIN_FALLBACK = 118
 
 
@@ -69,7 +69,7 @@ def header_split_mins() -> tuple[int, int, int, int]:
 
 def header_split_defaults() -> tuple[int, int, int, int]:
     run_min, _status, _chips, trail = header_split_mins()
-    return (max(run_min, 130), 100, 420, max(trail, 300))
+    return (max(run_min, 130), 100, 280, max(trail, 220))
 
 
 def header_split_mins_tuple() -> tuple[int, int, int, int]:

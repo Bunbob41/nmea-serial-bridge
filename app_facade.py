@@ -784,6 +784,8 @@ class BridgeAppFacade(QtCore.QObject):
             gnss_stream_idle=bool(merged.get("stream_idle")),
             position_lat=_position_float(merged.get("position_lat")),
             position_lon=_position_float(merged.get("position_lon")),
+            position_lat_ddm=str(merged.get("position_lat_ddm") or ""),
+            position_lon_ddm=str(merged.get("position_lon_ddm") or ""),
             position_source=str(merged.get("position_source") or ""),
             position_stale=bool(merged.get("position_stale", True)),
             last_error=self._last_facade_error,

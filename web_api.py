@@ -3,9 +3,12 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
-from typing import Any, List, Optional
+from typing import TYPE_CHECKING, Any, List, Optional
 
-from app_facade import BridgeAppFacade, WebCommandResult
+from web_facade_types import WebCommandResult
+
+if TYPE_CHECKING:
+    from app_facade import BridgeAppFacade
 
 try:
     from fastapi import FastAPI, Header, HTTPException, Request
@@ -65,6 +68,10 @@ class MetaResponse(BaseModel):
     lan_bind: bool
     token_required: bool
     commands_ready: bool = True
+    headless: bool = False
+    platform: str = "unknown"
+    config_path: Optional[str] = None
+    config_writable: bool = False
 
 
 class DashboardLayoutResponse(BaseModel):
@@ -108,6 +115,8 @@ class StatusResponse(BaseModel):
     gnss_stream_idle: bool = False
     position_lat: Optional[float] = None
     position_lon: Optional[float] = None
+    position_lat_ddm: str = ""
+    position_lon_ddm: str = ""
     position_source: str = ""
     position_stale: bool = True
     last_error: Optional[str] = None
@@ -226,11 +235,23 @@ def _auth_ok(request: Request, token: Optional[str]) -> bool:
     return header == token
 
 
+def _discovery_row(item: Any) -> dict[str, Any]:
+    """Accept DTO objects or plain dicts (headless facade snapshot round-trip)."""
+    if isinstance(item, dict):
+        return item
+    if hasattr(item, "to_dict"):
+        return item.to_dict()
+    return dict(item)
+
+
 def create_app(
     facade: BridgeAppFacade,
     *,
     version: str,
     lan_token: Optional[str] = None,
+    headless: bool = False,
+    config_path: Optional[str] = None,
+    config_writable: bool = False,
 ) -> Any:
     if FastAPI is None:
         raise RuntimeError("fastapi is not installed; pip install -r requirements-web.txt")
@@ -245,20 +266,27 @@ def create_app(
     # ------------------------------------------------------------------ meta
     @app.get("/meta", response_model=MetaResponse)
     def meta() -> MetaResponse:
-        try:
-            from ui.ui_prefs import load_web_ui_prefs
+        lan = lan_token is not None
+        token_req = lan_token is not None
+        if not token_req:
+            try:
+                from ui.ui_prefs import load_web_ui_prefs
 
-            prefs = load_web_ui_prefs()
-            lan = bool(prefs.get("lan_bind"))
-            token_req = lan and bool(prefs.get("token"))
-        except Exception:
-            lan = False
-            token_req = False
+                prefs = load_web_ui_prefs()
+                lan = bool(prefs.get("lan_bind"))
+                token_req = lan and bool(prefs.get("token"))
+            except Exception:
+                lan = False
+                token_req = False
         return MetaResponse(
             version=version,
             lan_bind=lan,
             token_required=token_req,
             commands_ready=facade.commands_ready(),
+            headless=headless,
+            platform=sys.platform,
+            config_path=config_path,
+            config_writable=bool(config_writable and config_path),
         )
 
     # ------------------------------------------------------------------ api index (old /)
@@ -342,6 +370,21 @@ def create_app(
         result = facade.apply_config(patch)
         return _as_command_response(result, facade, include_config=True)
 
+    @app.post("/config/persist", response_model=CommandResponse)
+    def persist_site_config(
+        request: Request,
+        x_bridge_token: Optional[str] = Header(default=None),
+    ) -> CommandResponse:
+        if not headless:
+            raise HTTPException(status_code=404, detail="Site config persist is headless-only")
+        if not _auth_ok(request, lan_token):
+            raise HTTPException(status_code=401, detail="Invalid or missing X-Bridge-Token")
+        persist = getattr(facade, "persist_site_config", None)
+        if persist is None:
+            raise HTTPException(status_code=404, detail="Site config persist not available")
+        result = persist()
+        return _as_command_response(result, facade)
+
     # ------------------------------------------------------------------ bridge commands
     @app.post("/bridge/start", response_model=CommandResponse)
     def bridge_start(
@@ -369,8 +412,8 @@ def create_app(
             updated_mono=d.updated_mono,
             scan_note=d.scan_note,
             scan_busy=d.scan_busy,
-            serial_devices=[SerialDeviceResponse(**s.to_dict()) for s in d.serial_devices],
-            network_cards=[NetworkCardResponse(**c.to_dict()) for c in d.network_cards],
+            serial_devices=[SerialDeviceResponse(**_discovery_row(s)) for s in d.serial_devices],
+            network_cards=[NetworkCardResponse(**_discovery_row(c)) for c in d.network_cards],
             errors=list(d.errors),
         )
 

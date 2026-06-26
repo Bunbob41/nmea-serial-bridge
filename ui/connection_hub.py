@@ -28,6 +28,7 @@ class EndpointCardWidget(QtWidgets.QFrame):
         subtitle: str,
         status: str,
         *,
+        card_kind: str = "serial",
         parent: Optional[QtWidgets.QWidget] = None,
     ) -> None:
         super().__init__(parent)
@@ -43,18 +44,73 @@ class EndpointCardWidget(QtWidgets.QFrame):
         lay.setContentsMargins(10, 8, 10, 8)
         lay.setSpacing(4)
         top = QtWidgets.QHBoxLayout()
+        top.setSpacing(8)
+        self._icon = QtWidgets.QLabel()
+        self._icon.setObjectName("endpointCardIcon")
+        self._icon.setFixedSize(22, 22)
+        self._icon.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+        self._set_card_icon(card_kind)
+        top.addWidget(self._icon, 0)
         self._title = QtWidgets.QLabel(title)
         self._title.setObjectName("endpointCardTitle")
         self._title.setMinimumWidth(120)
+        title_font = self._title.font()
+        title_font.setPointSizeF(max(12.0, title_font.pointSizeF() + 2.0))
+        title_font.setBold(True)
+        self._title.setFont(title_font)
         self._chip = QtWidgets.QLabel(self._status_label(status))
         self._chip.setObjectName("endpointCardStatus")
         top.addWidget(self._title, 1)
         top.addWidget(self._chip, 0)
         lay.addLayout(top)
-        self._subtitle = QtWidgets.QLabel(subtitle)
+        self._subtitle = QtWidgets.QLabel()
         self._subtitle.setObjectName("endpointCardSubtitle")
         self._subtitle.setWordWrap(True)
+        self._subtitle.setMaximumHeight(self._subtitle_line_height() * 2 + 6)
+        self._subtitle.setText(self._clamp_subtitle(subtitle))
         lay.addWidget(self._subtitle)
+
+    @staticmethod
+    def _set_card_icon_label(icon_lbl: QtWidgets.QLabel, card_kind: str) -> None:
+        from ui.sidebar_icons import hub_card_icon_pixmap
+
+        pm = hub_card_icon_pixmap(card_kind)
+        if pm is not None:
+            icon_lbl.setPixmap(pm)
+            icon_lbl.setText("")
+        else:
+            icon_lbl.setPixmap(QtGui.QPixmap())
+            icon_lbl.setText("🔌" if card_kind == "serial" else "📡")
+
+    def _set_card_icon(self, card_kind: str) -> None:
+        self._set_card_icon_label(self._icon, card_kind)
+
+    @staticmethod
+    def _subtitle_line_height() -> int:
+        fm = QtGui.QFontMetrics(QtWidgets.QApplication.font())
+        return fm.lineSpacing()
+
+    def _clamp_subtitle(self, text: str) -> str:
+        """Keep card bodies to ~two lines for a uniform grid."""
+        full = str(text or "").strip()
+        self._subtitle.setToolTip(full)
+        lines = [ln.strip() for ln in full.splitlines() if ln.strip()]
+        if not lines:
+            return ""
+        max_w = max(180, self.width() - 28) if self.width() > 60 else 200
+        fm = self._subtitle.fontMetrics()
+
+        def _elide(line: str) -> str:
+            return fm.elidedText(line, QtCore.Qt.TextElideMode.ElideRight, max_w)
+
+        if len(lines) > 2:
+            return "\n".join(_elide(ln) for ln in lines[:2]) + "…"
+        if len(lines) == 2:
+            return "\n".join(_elide(ln) for ln in lines)
+        one = lines[0]
+        if fm.horizontalAdvance(one) > max_w * 2:
+            return _elide(one)
+        return one
 
     @staticmethod
     def _status_label(status: str) -> str:
@@ -77,7 +133,7 @@ class EndpointCardWidget(QtWidgets.QFrame):
 
     def update_card(self, title: str, subtitle: str, status: str) -> None:
         self._title.setText(title)
-        self._subtitle.setText(subtitle)
+        self._subtitle.setText(self._clamp_subtitle(subtitle))
         self._chip.setText(self._status_label(status))
         self.setProperty("cardStatus", status)
         self.style().unpolish(self)
@@ -521,6 +577,7 @@ class ConnectionHubWidget(QtWidgets.QWidget):
             "Previous selection",
             device_id,
             "stale",
+            card_kind="serial" if device_id.startswith("serial:") else "network",
             parent=self._cards_host,
         )
         stale.clicked.connect(self._on_card_clicked)
@@ -535,6 +592,7 @@ class ConnectionHubWidget(QtWidgets.QWidget):
                 x for x in (dev.description, dev.manufacturer, dev.match_keyword) if x
             )
             status = dev.status
+            card_kind = "serial"
         else:
             title = dev.label
             extra = f"{dev.peer_count} peer(s)" if dev.peer_count else "no peers yet"
@@ -542,11 +600,17 @@ class ConnectionHubWidget(QtWidgets.QWidget):
                 extra = "port in use"
             subtitle = f"{dev.host}:{dev.port} · {extra}"
             status = dev.status
+            card_kind = "network"
 
         card = self._cards.get(dev.device_id)
         if card is None:
             card = EndpointCardWidget(
-                dev.device_id, title, subtitle, status, parent=self._cards_host
+                dev.device_id,
+                title,
+                subtitle,
+                status,
+                card_kind=card_kind,
+                parent=self._cards_host,
             )
             card.clicked.connect(self._on_card_clicked)
             card.activated.connect(self.card_activated.emit)

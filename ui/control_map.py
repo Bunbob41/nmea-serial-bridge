@@ -49,6 +49,21 @@ def _float_or_none(value: object, *, is_lat: bool) -> Optional[float]:
     return out
 
 
+def decimal_to_ddm(deg: float, *, is_lat: bool) -> str:
+    """Signed decimal degrees → NMEA-style DDM (matches NMEA Simulator display)."""
+    hemi = "N" if is_lat else "E"
+    if deg < 0:
+        hemi = "S" if is_lat else "W"
+        deg = -deg
+    d = int(deg)
+    minutes = (deg - d) * 60.0
+    return f"{d}° {minutes:.5f}' {hemi}"
+
+
+def _dd_to_ddm(deg: float, is_lat: bool) -> str:
+    return decimal_to_ddm(deg, is_lat=is_lat)
+
+
 def latlon_bounds(
     points: Sequence[tuple[float, float]],
     *,
@@ -277,6 +292,8 @@ class ControlPositionMap(QtWidgets.QWidget):
         self._quality: Optional[int] = None
         self._source = ""
         self._fix_label = ""
+        self._lat_ddm = ""
+        self._lon_ddm = ""
         self._idle = True
         self._message = "Start bridge for live position"
         self.setToolTip("Double-click to open full map in browser (street/satellite).")
@@ -293,6 +310,8 @@ class ControlPositionMap(QtWidgets.QWidget):
         self._quality = None
         self._source = ""
         self._fix_label = ""
+        self._lat_ddm = ""
+        self._lon_ddm = ""
         self._idle = True
         self._message = "Stopped — map updates when bridge runs"
         self.update()
@@ -313,6 +332,8 @@ class ControlPositionMap(QtWidgets.QWidget):
         quality: Optional[int] = None,
         source: str = "",
         fix_label: str = "",
+        lat_ddm: str = "",
+        lon_ddm: str = "",
     ) -> None:
         lat_f = _float_or_none(lat, is_lat=True)
         lon_f = _float_or_none(lon, is_lat=False)
@@ -321,6 +342,8 @@ class ControlPositionMap(QtWidgets.QWidget):
         self._quality = quality if isinstance(quality, int) else None
         self._source = source.strip().upper()
         self._fix_label = fix_label.strip()
+        self._lat_ddm = str(lat_ddm or "").strip()
+        self._lon_ddm = str(lon_ddm or "").strip()
 
         if lat_f is None or lon_f is None:
             self._marker = None
@@ -334,6 +357,7 @@ class ControlPositionMap(QtWidgets.QWidget):
 
         self._idle = False
         self._marker = (lat_f, lon_f)
+        self.setToolTip(self._position_tooltip())
         now = time.monotonic()
         last = self._track[-1] if self._track else None
         if (
@@ -357,7 +381,13 @@ class ControlPositionMap(QtWidgets.QWidget):
         if self._marker is None:
             return ""
         lat, lon = self._marker
-        parts = [f"{lat:.5f}, {lon:.5f}"]
+        if self._lat_ddm and self._lon_ddm:
+            parts = [self._lat_ddm, self._lon_ddm]
+        else:
+            parts = [
+                decimal_to_ddm(lat, is_lat=True),
+                decimal_to_ddm(lon, is_lat=False),
+            ]
         if self._source:
             parts.append(self._source)
         if self._fix_label and self._fix_label.lower() != "no data stream":
@@ -365,6 +395,16 @@ class ControlPositionMap(QtWidgets.QWidget):
         if self._stale or self._stream_idle:
             parts.append("stale")
         return " · ".join(parts)
+
+    def _position_tooltip(self) -> str:
+        if self._marker is None:
+            return self._message
+        lat, lon = self._marker
+        return (
+            f"DDM: {decimal_to_ddm(lat, is_lat=True)}, "
+            f"{decimal_to_ddm(lon, is_lat=False)}\n"
+            f"Decimal: {lat:.8f}, {lon:.8f}"
+        )
 
     def paintEvent(self, _event: QtGui.QPaintEvent) -> None:  # noqa: N802
         painter = QtGui.QPainter(self)
@@ -374,22 +414,37 @@ class ControlPositionMap(QtWidgets.QWidget):
         painter.fillRect(rect, QtGui.QColor("#0f172a"))
 
         if self._idle:
+            block_h = min(rect.height() - 24, 120)
+            block_top = rect.top() + max(8, (rect.height() - block_h) // 2)
+            block = QtCore.QRect(rect.left() + 12, block_top, rect.width() - 24, block_h)
+            icon_h = min(36, max(24, block.height() // 3))
+            icon_rect = QtCore.QRect(block.left(), block.top(), block.width(), icon_h)
+            msg_rect = QtCore.QRect(
+                block.left(),
+                icon_rect.bottom() + 6,
+                block.width(),
+                max(20, block.bottom() - icon_rect.bottom() - 6),
+            )
             painter.setPen(QtGui.QColor("#64748b"))
             icon_font = painter.font()
-            icon_font.setPointSizeF(28.0)
+            icon_font.setPointSizeF(22.0)
             painter.setFont(icon_font)
             painter.drawText(
-                rect.adjusted(12, 0, -12, -28),
+                icon_rect,
                 int(QtCore.Qt.AlignmentFlag.AlignHCenter | QtCore.Qt.AlignmentFlag.AlignVCenter),
                 "🗺",
             )
             painter.setPen(QtGui.QColor("#94a3b8"))
             msg_font = painter.font()
-            msg_font.setPointSizeF(max(9.0, msg_font.pointSizeF()))
+            msg_font.setPointSizeF(9.0)
             painter.setFont(msg_font)
             painter.drawText(
-                rect.adjusted(12, 0, -12, 0),
-                int(QtCore.Qt.AlignmentFlag.AlignHCenter | QtCore.Qt.AlignmentFlag.AlignVCenter),
+                msg_rect,
+                int(
+                    QtCore.Qt.AlignmentFlag.AlignHCenter
+                    | QtCore.Qt.AlignmentFlag.AlignTop
+                    | QtCore.Qt.TextFlag.TextWordWrap
+                ),
                 self._message,
             )
             painter.end()
@@ -559,7 +614,7 @@ def build_control_map_panel(
     card = QtWidgets.QFrame()
     card.setObjectName("modernControlMapCard")
     lay = QtWidgets.QVBoxLayout(card)
-    lay.setContentsMargins(12, 8, 12, 10)
+    lay.setContentsMargins(16, 14, 16, 14)
     lay.setSpacing(4)
 
     # ── Header row — acts as the section disclosure row ────────────────────
@@ -690,6 +745,7 @@ def build_control_map_panel(
     header_widget.setProperty("_header_filter", _hf)  # keep alive
 
     _apply_collapsed(_collapsed[0], save=False)
+    card.set_map_collapsed = _apply_collapsed  # type: ignore[attr-defined]
 
     btn_clear.clicked.connect(widget.clear_track)
     widget.clear_session()

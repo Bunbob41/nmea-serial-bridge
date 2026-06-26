@@ -4,6 +4,7 @@ __pycache__/
 .Python
 .venv/
 venv/
+.serial-link-venv
 .env
 *.log
 logs/

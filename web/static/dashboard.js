@@ -11,7 +11,7 @@ const MAP_ENABLED_KEY = "nmea-bridge-map-enabled";
 const MAP_BASE_LAYER_KEY = "nmea-bridge-map-base-layer";
 const MAP_TRACK_MAX = 120;
 /** Bumped when dashboard.js changes — used for ?v= cache bust on script tags. */
-const DASHBOARD_SCRIPT_REV = "1.31.1";
+const DASHBOARD_SCRIPT_REV = "1.43.0";
 
 /** Phone sideways: compact header (see dashboard.css landscape HUD media query). */
 const PHONE_LANDSCAPE_HEADER_MQ = "(orientation: landscape) and (max-height: 520px) and (max-width: 960px)";
@@ -106,7 +106,43 @@ let lastDiscMono      = 0;
 let token             = localStorage.getItem(TOKEN_KEY) || "";
 let tokenRequired     = false;
 let lanBind           = false;
+let headlessMode      = false;
+let configPath        = "";
+let configWritable    = false;
 let bridgeRunning     = false;
+
+function headlessTokenHelp() {
+  if (!headlessMode) {
+    return isCoarseMobile()
+      ? "LAN mode: get a setup link from the PC (Tools → Phone → Copy phone setup link) and open it here, or Paste setup link below."
+      : "LAN mode: use Copy setup link / Paste setup link below, or Tools → Phone on the PC app.";
+  }
+  return "Remote dashboard: paste the API token or setup link printed when the headless service started (journalctl / terminal).";
+}
+
+function updateHeadlessSetupBanner() {
+  const banner = document.getElementById("headless-setup-banner");
+  if (!banner) return;
+  if (!headlessMode || bridgeRunning) {
+    banner.hidden = true;
+    return;
+  }
+  banner.hidden = false;
+  const extra = document.getElementById("headless-setup-extra");
+  if (extra) {
+    extra.textContent = configPath
+      ? ` Boot file: ${configPath}`
+      : " Use Save boot defaults after editing to keep settings across restarts.";
+  }
+}
+
+function updateHeadlessChrome() {
+  updateHeadlessSetupBanner();
+  const saveBoot = document.getElementById("btn-save-boot");
+  if (saveBoot) saveBoot.hidden = !(headlessMode && configWritable && !bridgeRunning);
+  const toolsHint = document.getElementById("headless-tools-hint");
+  if (toolsHint) toolsHint.hidden = !headlessMode;
+}
 
 // ── Token helpers ─────────────────────────────────────────────────────────────
 function saveToken(val) {
@@ -306,15 +342,20 @@ function updateTransferHint() {
   if (shareBtn) shareBtn.hidden = !navigator.share;
   if (mobile) {
     body.innerHTML =
-      "<strong>First time (get token from PC):</strong> On the survey PC open <strong>Tools → Phone</strong> → " +
-      "<strong>Copy phone setup link</strong>. Send that link to this iPhone (Messages, email). " +
-      "Then either <strong>tap the link</strong> in Messages (best) or scroll to Tools here and tap <strong>Paste setup link</strong>. " +
-      "Do not use Copy token on the phone until the field above already has a token.<br><br>" +
-      "<strong>Note:</strong> Copy buttons often fail on HTTP; Paste setup link and opening the link work.";
+      headlessMode
+        ? "<strong>Headless bridge:</strong> Copy the <strong>Setup link</strong> or token from the Linux terminal / " +
+          "<code>journalctl</code> when the service starts. Paste below or open the link in this browser."
+        : "<strong>First time (get token from PC):</strong> On the survey PC open <strong>Tools → Phone</strong> → " +
+          "<strong>Copy phone setup link</strong>. Send that link to this iPhone (Messages, email). " +
+          "Then either <strong>tap the link</strong> in Messages (best) or scroll to Tools here and tap <strong>Paste setup link</strong>. " +
+          "Do not use Copy token on the phone until the field above already has a token.<br><br>" +
+          "<strong>Note:</strong> Copy buttons often fail on HTTP; Paste setup link and opening the link work.";
   } else {
-    body.innerHTML =
-      "<strong>To phone:</strong> Copy setup link here → open on the phone once (or Paste setup link in phone Tools). " +
-      "<strong>From phone:</strong> Copy/Share setup link on the phone → <strong>Paste setup link</strong> here and in <strong>Tools → Phone</strong> on the PC app.";
+    body.innerHTML = headlessMode
+      ? "<strong>Headless bridge:</strong> Token and setup link are printed at service start — " +
+        "<code>journalctl --user -u serial-link-headless</code> or the SSH session. Paste below."
+      : "<strong>To phone:</strong> Copy setup link here → open on the phone once (or Paste setup link in phone Tools). " +
+        "<strong>From phone:</strong> Copy/Share setup link on the phone → <strong>Paste setup link</strong> here and in <strong>Tools → Phone</strong> on the PC app.";
   }
 }
 
@@ -519,15 +560,16 @@ async function loadMeta() {
     if (vt) vt.textContent = body.version || "";
     tokenRequired = !!body.token_required;
     lanBind = !!body.lan_bind;
+    headlessMode = !!body.headless;
+    configPath = body.config_path || "";
+    configWritable = !!body.config_writable;
     updateTokenSectionVisibility();
+    updateHeadlessChrome();
     if (tokenRequired || lanBind) {
       const inp = document.getElementById("token-input");
       if (inp) inp.value = token;
       if (!token) {
-        const msg = isCoarseMobile()
-          ? "LAN mode: get a setup link from the PC (Tools → Phone → Copy phone setup link) and open it here, or Paste setup link below."
-          : "LAN mode: use Copy setup link / Paste setup link below, or Tools → Phone on the PC app.";
-        showAlert("run-alert", msg, "warn");
+        showAlert("run-alert", headlessTokenHelp(), "warn");
       } else {
         const runAlert = document.getElementById("run-alert");
         if (runAlert && runAlert.classList.contains("warn")) {
@@ -571,6 +613,7 @@ function setOnline(status) {
   bridgeRunning = !!status.running;
   setConfigFormDisabled(false);
   setConfigLocked(bridgeRunning);
+  updateHeadlessChrome();
   // Clear stale "Application window not available" alerts that accumulated at startup.
   if (wasOffline) {
     ["run-alert", "unlock-alert", "discovery-alert"].forEach(id => {
@@ -2017,9 +2060,22 @@ function setConfigFormDisabled(disabled) {
 function setConfigLocked(locked) {
   setConfigFormDisabled(locked);
   const banner = document.getElementById("config-lock-banner");
-  if (banner) banner.hidden = !locked;
+  if (banner) {
+    banner.hidden = !locked;
+    if (locked) {
+      banner.innerHTML = headlessMode
+        ? 'Bridge is running — click <strong>Stop</strong> in the header, then change serial or network settings.'
+        : "Bridge is running — stop before changing COM or network bind.";
+    }
+  }
   const comBanner = document.getElementById("com-setup-lock-banner");
-  if (comBanner) comBanner.hidden = !locked;
+  if (comBanner) {
+    comBanner.hidden = !locked;
+    if (locked && headlessMode) {
+      comBanner.innerHTML =
+        'Bridge is running — click <strong>Stop</strong> above, then pick a new serial port.';
+    }
+  }
   syncSerialRowInteractivity();
   syncDiscoveryNetworkRowInteractivity();
 }
@@ -2084,7 +2140,18 @@ async function testComPort() {
 window.testComPort = testComPort;
 
 async function saveConfig() {
-  if (commandInFlight || bridgeRunning) return;
+  if (commandInFlight || bridgeRunning) {
+    if (bridgeRunning) {
+      showAlert(
+        "config-alert",
+        headlessMode
+          ? "Stop the bridge before saving configuration."
+          : "Stop the bridge before saving configuration.",
+        "warn",
+      );
+    }
+    return;
+  }
   if (!ensureCanMutate()) return;
   setCommandFlight(true);
   hideAlert("config-alert");
@@ -2106,6 +2173,41 @@ async function saveConfig() {
     setCommandFlight(false);
   }
 }
+
+async function saveBootDefaults() {
+  if (!headlessMode || !configWritable) return;
+  if (commandInFlight || bridgeRunning) {
+    showAlert("config-alert", "Stop the bridge before saving boot defaults.", "warn");
+    return;
+  }
+  if (!ensureCanMutate()) return;
+  setCommandFlight(true);
+  hideAlert("config-alert");
+  const patch = buildConfigPatch();
+  try {
+    const patched = await apiFetch("/config", {
+      method: "PATCH",
+      body: JSON.stringify(patch),
+    });
+    if (!patched.ok) {
+      showAlert("config-alert", extractApiError(patched.body, "Save failed."), "error");
+      return;
+    }
+    const { ok, body } = await apiFetch("/config/persist", { method: "POST" });
+    if (ok) {
+      showAlert("config-alert", body.message || "Boot defaults saved.", "ok");
+      await loadConfig();
+    } else {
+      showAlert("config-alert", extractApiError(body, "Could not save boot defaults."), "error");
+    }
+  } catch (e) {
+    showAlert("config-alert", "Network error: " + e.message, "error");
+  } finally {
+    setCommandFlight(false);
+  }
+}
+
+window.saveBootDefaults = saveBootDefaults;
 
 function buildConfigPatch() {
   const mode = document.getElementById("cfg-netmode-select")?.value || "udp_listen";
@@ -2206,8 +2308,7 @@ function updateQrDisplay() {
 
 function ensureCanMutate(focusAlertId) {
   if ((tokenRequired || lanBind) && !token) {
-    const msg =
-      "Missing API token — on the PC use Tools → Phone → Copy phone setup link and open it on this device, or paste the token below.";
+    const msg = headlessTokenHelp();
     showAlert("run-alert", msg, "warn");
     if (focusAlertId) showAlert(focusAlertId, msg, "warn");
     scrollAlertIntoView(focusAlertId || "run-alert");
@@ -2232,11 +2333,17 @@ async function startBridge() {
   setCommandFlight(true);
   hideAlert("run-alert");
   try {
-    const { ok, body } = await apiFetch("/bridge/start", { method: "POST" });
+    const { ok, status, body } = await apiFetch("/bridge/start", { method: "POST" });
     if (ok) {
       showAlert("run-alert", "Bridge started.", "ok");
     } else {
-      showAlert("run-alert", extractApiError(body, "Start failed."), "error");
+      let err = extractApiError(body, "Start failed.");
+      if (status === 401) {
+        err =
+          "Missing or wrong API token — on the PC click the header phone button or Tools → Phone → Open dashboard, " +
+          "or paste the token in the Token field above.";
+      }
+      showAlert("run-alert", err, "error");
     }
     await loadConfig();
     await pollStatus();
@@ -3365,6 +3472,17 @@ function positionFixColor(status) {
   return "#fbbf24";
 }
 
+function decimalToDdm(deg, isLat) {
+  let hemi = isLat ? "N" : "E";
+  if (deg < 0) {
+    hemi = isLat ? "S" : "W";
+    deg = -deg;
+  }
+  const d = Math.floor(deg);
+  const minutes = (deg - d) * 60;
+  return `${d}° ${minutes.toFixed(5)}' ${hemi}`;
+}
+
 function fmtPositionSummary(status) {
   const lat = status?.position_lat;
   const lon = status?.position_lon;
@@ -3372,7 +3490,12 @@ function fmtPositionSummary(status) {
   const stale = status.position_stale || status.gnss_stream_idle;
   const src = (status.position_source || "").toUpperCase();
   const fix = (status.gnss_fix || status.gnss_summary || "").trim();
-  const core = `${Number(lat).toFixed(5)}, ${Number(lon).toFixed(5)}`;
+  const latDdm = (status.position_lat_ddm || "").trim();
+  const lonDdm = (status.position_lon_ddm || "").trim();
+  const core =
+    latDdm && lonDdm
+      ? `${latDdm} · ${lonDdm}`
+      : `${decimalToDdm(Number(lat), true)} · ${decimalToDdm(Number(lon), false)}`;
   const bits = [core];
   if (src) bits.push(src);
   if (fix && fix !== "No Data Stream") bits.push(fix);

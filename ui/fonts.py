@@ -148,3 +148,22 @@ def app_ui_font(*, point_size: int | None = None) -> QtGui.QFont:
 def monospace_ui_font(*, point_size: int | None = None) -> QtGui.QFont:
     """Monospace font for logs, terminal, and diagnostics."""
     return app_ui_font(point_size=point_size)
+
+
+def emoji_ui_font(*, point_size: float = 11.0) -> QtGui.QFont:
+    """Color emoji + readable Latin for nav chips and page icons (not monospace)."""
+    if sys.platform == "win32":
+        families = ["Segoe UI Emoji", "Segoe UI Symbol", "Segoe UI", "sans-serif"]
+    elif sys.platform == "darwin":
+        families = ["Apple Color Emoji", ".AppleSystemUIFont", "sans-serif"]
+    else:
+        families = ["Noto Color Emoji", "DejaVu Sans", "sans-serif"]
+    font = QtGui.QFont()
+    font.setFamilies(families)
+    font.setPointSizeF(point_size)
+    font.setStyleHint(QtGui.QFont.StyleHint.SansSerif)
+    font.setStyleStrategy(
+        QtGui.QFont.StyleStrategy.PreferAntialias
+        | QtGui.QFont.StyleStrategy.PreferQuality
+    )
+    return font

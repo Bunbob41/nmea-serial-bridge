@@ -33,11 +33,13 @@ class TestDocViewerPaths(unittest.TestCase):
             root = Path(tmp)
             docs = root / "docs"
             docs.mkdir()
-            (docs / "NORBIT_DCT.md").write_text("# DCT\n", encoding="utf-8")
+            target = docs / "NORBIT_DCT.md"
+            target.write_text("# DCT\n", encoding="utf-8")
             with patch.object(sys, "frozen", True, create=True):
                 with patch.object(sys, "_MEIPASS", str(root), create=True):
                     path = resolve_bundled_doc("docs/NORBIT_DCT.md")
-        self.assertEqual(path, docs / "NORBIT_DCT.md")
+                    self.assertIsNotNone(path)
+                    self.assertEqual(path.resolve(), target.resolve())
 
     def test_href_to_sibling_doc(self) -> None:
         current = Path("/x/docs/GETTING_STARTED.md")

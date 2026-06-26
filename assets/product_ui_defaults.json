@@ -4,8 +4,14 @@
   "ui_prefs": {
     "schema_version": 2,
     "file_log": {
-      "max_mb": 100,
+      "max_mb": 10,
       "backups": 5
+    },
+    "web_ui": {
+      "enabled": true,
+      "host": "127.0.0.1",
+      "port": 8766,
+      "lan_bind": true
     },
     "field": {
       "rx": true,
@@ -27,233 +33,15 @@
         148
       ]
     },
-    "top_bar": {
-      "field": {
-        "order": [
-          "view",
-          "presets",
-          "recent",
-          "hud",
-          "tools",
-          "ui_editor",
-          "shortcuts",
-          "copy_stats",
-          "ui_switch",
-          "randomize_theme",
-          "standardize_theme"
-        ],
-        "hidden": [
-          "randomize_theme",
-          "standardize_theme"
-        ],
-        "shortcuts_visible": false,
-        "position": "bottom",
-        "chip_weights": {
-          "view": 1.0,
-          "presets": 1.0,
-          "recent": 1.0,
-          "hud": 1.0,
-          "tools": 1.0,
-          "randomize_theme": 1.0,
-          "standardize_theme": 1.0,
-          "ui_editor": 1.0,
-          "copy_stats": 1.0,
-          "ui_switch": 1.0,
-          "shortcuts": 1.0
-        }
-      },
-      "standard": {
-        "order": [
-          "view",
-          "presets",
-          "recent",
-          "hud",
-          "randomize_theme",
-          "standardize_theme",
-          "ui_editor",
-          "shortcuts",
-          "copy_stats",
-          "ui_switch",
-          "tools"
-        ],
-        "hidden": [],
-        "shortcuts_visible": false,
-        "position": "top",
-        "chip_weights": {
-          "view": 1.0,
-          "presets": 1.0,
-          "recent": 1.0,
-          "hud": 1.0,
-          "randomize_theme": 1.0,
-          "standardize_theme": 1.0,
-          "ui_editor": 1.0,
-          "copy_stats": 1.0,
-          "ui_switch": 1.0,
-          "shortcuts": 1.0
-        }
-      },
-      "modern": {
-        "order": [
-          "view",
-          "hud",
-          "ui_switch",
-          "presets",
-          "recent",
-          "tools",
-          "randomize_theme",
-          "standardize_theme",
-          "ui_editor",
-          "shortcuts",
-          "copy_stats"
-        ],
-        "hidden": [
-          "copy_stats",
-          "presets",
-          "randomize_theme",
-          "recent",
-          "shortcuts",
-          "standardize_theme",
-          "tools"
-        ],
-        "shortcuts_visible": false,
-        "position": "top",
-        "chip_weights": {
-          "view": 1.0,
-          "presets": 1.0,
-          "recent": 1.0,
-          "hud": 1.0,
-          "tools": 1.0,
-          "randomize_theme": 1.0,
-          "standardize_theme": 1.0,
-          "ui_editor": 1.0,
-          "copy_stats": 1.0,
-          "ui_switch": 1.0,
-          "shortcuts": 1.0
-        }
-      }
-    },
+    "modern_active_section": "activity",
+    "modern_active_tab_name": "Activity",
     "tab_order": {
-      "field": {
-        "tools_tabs": [
-          "Presets",
-          "Phone",
-          "NMEA",
-          "Theme",
-          "Guide",
-          "Terminal",
-          "Diagnostics"
-        ]
-      },
-      "standard": {
-        "main_tabs": [
-          "Connect",
-          "Log",
-          "Tools"
-        ],
-        "tools_tabs": [
-          "Guide",
-          "Presets",
-          "Phone",
-          "NMEA",
-          "Terminal",
-          "Diagnostics",
-          "Theme",
-          "Inject"
-        ]
-      },
       "modern": {
-        "main_tabs": [
-          "Activity",
-          "Control",
-          "Tools",
-          "Mission Review"
-        ],
         "tools_tabs": [
-          "Control",
-          "Activity",
-          "Presets",
+          "NMEA",
           "Hub",
-          "Fleet",
-          "NMEA",
-          "Dashboard",
-          "Black box",
-          "File log",
-          "Guide",
-          "Inject",
-          "Checks",
-          "Terminal"
-        ]
-      }
-    },
-    "hidden_tabs": {
-      "field": {
-        "tools_tabs": []
-      },
-      "standard": {
-        "main_tabs": [],
-        "tools_tabs": []
-      },
-      "modern": {
-        "main_tabs": [],
-        "tools_tabs": []
-      }
-    },
-    "connect_panels": {
-      "standard": {
-        "order": [
-          "run",
-          "connection",
-          "hint",
-          "quick_log",
-          "quick_terminal"
-        ],
-        "collapsed": {
-          "run": true,
-          "connection": true,
-          "hint": true,
-          "quick_log": true,
-          "quick_terminal": true
-        },
-        "sizes": {},
-        "hidden": [],
-        "toolbar_order": [
-          "ui_editor",
-          "expand_all",
-          "collapse_all"
-        ],
-        "qr_lane_width": 228,
-        "qr_float_pos": null,
-        "connect_row_style": "outline",
-        "hub_split_sizes": [
-          320,
-          200
-        ]
-      },
-      "field": {
-        "order": [
-          "run",
-          "connection",
-          "hint",
-          "quick_log",
-          "quick_terminal"
-        ],
-        "collapsed": {},
-        "sizes": {},
-        "hidden": [],
-        "toolbar_order": [
-          "ui_editor",
-          "expand_all",
-          "collapse_all"
-        ],
-        "qr_lane_width": 228,
-        "qr_float_pos": [
-          765,
-          170
-        ],
-        "connect_row_style": "seamless",
-        "hub_split_sizes": [
-          320,
-          200
+          "Control",
+          "Presets"
         ]
       }
     },
@@ -273,76 +61,45 @@
       "log_sentence": "",
       "sentence_types": []
     },
-    "diag_card_sizes": {
-      "standard": {
-        "file_log": 273,
-        "automated_checks": 343,
-        "traffic_quality": 223,
-        "screen_log": 98
-      },
-      "field": {
-        "automated_checks": 351,
-        "file_log": 303
-      },
+    "top_bar": {
       "modern": {
-        "traffic_quality": 204,
-        "automated_checks": 399
+        "order": [
+          "view",
+          "hud",
+          "ui_switch",
+          "presets",
+          "recent",
+          "tools",
+          "randomize_theme",
+          "standardize_theme",
+          "ui_editor",
+          "shortcuts",
+          "copy_stats"
+        ],
+        "hidden": [],
+        "shortcuts_visible": false,
+        "position": "top",
+        "chip_weights": {
+          "view": 1.0,
+          "presets": 1.0,
+          "recent": 1.0,
+          "hud": 1.0,
+          "tools": 1.0,
+          "randomize_theme": 1.0,
+          "standardize_theme": 1.0,
+          "ui_editor": 1.0,
+          "copy_stats": 1.0,
+          "ui_switch": 1.0,
+          "shortcuts": 1.0
+        }
       }
     },
-    "diag_cards": {
-      "standard": {
-        "file_log": false,
-        "automated_checks": false,
-        "traffic_quality": false,
-        "screen_log": false
-      },
-      "field": {
-        "automated_checks": false,
-        "file_log": false
-      },
+    "hidden_tabs": {
       "modern": {
-        "automated_checks": false,
-        "traffic_quality": false,
-        "local_backup": false,
-        "file_log": false,
-        "screen_log": false
-      }
-    },
-    "web_ui": {
-      "enabled": true,
-      "host": "127.0.0.1",
-      "port": 10110,
-      "lan_bind": true
-    },
-    "qr_overlay": {
-      "user_positioned": true,
-      "float_pos_norm": [
-        0.9666388657214345,
-        0.3620414673046252
-      ],
-      "float_pos_pixels": [
-        1110,
-        219
-      ]
-    },
-    "auto_discover": {
-      "enabled": true
-    },
-    "web_dashboard": {
-      "layout_mode": "gridstack",
-      "local_storage": {
-        "nmea-gridstack-layout-v2": "[{\"id\":\"map\",\"x\":0,\"y\":0,\"w\":6,\"h\":6},{\"id\":\"status\",\"x\":6,\"y\":0,\"w\":6,\"h\":3},{\"id\":\"configuration\",\"x\":6,\"y\":3,\"w\":6,\"h\":5},{\"id\":\"log\",\"x\":0,\"y\":6,\"w\":6,\"h\":5},{\"id\":\"discovery\",\"x\":0,\"y\":11,\"w\":6,\"h\":2},{\"id\":\"com-setup\",\"x\":6,\"y\":8,\"w\":6,\"h\":2},{\"id\":\"tools\",\"x\":6,\"y\":10,\"w\":6,\"h\":2}]",
-        "nmea-dashboard-chrome-v1": "{\"hiddenHeaders\":[\"status\",\"map\",\"log\"],\"logTerminalOnly\":true,\"mapPrioritized\":true,\"mapShowTrack\":true,\"mapBaseLayer\":\"satellite\",\"monitorLayout\":\"simple\",\"hideResizeGrips\":false}",
-        "nmea-dashboard-layout-locked": "1",
-        "nmea-monitor-collapse": "{\"session\":false,\"backpressure\":false,\"rates\":false,\"connection\":false}",
-        "nmea-dashboard-panels": "{\"map\":true,\"status\":true,\"log\":true,\"configuration\":true,\"com-setup\":true,\"discovery\":false,\"tools\":false}",
-        "nmea-dashboard-order": "[\"map\",\"log\",\"status\",\"configuration\",\"com-setup\",\"discovery\",\"tools\"]",
-        "nmea-bridge-map-enabled": "1",
-        "nmea-bridge-map-base-layer": "satellite"
+        "tools_tabs": []
       }
     },
     "modern_layout": {
-      "dock_state": "AAAA/wAAAAD9AAAAAgAAAAAAAAEPAAACyvwCAAAAAvsAAAAwAG0AbwBkAGUAcgBuAEQAbwBjAGsAXwBDAG8AbgB0AHIAbwBsAF8AcABhAG4AZQBsAQAAAAAAAALKAAABPAD////7AAAAJgBtAG8AZABlAHIAbgBEAG8AYwBrAF8AUwBlAHQAdABpAG4AZwBzAwAAAUYAAACwAAACLAAAAqEAAAABAAABbgAAAsr8AgAAAAL7AAAAMgBtAG8AZABlAHIAbgBEAG8AYwBrAF8AQwBvAG4AbgBlAGMAdABpAG8AbgBfAEgAdQBiAQAAAAAAAAHhAAABcgD////7AAAAKABtAG8AZABlAHIAbgBEAG8AYwBrAF8AVABlAGwAZQBtAGUAdAByAHkBAAAB5QAAAOUAAAC6AP///wAAAqQAAALKAAAABAAAAAQAAAAIAAAACPwAAAAA",
       "hsplit": [
         300,
         720,
@@ -357,60 +114,50 @@
         250
       ],
       "slot_assignments": {
-        "left_bottom": "telem",
-        "left_top": "settings",
-        "right_bottom": "hub",
-        "right_top": "log",
-        "center": "control"
+        "center": "log",
+        "left_bottom": "settings",
+        "left_top": "control",
+        "right_top": "hub",
+        "right_bottom": "telem"
       },
       "sidebar_collapsed": false,
       "control_map_collapsed": false,
-      "tools_nav_mode": "top_chips"
+      "tools_nav_mode": "top_chips",
+      "header_chips_icon_mode": "auto",
+      "header_chip_icons": {},
+      "header_split": [
+        132,
+        80,
+        1061,
+        240
+      ],
+      "header_split_locked": true
     },
-    "modern_module_states": {
-      "control": "collapsed",
-      "settings": "collapsed",
-      "log": "collapsed",
-      "hub": "collapsed",
-      "telem": "collapsed"
-    },
-    "hud_states": {
-      "control": {
-        "visible": true,
-        "pinned": true,
-        "collapsed": false,
-        "float_x": null,
-        "float_y": null
-      },
-      "settings": {
-        "visible": true,
-        "pinned": true,
-        "collapsed": false,
-        "float_x": null,
-        "float_y": null
-      },
-      "hub": {
-        "visible": true,
-        "pinned": true,
-        "collapsed": false,
-        "float_x": null,
-        "float_y": null
-      },
-      "telem": {
-        "visible": true,
-        "pinned": true,
-        "collapsed": false,
-        "float_x": null,
-        "float_y": null
+    "web_dashboard": {
+      "layout_mode": "gridstack",
+      "local_storage": {
+        "nmea-gridstack-layout-v2": "[{\"id\":\"map\",\"x\":0,\"y\":0,\"w\":7,\"h\":6},{\"id\":\"status\",\"x\":7,\"y\":0,\"w\":5,\"h\":3},{\"id\":\"configuration\",\"x\":7,\"y\":3,\"w\":5,\"h\":5},{\"id\":\"log\",\"x\":0,\"y\":6,\"w\":7,\"h\":3},{\"id\":\"com-setup\",\"x\":7,\"y\":8,\"w\":5},{\"id\":\"discovery\",\"x\":0,\"y\":9,\"w\":12},{\"id\":\"tools\",\"x\":0,\"y\":10,\"w\":12}]",
+        "nmea-dashboard-chrome-v1": "{\"hiddenHeaders\":[\"log\",\"status\",\"map\",\"configuration\"],\"logTerminalOnly\":true,\"mapPrioritized\":true,\"mapShowTrack\":true,\"mapBaseLayer\":\"satellite\",\"monitorLayout\":\"simple\",\"hideResizeGrips\":false}",
+        "nmea-dashboard-layout-locked": "1",
+        "nmea-monitor-collapse": "{\"connection\":false,\"session\":false,\"backpressure\":false,\"rates\":false}",
+        "nmea-dashboard-panels": "{\"map\":true,\"configuration\":true,\"tools\":false,\"com-setup\":false,\"discovery\":false}",
+        "nmea-dashboard-order": "[\"com-setup\",\"status\",\"map\",\"configuration\",\"log\",\"tools\",\"discovery\"]",
+        "nmea-bridge-map-enabled": "1",
+        "nmea-bridge-map-base-layer": "satellite",
+        "nmea-bridge-log-view": "stream",
+        "nmea-bridge-log-nmea-types": "{\"all\":false,\"types\":[\"DPT\",\"GGA\",\"HDT\",\"RMC\",\"VTG\",\"ZDA\"]}"
       }
     },
-    "modern_active_tab": 2,
-    "local_backup": {
-      "enabled": true,
-      "base_dir": "C:\\Users\\Morgan\\Projects\\udp-com-bridge\\logs\\2026-06-16_21-22\\2026-06-16_23-24",
-      "session_folders": false
-    },
-    "modern_active_tab_name": "guide",
-    "modern_active_section": "guide"
+    "qr_overlay": {
+      "user_positioned": true,
+      "float_pos_norm": [
+        0.8070714834742506,
+        0.33783783783783783
+      ],
+      "float_pos_pixels": [
+        995,
+        75
+      ]
+    }
   }
 }

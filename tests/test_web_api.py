@@ -67,6 +67,9 @@ class TestWebApi(unittest.TestCase):
         props = schema["components"]["schemas"]["MetaResponse"]["properties"]
         self.assertIn("version", props)
         self.assertIn("token_required", props)
+        self.assertIn("headless", props)
+        self.assertIn("config_path", props)
+        self.assertIn("config_writable", props)
 
     def test_status(self) -> None:
         r = self.client.get("/status")
@@ -152,6 +155,62 @@ class TestWebApi(unittest.TestCase):
         self.assertIn("version", body)
         self.assertIn("token_required", body)
         self.assertIn("lan_bind", body)
+        self.assertFalse(body["headless"])
+        self.assertFalse(body["config_writable"])
+
+    def test_meta_headless_fields(self) -> None:
+        cfg_path = "/etc/serial-link/bridge.json"
+        app = create_app(
+            self.facade,
+            version="1.43.0-test",
+            lan_token="secret",
+            headless=True,
+            config_path=cfg_path,
+            config_writable=True,
+        )
+        client = TestClient(app)
+        r = client.get("/meta")
+        self.assertEqual(r.status_code, 200)
+        body = r.json()
+        self.assertTrue(body["headless"])
+        self.assertEqual(body["config_path"], cfg_path)
+        self.assertTrue(body["config_writable"])
+        self.assertTrue(body["token_required"])
+
+    def test_config_persist_headless_only(self) -> None:
+        r = self.client.post("/config/persist")
+        self.assertEqual(r.status_code, 404)
+
+    def test_config_persist_ok(self) -> None:
+        self.facade.persist_site_config = MagicMock(  # type: ignore[attr-defined]
+            return_value=WebCommandResult(True, "Saved boot defaults", None, "ok")
+        )
+        app = create_app(
+            self.facade,
+            version="test",
+            lan_token="secret",
+            headless=True,
+            config_path="/tmp/bridge.json",
+            config_writable=True,
+        )
+        client = TestClient(app)
+        r = client.post("/config/persist", headers={"X-Bridge-Token": "secret"})
+        self.assertEqual(r.status_code, 200)
+        self.assertTrue(r.json()["ok"])
+        self.facade.persist_site_config.assert_called_once()
+
+    def test_config_persist_requires_auth(self) -> None:
+        app = create_app(
+            self.facade,
+            version="test",
+            lan_token="secret",
+            headless=True,
+            config_path="/tmp/bridge.json",
+            config_writable=True,
+        )
+        client = TestClient(app)
+        r = client.post("/config/persist")
+        self.assertEqual(r.status_code, 401)
 
     def test_meta_token_required_when_lan_bind_and_token(self) -> None:
         try:
@@ -194,6 +253,35 @@ class TestWebApi(unittest.TestCase):
         self.assertEqual(r.status_code, 200)
         self.assertEqual(len(r.json()["serial_devices"]), 1)
         self.assertEqual(r.json()["serial_devices"][0]["port"], "COM3")
+
+    def test_discovery_accepts_dict_network_cards(self) -> None:
+        """Headless facade used to round-trip discovery through to_dict() (dict rows)."""
+        self.facade.get_discovery = MagicMock(  # type: ignore[method-assign]
+            return_value=WebDiscoveryPayload(
+                updated_mono=1.0,
+                scan_note="",
+                scan_busy=False,
+                serial_devices=[],
+                network_cards=[
+                    {
+                        "device_id": "net:udp:10110",
+                        "label": "UDP listen :10110",
+                        "mode_hint": "udp_listen",
+                        "host": "0.0.0.0",
+                        "port": 10110,
+                        "port_available": True,
+                        "peer_count": 0,
+                        "status": "ready",
+                        "discovery_source": "passive",
+                    }
+                ],
+                errors=[],
+            )
+        )
+        r = self.client.get("/discovery")
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(len(r.json()["network_cards"]), 1)
+        self.assertEqual(r.json()["network_cards"][0]["port"], 10110)
 
     def test_discovery_refresh_ok(self) -> None:
         self.facade.request_refresh_discovery = MagicMock(  # type: ignore[method-assign]
