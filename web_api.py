@@ -199,14 +199,17 @@ class CommandResponse(BaseModel):
     config: Optional[ConfigResponse] = None
 
 
-class _DevStaticFiles(StaticFiles):
-    """Avoid stale dashboard.js in browsers during grid/standard UI iteration."""
+if "StaticFiles" in globals():
+    class _DevStaticFiles(StaticFiles):
+        """Avoid stale dashboard.js in browsers during grid/standard UI iteration."""
 
-    async def get_response(self, path: str, scope) -> StarletteResponse:
-        response = await super().get_response(path, scope)
-        if path.endswith((".js", ".css", ".html")):
-            response.headers["Cache-Control"] = "no-store, must-revalidate"
-        return response
+        async def get_response(self, path: str, scope) -> StarletteResponse:
+            response = await super().get_response(path, scope)
+            if path.endswith((".js", ".css", ".html")):
+                response.headers["Cache-Control"] = "no-store, must-revalidate"
+            return response
+else:
+    _DevStaticFiles = None  # type: ignore[misc, assignment]
 
 
 def resolve_static_dir() -> Optional[Path]:

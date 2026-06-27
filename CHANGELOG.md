@@ -11,6 +11,10 @@ High-level notes for **this fork / branch** (`2034-ui-journey-modernization` and
 
 ---
 
+## v1.49.1
+
+- **CI import fix** — guard `_DevStaticFiles` in `web_api.py` so module import no longer raises `NameError` when `fastapi` / `StaticFiles` is absent (fixes `bench_gui_smoke` on minimal runners).
+
 ## v1.49.0
 
 Release checkpoint since v1.48.19 — survey depth stack, export replay, and web/Survey Map legend polish.
