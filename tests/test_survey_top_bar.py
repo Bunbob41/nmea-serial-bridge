@@ -478,11 +478,12 @@ class ModernToolsChipCompressionTests(unittest.TestCase):
             buttons.append(btn)
         inner = QtWidgets.QWidget()
         row = sync_embedded_chip_inner_width(inner, buttons, [], icon_only=True)
-        self.assertEqual(inner.minimumWidth(), row)
         self.assertEqual(
             row,
             estimate_embedded_chips_row_width(buttons, [], icon_only=True),
         )
+        # Scroll host keeps min width at 0; natural row width is returned for overflow math.
+        self.assertEqual(inner.minimumWidth(), 0)
 
 
 if __name__ == "__main__":

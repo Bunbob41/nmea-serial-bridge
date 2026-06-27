@@ -31,9 +31,9 @@ from nmea_codec import (
     format_binary_log_preview,
     parse_nmea_utc,
 )
-from depth_codec import parse_depth_line
-from nmea_position import feed_nmea_position, format_position_ddm
-from sounding_mux import FixSnapshot, SoundingBuffer, mux_depth
+from depth_codec import DepthSample, depth_display_field, parse_depth_line
+from nmea_position import format_position_ddm, parse_nmea_position
+from sounding_mux import DepthFixBinder, FixSnapshot, Sounding, SoundingBuffer
 from core.local_logger import LocalSerialBackup, default_local_backup_dir
 from survey_quality import (
     feed_nmea_navigation_quality,
@@ -561,9 +561,11 @@ class SerialNetBridge:
         self._serial_write_lock: Optional[asyncio.Lock] = None
 
         self._sounding_buffer = SoundingBuffer()
+        self._depth_fix_binder = DepthFixBinder()
         self._sounding_count = 0
         self._sounding_stale_count = 0
         self._last_depth_m: Optional[float] = None
+        self._last_depth_text: str = ""
         self._last_depth_source: str = ""
         self._last_sounding_stale = False
         self._hz_depth_times: deque[float] = deque()
@@ -651,6 +653,9 @@ class SerialNetBridge:
         pos = self._position_state[0]
         if not pos:
             return None
+        return self._fix_snapshot_from_position_dict(pos)
+
+    def _fix_snapshot_from_position_dict(self, pos: dict[str, Any]) -> FixSnapshot:
         nav = self._nav_quality_state[0] or {}
         fix_mono = float(pos.get("mono") or time.monotonic())
         hdop_raw = nav.get("hdop")
@@ -672,19 +677,7 @@ class SerialNetBridge:
             fix_mono=fix_mono,
         )
 
-    def _ingest_depth_line(self, line: str) -> None:
-        sample = parse_depth_line(line)
-        if sample is None:
-            return
-        now = time.monotonic()
-        self._hz_depth_times.append(now)
-        self._last_depth_m = float(sample.depth_m)
-        self._last_depth_source = str(sample.source or "")
-        sounding = mux_depth(
-            sample,
-            self._fix_snapshot_for_mux(),
-            wall_time=time.time(),
-        )
+    def _append_sounding(self, sounding: Sounding) -> None:
         self._sounding_buffer.append(sounding)
         self._sounding_count += 1
         self._last_sounding_stale = bool(sounding.stale)
@@ -692,16 +685,60 @@ class SerialNetBridge:
             self._sounding_stale_count += 1
         self._schedule_stats_emit()
 
+    def _feed_positions_from_lines(self, lines: list[bytes]) -> None:
+        """Update fix track; mux depth/position from forwarded NMEA lines."""
+        if self.nmea_mode == NmeaMode.RAW or not self.running:
+            return
+        for chunk in lines:
+            try:
+                text = chunk.decode(errors="replace")
+            except Exception:
+                continue
+            for line in text.splitlines():
+                pos = parse_nmea_position(line)
+                if pos is not None:
+                    pos_dict = pos.to_dict()
+                    self._position_state[0] = pos_dict
+                    snap = self._fix_snapshot_from_position_dict(pos_dict)
+                    for sounding in self._depth_fix_binder.on_fix(snap):
+                        self._append_sounding(sounding)
+                sample = parse_depth_line(line)
+                if sample is not None:
+                    self._ingest_depth_sample(sample)
+
+    def _ingest_depth_sample(self, sample: DepthSample) -> None:
+        now = time.monotonic()
+        self._hz_depth_times.append(now)
+        self._last_depth_m = float(sample.depth_m)
+        self._last_depth_text = depth_display_field(sample)
+        self._last_depth_source = str(sample.source or "")
+        for sounding in self._depth_fix_binder.bind_depth(
+            sample,
+            wall_time=time.time(),
+        ):
+            self._append_sounding(sounding)
+
+    def _ingest_depth_line(self, line: str) -> None:
+        sample = parse_depth_line(line)
+        if sample is None:
+            return
+        self._ingest_depth_sample(sample)
+
     def hz_depth(self) -> float:
         return rolling_hz_last_second(self._hz_depth_times)
 
     def sounding_stats(self) -> dict[str, object]:
-        if not self.depth_com_enabled or not self.depth_com_port:
+        has_buffer = len(self._sounding_buffer) > 0
+        depth_active = bool(
+            (self.depth_com_enabled and self.depth_com_port) or has_buffer
+        )
+        if not depth_active:
             return {
                 "depth_enabled": False,
                 "depth_port": "",
                 "depth_rate_hz": 0.0,
                 "last_depth_m": None,
+                "last_depth_text": "",
                 "last_depth_source": "",
                 "last_sounding_stale": False,
                 "sounding_count": 0,
@@ -710,9 +747,10 @@ class SerialNetBridge:
             }
         return {
             "depth_enabled": True,
-            "depth_port": self.depth_com_port,
+            "depth_port": self.depth_com_port if self.depth_com_enabled else "",
             "depth_rate_hz": self.hz_depth(),
             "last_depth_m": self._last_depth_m,
+            "last_depth_text": self._last_depth_text,
             "last_depth_source": self._last_depth_source,
             "last_sounding_stale": self._last_sounding_stale,
             "sounding_count": self._sounding_count,
@@ -1227,7 +1265,7 @@ class SerialNetBridge:
             self._last_nmea_forward_mono = now
         feed_nmea_times_from_lines(result.forward, self._gps_state)
         feed_nmea_navigation_quality(result.forward, self._nav_quality_state)
-        feed_nmea_position(result.forward, self._position_state)
+        self._feed_positions_from_lines(result.forward)
         for reason in result.rejected:
             self.rejected_net_to_serial += 1
             self._schedule_stats_emit()
@@ -1279,7 +1317,7 @@ class SerialNetBridge:
             self._last_nmea_forward_mono = time.monotonic()
         feed_nmea_times_from_lines(result.forward, self._gps_state)
         feed_nmea_navigation_quality(result.forward, self._nav_quality_state)
-        feed_nmea_position(result.forward, self._position_state)
+        self._feed_positions_from_lines(result.forward)
         for reason in result.rejected:
             self.rejected_serial_to_net += 1
             self._schedule_stats_emit()
@@ -1402,9 +1440,11 @@ class SerialNetBridge:
         self._com_flow_last_mono = 0.0
         self._com_active_total_s = 0.0
         self._sounding_buffer.clear()
+        self._depth_fix_binder.clear()
         self._sounding_count = 0
         self._sounding_stale_count = 0
         self._last_depth_m = None
+        self._last_depth_text = ""
         self._last_depth_source = ""
         self._last_sounding_stale = False
         self._hz_depth_times.clear()
@@ -2062,6 +2102,9 @@ class SerialNetBridge:
         self._reset_serial_decode_state()
         self._nav_quality_state[0] = None
         self._position_state[0] = None
+        for sounding in self._depth_fix_binder.flush_pending(wall_time=time.time()):
+            self._append_sounding(sounding)
+        self._depth_fix_binder.clear()
 
         self._stop_local_backup()
         self._set_status("Serial: closed", "Network: stopped")

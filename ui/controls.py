@@ -231,6 +231,10 @@ def wire_connection_controls(win: QtWidgets.QWidget) -> None:
     win.btn_send_ser.clicked.connect(lambda: win._send_manual("serial"))
     win.btn_send_net.clicked.connect(lambda: win._send_manual("net"))
     win.btn_send_both.clicked.connect(lambda: win._send_manual("both"))
+    if hasattr(win, "chk_inject_loop"):
+        win.chk_inject_loop.toggled.connect(win._on_inject_loop_toggled)
+    if hasattr(win, "cmb_inject_interval"):
+        win.cmb_inject_interval.currentIndexChanged.connect(win._on_inject_interval_changed)
     win.btn_browse.clicked.connect(win._browse_log)
     if hasattr(win, "btn_clear_ui"):
         win.btn_clear_ui.clicked.connect(win._clear_live_log)

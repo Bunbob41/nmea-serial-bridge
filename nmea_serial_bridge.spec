@@ -81,6 +81,7 @@ HELPER_MODULES = [
     "nmea_codec.py",
     "depth_codec.py",
     "sounding_mux.py",
+    "session_sounding_replay.py",
     "bridge_core.py",
     "py_interpreter.py",
 ]

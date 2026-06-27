@@ -361,6 +361,12 @@ class TestWebApi(unittest.TestCase):
         if "text/html" in ct:
             self.assertIn(b"nmea", r.content.lower())
             self.assertIn(b"layout-gridstack", r.content)
+            self.assertIn(b"map-depth-legend", r.content)
+            self.assertIn(b"depth_ramp.js", r.content)
+            self.assertIn(b"gridstack-all.js", r.content)
+            self.assertIn(b"gridstack-layout.js", r.content)
+            self.assertIn(b"map-legend-live-value", r.content)
+            self.assertIn(b"map_depth_readout.js", r.content)
 
     def test_static_subdirectory_serves_index_html(self) -> None:
         """Nested static dirs (e.g. GridStack beta) must serve index.html with trailing slash."""

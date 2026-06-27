@@ -55,24 +55,44 @@ def format_position_ddm(pos: dict[str, Any]) -> tuple[str, str]:
     return lat, lon
 
 
-def nmea_dm_to_decimal(dm: str, hemisphere: str) -> Optional[float]:
-    """Convert NMEA DDMM.mmmm (+ hemisphere) to signed decimal degrees."""
+def nmea_dm_to_decimal(
+    dm: str,
+    hemisphere: str,
+    *,
+    is_latitude: bool = True,
+) -> Optional[float]:
+    """Convert NMEA DDMM.mmmmm (lat) or DDDMM.mmmmm (lon) to signed decimal degrees."""
     raw = (dm or "").strip()
     hemi = (hemisphere or "").strip().upper()
     if not raw or not hemi:
         return None
+    if hemi in ("S", "W"):
+        sign = -1.0
+    elif hemi in ("N", "E"):
+        sign = 1.0
+    else:
+        return None
+    if "." in raw:
+        int_part, frac_part = raw.split(".", 1)
+        frac_part = "." + frac_part
+    else:
+        int_part, frac_part = raw, ""
+    deg_digits = 2 if is_latitude else 3
+    if len(int_part) < deg_digits + 1:
+        return None
     try:
-        value = float(raw)
+        degrees = int(int_part[:deg_digits])
+        minutes = float(int_part[deg_digits:] + frac_part)
     except ValueError:
         return None
-    degrees = int(value // 100)
-    minutes = value - degrees * 100
-    decimal = degrees + minutes / 60.0
-    if hemi in ("S", "W"):
-        decimal = -decimal
-    elif hemi not in ("N", "E"):
+    if minutes < 0 or minutes >= 60.0:
         return None
-    return decimal
+    decimal = degrees + minutes / 60.0
+    if is_latitude and decimal > 90.0:
+        return None
+    if not is_latitude and decimal > 180.0:
+        return None
+    return sign * decimal
 
 
 def parse_gga_position(line: str) -> Optional[NmeaPosition]:
@@ -83,8 +103,8 @@ def parse_gga_position(line: str) -> Optional[NmeaPosition]:
     parts = s.split(",")
     if len(parts) < 7:
         return None
-    lat = nmea_dm_to_decimal(parts[2], parts[3])
-    lon = nmea_dm_to_decimal(parts[4], parts[5])
+    lat = nmea_dm_to_decimal(parts[2], parts[3], is_latitude=True)
+    lon = nmea_dm_to_decimal(parts[4], parts[5], is_latitude=False)
     if lat is None or lon is None:
         return None
     if abs(lat) > 90.0 or abs(lon) > 180.0:
@@ -111,8 +131,8 @@ def parse_rmc_position(line: str) -> Optional[NmeaPosition]:
     status = (parts[2] or "").strip().upper()
     if status not in ("A", "D"):
         return None
-    lat = nmea_dm_to_decimal(parts[3], parts[4])
-    lon = nmea_dm_to_decimal(parts[5], parts[6])
+    lat = nmea_dm_to_decimal(parts[3], parts[4], is_latitude=True)
+    lon = nmea_dm_to_decimal(parts[5], parts[6], is_latitude=False)
     if lat is None or lon is None:
         return None
     if abs(lat) > 90.0 or abs(lon) > 180.0:

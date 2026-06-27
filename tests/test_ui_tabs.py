@@ -601,6 +601,19 @@ class TestUiTabs(unittest.TestCase):
         phone = next((lbl, icon) for sid, lbl, icon in nav if sid == "phone")
         self.assertEqual(phone, ("Dashboard", "📱"))
 
+    def test_inject_repeat_send_controls(self) -> None:
+        from ui.modern import BridgeWindowModern
+
+        win = BridgeWindowModern()
+        self.assertIsNotNone(getattr(win, "chk_inject_loop", None))
+        self.assertIsNotNone(getattr(win, "cmb_inject_interval", None))
+        self.assertIsNotNone(getattr(win, "cmb_inject_loop_where", None))
+        self.assertEqual(win._inject_loop_interval_ms(), 1000)
+        win.cmb_inject_interval.setCurrentIndex(0)
+        self.assertEqual(win._inject_loop_interval_ms(), 200)
+        win.cmb_inject_loop_where.setCurrentIndex(1)
+        self.assertEqual(win._inject_loop_where(), "net")
+
     def test_modern_control_strip_band(self) -> None:
         from ui.modern import BridgeWindowModern, CONTROL_STRIP_BAND_W
 

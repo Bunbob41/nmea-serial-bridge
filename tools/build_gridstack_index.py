@@ -86,10 +86,17 @@ def main() -> None:
 
     html = "\n".join(result)
     html = html.replace("  </main>", "  </div>\n  </main>", 1)
+    depth_src = f"/static/depth_ramp.js?v={ver}"
+    readout_src = f"/static/map_depth_readout.js?v={ver}"
     html = re.sub(
-        r'<script src="/static/vendor/leaflet/leaflet\.js"></script>\s*<script src="/static/dashboard\.js[^"]*"></script>',
+        r'<script src="/static/vendor/leaflet/leaflet\.js"></script>\s*'
+        r'(?:<script src="/static/depth_ramp\.js[^"]*"></script>\s*)?'
+        r'(?:<script src="/static/map_depth_readout\.js[^"]*"></script>\s*)?'
+        r'<script src="/static/dashboard\.js[^"]*"></script>',
         '<script src="/static/vendor/leaflet/leaflet.js"></script>\n'
         '  <script src="/static/vendor/gridstack/gridstack-all.js"></script>\n'
+        f'  <script src="{depth_src}"></script>\n'
+        f'  <script src="{readout_src}"></script>\n'
         f'  <script src="{dash_src}"></script>\n'
         '  <script src="/static/layouts/gridstack/gridstack-layout.js"></script>',
         html,

@@ -11,7 +11,7 @@ const MAP_ENABLED_KEY = "nmea-bridge-map-enabled";
 const MAP_BASE_LAYER_KEY = "nmea-bridge-map-base-layer";
 const MAP_TRACK_MAX = 120;
 /** Bumped when dashboard.js changes — used for ?v= cache bust on script tags. */
-const DASHBOARD_SCRIPT_REV = "1.43.0";
+const DASHBOARD_SCRIPT_REV = "1.49.0";
 
 /** Phone sideways: compact header (see dashboard.css landscape HUD media query). */
 const PHONE_LANDSCAPE_HEADER_MQ = "(orientation: landscape) and (max-height: 520px) and (max-width: 960px)";
@@ -686,6 +686,7 @@ function setOnline(status) {
   updateHeaderStatusChip(status);
   syncComLockChrome(status);
   lastDashboardStatus = status;
+  updateMapLiveDepth(status);
   updatePositionMap(status);
 }
 
@@ -3389,8 +3390,10 @@ function paintMapDepthLegend(minD, maxD, vis) {
   const c = document.getElementById("map-depth-legend-bar");
   const lo = document.getElementById("map-depth-legend-min");
   const hi = document.getElementById("map-depth-legend-max");
+  const liveRow = document.getElementById("map-legend-live-depth");
   if (!box || !c) return;
   box.hidden = !vis;
+  if (liveRow) liveRow.hidden = !vis;
   if (!vis) return;
   const ctx = c.getContext("2d");
   if (!ctx) return;
@@ -3398,8 +3401,50 @@ function paintMapDepthLegend(minD, maxD, vis) {
     ctx.fillStyle = mapDepthRampColor(1 - y / (c.height - 1));
     ctx.fillRect(0, y, c.width, 1);
   }
-  if (lo) lo.textContent = minD.toFixed(1);
-  if (hi) hi.textContent = maxD.toFixed(1);
+  if (lo) lo.textContent = minD.toFixed(2);
+  if (hi) hi.textContent = maxD.toFixed(2);
+}
+
+function mapLiveDepthText(status) {
+  if (typeof MapDepthReadout !== "undefined") {
+    const { depth, text } = MapDepthReadout.resolveLiveDepth(status || {});
+    return MapDepthReadout.formatDepthM(depth, text);
+  }
+  const raw = status && status.last_depth_m;
+  const depth = raw != null ? Number(raw) : NaN;
+  if (!Number.isFinite(depth)) return "--";
+  return (Math.round(depth * 100) / 100).toFixed(2);
+}
+
+function updateMapLiveDepth(status) {
+  const liveRow = document.getElementById("map-legend-live-depth");
+  const val = document.getElementById("map-legend-live-value");
+  if (!val) return;
+  if (typeof MapDepthReadout !== "undefined") {
+    MapDepthReadout.updateInline(
+      {
+        rowId: "map-legend-live-depth",
+        valueId: "map-legend-live-value",
+      },
+      status
+    );
+    return;
+  }
+  const depthEnabled = !!(status && status.depth_enabled);
+  const depth = status && status.last_depth_m != null ? Number(status.last_depth_m) : NaN;
+  const active =
+    depthEnabled ||
+    Number.isFinite(depth) ||
+    (status && (status.sounding_count || 0) > 0) ||
+    (status &&
+      Array.isArray(status.soundings_recent) &&
+      status.soundings_recent.length > 0);
+  if (liveRow) liveRow.hidden = !active;
+  val.textContent = mapLiveDepthText(status);
+  val.classList.toggle(
+    "is-stale",
+    !!(status && status.last_sounding_stale && Number.isFinite(depth))
+  );
 }
 
 function mapShowDepthEnabled() {
@@ -3408,34 +3453,31 @@ function mapShowDepthEnabled() {
 }
 
 function updateDepthLayer(status) {
+  updateMapLiveDepth(status);
+  ensureBridgeMap();
+  if (!mapShowDepthEnabled()) {
+    paintMapDepthLegend(0, 1, false);
+    return;
+  }
+  const pts = (status?.soundings_recent || []).filter((s) => {
+    const lat = Number(s.lat);
+    const lon = Number(s.lon);
+    return Number.isFinite(lat) && Number.isFinite(lon);
+  });
+  const rg = pts.length
+    ? mapDepthRange(pts)
+    : { min: MAP_DEPTH_IDLE_MIN, max: MAP_DEPTH_IDLE_MAX };
+  paintMapDepthLegend(rg.min, rg.max, true);
+
   const now = Date.now();
   if (now - mapDepthLastUpdateMs < 900) return;
   mapDepthLastUpdateMs = now;
-  ensureBridgeMap();
   if (!mapDepthLayer) {
     mapDepthLayer = L.layerGroup();
     mapDepthLayer.addTo(mapInstance);
   }
   mapDepthLayer.clearLayers();
-  if (!mapShowDepthEnabled()) {
-    paintMapDepthLegend(0, 1, false);
-    return;
-  }
-  if (!status) {
-    paintMapDepthLegend(MAP_DEPTH_IDLE_MIN, MAP_DEPTH_IDLE_MAX, true);
-    return;
-  }
-  const pts = (status.soundings_recent || []).filter((s) => {
-    const lat = Number(s.lat);
-    const lon = Number(s.lon);
-    return Number.isFinite(lat) && Number.isFinite(lon);
-  });
-  if (!pts.length) {
-    paintMapDepthLegend(MAP_DEPTH_IDLE_MIN, MAP_DEPTH_IDLE_MAX, true);
-    return;
-  }
-  const rg = mapDepthRange(pts);
-  paintMapDepthLegend(rg.min, rg.max, true);
+  if (!pts.length) return;
   for (let i = 1; i < pts.length; i++) {
     const a = pts[i - 1];
     const b = pts[i];
@@ -3568,6 +3610,7 @@ function initPositionMap() {
   }
   if (depthChk?.checked) {
     paintMapDepthLegend(MAP_DEPTH_IDLE_MIN, MAP_DEPTH_IDLE_MAX, true);
+    updateMapLiveDepth(lastDashboardStatus);
   }
   syncMapVisibility();
 }
@@ -3708,7 +3751,10 @@ function updatePositionMap(status) {
     Number.isFinite(Number(lat)) &&
     Number.isFinite(Number(lon));
 
-  if (!hasFix) return;
+  if (!hasFix) {
+    updateDepthLayer(status);
+    return;
+  }
 
   const ll = [Number(lat), Number(lon)];
   const stale = !!status.position_stale;

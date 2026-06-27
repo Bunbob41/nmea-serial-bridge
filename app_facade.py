@@ -796,6 +796,7 @@ class BridgeAppFacade(QtCore.QObject):
             depth_port=str(merged.get("depth_port") or ""),
             depth_rate_hz=float(merged.get("depth_rate_hz") or 0.0),
             last_depth_m=_position_float(merged.get("last_depth_m")),
+            last_depth_text=str(merged.get("last_depth_text") or ""),
             last_sounding_stale=bool(merged.get("last_sounding_stale")),
             sounding_count=int(merged.get("sounding_count") or 0),
             sounding_stale_count=int(merged.get("sounding_stale_count") or 0),

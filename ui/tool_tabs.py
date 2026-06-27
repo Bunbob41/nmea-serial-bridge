@@ -1178,6 +1178,37 @@ def build_guide_tab(parent: QtWidgets.QWidget, *, embedded: bool = False) -> QtW
     return scroll
 
 
+def _mount_inject_loop_row(parent: QtWidgets.QWidget, layout: QtWidgets.QVBoxLayout) -> None:
+    """Repeat-send controls for Tools → Inject."""
+    loop_row = QtWidgets.QHBoxLayout()
+    loop_row.setSpacing(8)
+    parent.chk_inject_loop = QtWidgets.QCheckBox("Repeat send")
+    parent.chk_inject_loop.setToolTip(
+        "Send the text above on a timer while the bridge is running. "
+        "Uncheck or Stop bridge to halt."
+    )
+    parent.cmb_inject_loop_where = QtWidgets.QComboBox()
+    for key, label in (
+        ("serial", "→ serial"),
+        ("net", "→ network"),
+        ("both", "→ both"),
+    ):
+        parent.cmb_inject_loop_where.addItem(label, key)
+    every_lbl = QtWidgets.QLabel("every")
+    every_lbl.setObjectName("tabHint")
+    parent.cmb_inject_interval = QtWidgets.QComboBox()
+    for ms, label in ((200, "200 ms"), (500, "500 ms"), (1000, "1 s"), (2000, "2 s")):
+        parent.cmb_inject_interval.addItem(label, ms)
+    parent.cmb_inject_interval.setCurrentIndex(2)  # 1 s default
+    parent.cmb_inject_interval.setToolTip("Interval between repeat sends.")
+    loop_row.addWidget(parent.chk_inject_loop)
+    loop_row.addWidget(parent.cmb_inject_loop_where)
+    loop_row.addWidget(every_lbl)
+    loop_row.addWidget(parent.cmb_inject_interval)
+    loop_row.addStretch(1)
+    layout.addLayout(loop_row)
+
+
 def build_send_tab(parent: QtWidgets.QWidget, *, embedded: bool = False) -> QtWidgets.QWidget:
     """Manual NMEA inject (Tools → Inject)."""
     host = QtWidgets.QWidget()
@@ -1228,6 +1259,7 @@ def build_send_tab(parent: QtWidgets.QWidget, *, embedded: bool = False) -> QtWi
         action_row.addWidget(parent.btn_send_net, 0)
         action_row.addWidget(parent.btn_send_both, 0)
         edit_lay.addLayout(action_row)
+        _mount_inject_loop_row(parent, edit_lay)
         lay.addWidget(edit_host, 1)
         return host
 
@@ -1249,6 +1281,7 @@ def build_send_tab(parent: QtWidgets.QWidget, *, embedded: bool = False) -> QtWi
     row.addWidget(parent.btn_send_both)
     row.addStretch(1)
     lay.addLayout(row)
+    _mount_inject_loop_row(parent, lay)
 
     if not embedded:
         note = QtWidgets.QLabel(

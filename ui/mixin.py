@@ -265,6 +265,9 @@ class BridgeLogicMixin:
         self._log_tab_auto_timer = QtCore.QTimer(self)
         self._log_tab_auto_timer.setSingleShot(True)
         self._log_tab_auto_timer.timeout.connect(self._auto_switch_to_log_tab)
+        self._inject_loop_timer = QtCore.QTimer(self)
+        self._inject_loop_timer.setTimerType(QtCore.Qt.TimerType.CoarseTimer)
+        self._inject_loop_timer.timeout.connect(self._inject_loop_tick)
         self._ntrip_future: Optional[asyncio.Future] = None
         self._bench_preflight_chain = False
         from app_facade import BridgeAppFacade
@@ -7235,17 +7238,20 @@ class BridgeLogicMixin:
         if not sel.startswith("net:"):
             self._sync_hub_selection_from_control(force=True)
 
-    def _send_raw_manual(self, where: str, raw: str) -> None:
+    def _send_raw_manual(self, where: str, raw: str, *, quiet: bool = False) -> None:
         if not self._is_bridge_running():
-            self._log_ui(
-                "Send: bridge not running — Connect tab: choose path, Start, wait for Running."
-            )
+            if not quiet:
+                self._log_ui(
+                    "Send: bridge not running — Connect tab: choose path, Start, wait for Running."
+                )
             return
         data = _nmea_line_bytes(raw)
         if not data:
-            self._log_ui("Send: empty or invalid line.")
+            if not quiet:
+                self._log_ui("Send: empty or invalid line.")
             return
-        self._log_ui(f"Send: {len(data)} bytes -> {where}")
+        if not quiet:
+            self._log_ui(f"Send: {len(data)} bytes -> {where}")
         b = self.bridge
         w = self._worker
 
@@ -7278,6 +7284,80 @@ class BridgeLogicMixin:
             )
             return
         self._send_raw_manual(where, raw)
+
+    def _inject_loop_interval_ms(self) -> int:
+        cmb = getattr(self, "cmb_inject_interval", None)
+        if cmb is None:
+            return 1000
+        ms = cmb.currentData()
+        try:
+            return max(50, int(ms))
+        except (TypeError, ValueError):
+            return 1000
+
+    def _inject_loop_where(self) -> str:
+        cmb = getattr(self, "cmb_inject_loop_where", None)
+        if cmb is None:
+            return "serial"
+        where = cmb.currentData()
+        return str(where or "serial")
+
+    def _inject_loop_active(self) -> bool:
+        timer = getattr(self, "_inject_loop_timer", None)
+        return timer is not None and timer.isActive()
+
+    def _set_inject_loop_running(self, on: bool) -> None:
+        timer = getattr(self, "_inject_loop_timer", None)
+        chk = getattr(self, "chk_inject_loop", None)
+        if chk is not None and chk.isChecked() != on:
+            chk.blockSignals(True)
+            chk.setChecked(on)
+            chk.blockSignals(False)
+        if timer is None:
+            return
+        if on:
+            timer.start(self._inject_loop_interval_ms())
+        else:
+            timer.stop()
+
+    def _stop_inject_loop(self, *, reason: str = "") -> None:
+        if not self._inject_loop_active():
+            return
+        self._set_inject_loop_running(False)
+        if reason:
+            self._log_ui(f"Loop: stopped ({reason}).")
+
+    def _on_inject_loop_toggled(self, on: bool) -> None:
+        if not on:
+            self._set_inject_loop_running(False)
+            return
+        if not self._is_bridge_running():
+            self._log_ui("Loop: bridge not running — Start first.")
+            self._set_inject_loop_running(False)
+            return
+        raw = self.send_edit.toPlainText()
+        if not raw.strip():
+            self._log_ui("Loop: paste text in the box first.")
+            self._set_inject_loop_running(False)
+            return
+        where = self._inject_loop_where()
+        ms = self._inject_loop_interval_ms()
+        self._log_ui(f"Loop: sending {where} every {ms} ms")
+        self._set_inject_loop_running(True)
+
+    def _on_inject_interval_changed(self, _index: int = 0) -> None:
+        if self._inject_loop_active():
+            self._inject_loop_timer.setInterval(self._inject_loop_interval_ms())
+
+    def _inject_loop_tick(self) -> None:
+        if not self._is_bridge_running():
+            self._stop_inject_loop(reason="bridge not running")
+            return
+        raw = self.send_edit.toPlainText()
+        if not raw.strip():
+            self._stop_inject_loop(reason="empty text")
+            return
+        self._send_raw_manual(self._inject_loop_where(), raw, quiet=True)
 
     def start_bridge(self) -> None:
         if self._starting:
@@ -7916,6 +7996,7 @@ class BridgeLogicMixin:
         self._last_bridge_com_reported = ""
         self._bridge_stop_mono = time.monotonic()
         self._log_tab_auto_timer.stop()
+        self._stop_inject_loop()
         self._stop_ntrip()
         self._reset_ui_log_serial_coalesce()
         self._stop_guard_timer.stop()

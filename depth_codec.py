@@ -77,6 +77,27 @@ def _parse_sonarmite_ascii(line: str) -> Optional[DepthSample]:
     return DepthSample(depth_m=depth, source="sonarmite_ascii", raw_line=text, received_mono=time.monotonic())
 
 
+def depth_display_field(sample: DepthSample) -> str:
+    """Original depth field text from the source sentence (preserves decimal places)."""
+    raw = (sample.raw_line or "").strip()
+    if sample.source == "sonarmite_ascii":
+        parts = raw.split()
+        if len(parts) >= 6 and parts[5].strip():
+            return parts[5].strip()
+    if raw.startswith("$"):
+        body = raw.split("*", 1)[0]
+        parts = body.split(",")
+        tag = parts[0].lstrip("$").upper() if parts else ""
+        if (tag.endswith("DPT") or tag == "DPT") and len(parts) >= 2 and parts[1].strip():
+            return parts[1].strip()
+        if (tag.endswith("DBT") or tag == "DBT") and len(parts) >= 4:
+            if parts[3].strip():
+                return parts[3].strip()
+            if len(parts) >= 2 and parts[1].strip():
+                return parts[1].strip()
+    return f"{sample.depth_m:.2f}"
+
+
 def parse_depth_line(line: str) -> Optional[DepthSample]:
     if not line or not str(line).strip():
         return None

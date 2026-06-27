@@ -61,6 +61,7 @@ class WebSessionState:
     depth_port: str = ""
     depth_rate_hz: float = 0.0
     last_depth_m: Optional[float] = None
+    last_depth_text: str = ""
     last_sounding_stale: bool = False
     sounding_count: int = 0
     sounding_stale_count: int = 0

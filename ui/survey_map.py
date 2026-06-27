@@ -25,6 +25,13 @@ _JS_REFRESH_LAYOUT = (
     "if(typeof window.refreshMapLayout==='function'){window.refreshMapLayout();}"
     "})();"
 )
+_JS_INIT_OVERLAYS = (
+    "(function(){"
+    "if(typeof initSurveyMapOverlays==='function'){initSurveyMapOverlays();}"
+    "else if(typeof resetSurveyMapOverlays==='function'){resetSurveyMapOverlays();}"
+    "})();"
+)
+_SURVEY_MAP_PAGE_QUERY = "v=1.49.0"
 
 
 def _static_survey_map_html() -> Optional[str]:
@@ -48,7 +55,7 @@ def _survey_map_page_url(win: Any) -> Optional[str]:
         try:
             ensure()
             base = str(local_url()).rstrip("/")
-            return f"{base}/static/survey_map.html"
+            return f"{base}/static/survey_map.html?{_SURVEY_MAP_PAGE_QUERY}"
         except Exception:
             pass
     from pathlib import Path
@@ -162,6 +169,7 @@ class SurveyMapPanel(QtWidgets.QWidget):
         if not ok or not self._view:
             return
         QtCore.QTimer.singleShot(0, self._push_prefs_to_map)
+        self._run_map_js(_JS_INIT_OVERLAYS)
         self.refresh_map_layout()
         if self._last_stats:
             self._last = 0.0
@@ -199,6 +207,10 @@ class SurveyMapPanel(QtWidgets.QWidget):
             "soundings_recent": stats.get("soundings_recent") or [],
             "running": bool(stats.get("running")),
             "depth_rate_hz": stats.get("depth_rate_hz", stats.get("depth_hz")),
+            "depth_enabled": bool(stats.get("depth_enabled")),
+            "last_depth_m": stats.get("last_depth_m"),
+            "last_depth_text": stats.get("last_depth_text") or "",
+            "last_sounding_stale": bool(stats.get("last_sounding_stale")),
             **self._depth_prefs_payload(),
         }
         blob = json.dumps(payload)

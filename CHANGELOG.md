@@ -11,6 +11,74 @@ High-level notes for **this fork / branch** (`2034-ui-journey-modernization` and
 
 ---
 
+## v1.49.0
+
+Release checkpoint since v1.48.19 — survey depth stack, export replay, and web/Survey Map legend polish.
+
+- **Depth–position mux** — high-rate `$SDDPT` no longer stacks on one fix; samples wait for the next GGA/RMC and spread along the segment (live Survey Map trail + session export).
+- **Live depth readout** — draggable HUD on Survey Map and web dashboard; inline depth above the color scale; 0.01 m precision with `last_depth_text` from the raw field.
+- **Depth legend** — Survey Map + web grid layout; customizable shallow/mid/deep colors; layout/overlap fixes for Qt WebEngine.
+- **Export replay** — `session_sounding_replay.py` binds each depth to the **next** fix in backup stream order; ISO timestamps from GGA/RMC; CSV/KML tests.
+- **Web dashboard** — grid layout script/cache fixes; `map_depth_readout.js`; depth legend stays visible between map redraws.
+- **Inject tab** — repeat-send loop (200 ms–2 s) to serial/network/both.
+- **Modern Control** — nav order preserves user layout; embedded tools chip scroll width contract aligned with tests.
+
+## v1.48.33
+
+- **Export depth sync** — session CSV/KML replay binds each `$SDDPT` to the **next** `$GPGGA`/`$GPRMC` in stream order (no cross-block interpolation); restores UTC timestamps from GGA/RMC time + RMC date.
+
+## v1.48.32
+
+- **Web depth legend fix** — live readout updates every `/status` poll (not only after map init), legend is wide enough for `8.54 m`, cache-busted `map_depth_readout.js`, and `/status` carries `last_depth_text` from the raw depth field so hundredths track SonarMite/NMEA source precision.
+
+## v1.48.31
+
+- **Live depth precision** — Survey Map and web legend readout show depth to **0.01 m** (e.g. 7.56, 1000.00) for SonarMite-style soundings.
+
+## v1.48.30
+
+- **Live depth inline** — current depth (m) in the Survey Map control panel above the 0–200 scale row, and at the top of the web depth legend; Qt map bridge now forwards `last_depth_m`.
+
+## v1.48.29
+
+- **Live depth readout** — draggable HUD on Survey Map and web dashboard map shows current depth (m), sample rate, and stale-fix hint; drag grip to reposition, double-click grip to reset.
+
+## v1.48.28
+
+- **Web dashboard blank fix** — grid layout (`/`) regained missing GridStack scripts after `depth_ramp.js` was added to the classic template; builder regex updated so localhost and Tailscale URLs load tiles again.
+
+## v1.48.27
+
+- **Export depth path** — CSV/KML re-mux from session backup in stream order (each `$SDDPT` spread between consecutive GGA/RMC fixes); explicit DDMM/DDDMM coordinate math; UDP `$SDDPT` muxed on the net path; KML placemarks numbered contiguously.
+
+## v1.48.26
+
+- **Web dashboard depth legend** — grid layout (default `/` route) now includes the depth color scale; legend paints top-right whenever depth points are on, even between map redraws.
+
+## v1.48.25
+
+- **Survey Map depth legend** — default top-right on launch; ignore centered saved positions; defer layout until the map shell is sized; overlap fixes no longer persist to localStorage unless you drag.
+
+## v1.48.24
+
+- **Depth–position mux** — high-rate `$SDDPT` samples no longer stack on one cached lat/lon; depths after the active GGA/RMC wait for the subsequent fix and are spread along the segment (export + Survey Map track).
+
+## v1.48.23
+
+- **Survey Map overlays (real fix)** — overlay script was UTF-16 (WebEngine could not parse it); logic inlined in `survey_map.js` + CSS defaults put controls top-left and depth legend top-right.
+
+## v1.48.22
+
+- **Survey Map overlays (fix)** — controls and depth legend start separated (legend top-right); visible drag grip with mouse fallback for Qt WebEngine; auto-fix overlapping saved positions; status on its own row.
+
+## v1.48.21
+
+- **Survey Map overlays** — draggable control bar and depth legend (grip at top; double-click grip to reset); Leaflet +/- moved to bottom-right so nothing clips; status line no longer ellipsized.
+
+## v1.48.20
+
+- **Inject tab — repeat send** — paste a line and loop it to serial, network, or both on 200 ms / 500 ms / 1 s / 2 s; stops when you uncheck or Stop bridge (no per-tick log spam).
+
 ## v1.48.19
 
 - **Window title bar** — clamp main window to the visible monitor whenever it is shown or restored (tray, minimize, maximize, layout switch), not only at launch.

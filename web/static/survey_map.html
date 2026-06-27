@@ -5,19 +5,26 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Survey Map</title>
   <link rel="stylesheet" href="./vendor/leaflet/leaflet.css" />
-  <link rel="stylesheet" href="./survey_map.css" />
+  <link rel="stylesheet" href="./survey_map.css?v=1.49.0" />
 </head>
 <body>
   <div id="map-shell" class="map-shell">
     <div id="tile-banner" class="tile-banner" hidden>Map tiles need internet</div>
     <header id="map-top-controls" class="map-top-controls" aria-label="Survey map controls">
-      <div class="ctrl-row ctrl-row-primary">
+      <div class="ctrl-row ctrl-row-status">
         <span id="ctrl-status-text" class="ctrl-metric">Stopped</span>
+      </div>
+      <div class="ctrl-row ctrl-row-primary">
         <label class="ctrl-inline-label" for="ctrl-layer">Layer</label>
         <select id="ctrl-layer" class="ctrl-select ctrl-select-compact">
           <option value="satellite">Satellite</option>
           <option value="street">Street</option>
         </select>
+      </div>
+      <div class="ctrl-row ctrl-row-live-depth" id="ctrl-live-depth-row" hidden aria-live="polite">
+        <span class="ctrl-live-depth-label">Now</span>
+        <span class="ctrl-live-depth-value mono" id="ctrl-live-depth-value">--</span>
+        <span class="ctrl-live-depth-unit">m</span>
       </div>
       <div class="ctrl-row ctrl-row-secondary">
         <label class="ctrl-check-label"><input type="checkbox" id="ctrl-show-depth" checked /> Depth</label>
@@ -59,6 +66,7 @@
   <script src="./vendor/leaflet/leaflet.js"></script>
   <script src="qrc:///qtwebchannel/qwebchannel.js"></script>
   <script src="./depth_ramp.js"></script>
-  <script src="./survey_map.js"></script>
+  <script src="./map_depth_readout.js?v=1.49.0"></script>
+  <script src="./survey_map.js?v=1.49.0"></script>
 </body>
 </html>

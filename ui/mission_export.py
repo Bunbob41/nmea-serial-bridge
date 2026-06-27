@@ -9,11 +9,25 @@ from pathlib import Path
 
 from core.local_logger import LOCAL_BACKUP_EXT, LOCAL_BACKUP_LEGACY_EXT
 from nmea_codec import nmea_sentence_type
+from nmea_position import parse_nmea_position
+from session_sounding_replay import backup_has_depth_sentences, replay_soundings_from_backup
 from ui.backup_status import _human_bytes
 from ui.mission_session import MissionSessionRecord
-from nmea_position import parse_nmea_position
 
 SESSION_BACKUP_SUFFIXES = (LOCAL_BACKUP_EXT, LOCAL_BACKUP_LEGACY_EXT, ".log", ".txt")
+
+
+def _export_soundings(record: MissionSessionRecord) -> list[dict[str, object]]:
+    """Prefer replay mux from session backup for continuous, stream-order soundings."""
+    try:
+        source = resolve_session_backup_path(record)
+    except FileNotFoundError:
+        return list(getattr(record, "soundings", None) or [])
+    if backup_has_depth_sentences(source):
+        replayed = replay_soundings_from_backup(source)
+        if replayed:
+            return replayed
+    return list(getattr(record, "soundings", None) or [])
 
 QUICK_EXPORT_SAVE_FILTER = (
     "NMEA / log (*.nmea *.log *.txt);;NMEA files (*.nmea);;"
@@ -84,7 +98,7 @@ def export_session_nmea_csv(source: Path, dest: Path) -> Path:
 
 def export_session_survey_csv(record: MissionSessionRecord, dest: Path) -> Path:
     """Export muxed soundings when available; otherwise fall back to raw NMEA CSV."""
-    soundings = list(getattr(record, "soundings", None) or [])
+    soundings = _export_soundings(record)
     dest = Path(dest)
     dest.parent.mkdir(parents=True, exist_ok=True)
     if not soundings:
@@ -165,13 +179,14 @@ def export_session_track_kml(
 
 def export_session_soundings_kml(record: MissionSessionRecord, dest: Path) -> Path:
     """KML track from muxed soundings when depth COM was enabled."""
-    soundings = list(getattr(record, "soundings", None) or [])
+    soundings = _export_soundings(record)
     if not soundings:
         source = resolve_session_backup_path(record)
         return export_session_track_kml(source, dest)
     coords = []
     placemarks = []
-    for idx, row in enumerate(soundings):
+    placemark_no = 0
+    for row in soundings:
         lat = row.get("lat")
         lon = row.get("lon")
         if lat is None or lon is None:
@@ -182,11 +197,12 @@ def export_session_soundings_kml(record: MissionSessionRecord, dest: Path) -> Pa
         except (TypeError, ValueError):
             continue
         coords.append((lon_f, lat_f))
+        placemark_no += 1
         depth = row.get("depth_m", "")
         stale = row.get("fix_stale", False)
         placemarks.append(
             "    <Placemark>\n"
-            f"      <name>Sounding {idx + 1}</name>\n"
+            f"      <name>Sounding {placemark_no}</name>\n"
             "      <Point><coordinates>"
             f"{lon_f:.6f},{lat_f:.6f},0"
             "</coordinates></Point>\n"

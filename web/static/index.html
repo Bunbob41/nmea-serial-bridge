@@ -194,6 +194,10 @@
         <div class="map-coords mono" id="map-coords">No fix yet</div>
         <div class="map-frame" id="map-frame" hidden>
           <aside id="map-depth-legend" class="map-depth-legend" hidden aria-label="Depth color scale (right-click to customize colors)">
+            <div class="map-legend-live-depth" id="map-legend-live-depth" hidden aria-live="polite">
+              <span class="map-legend-live-value mono" id="map-legend-live-value">--</span>
+              <span class="map-legend-live-unit">m</span>
+            </div>
             <div class="map-depth-legend-title">Depth (m)</div>
             <div class="map-depth-legend-body">
               <div class="map-depth-legend-labels">
@@ -451,7 +455,8 @@
   </footer>
 
   <script src="/static/vendor/leaflet/leaflet.js"></script>
-  <script src="/static/depth_ramp.js?v=1.48.18"></script>
-  <script src="/static/dashboard.js?v=1.48.18"></script>
+  <script src="/static/depth_ramp.js?v=1.49.0"></script>
+  <script src="/static/map_depth_readout.js?v=1.49.0"></script>
+  <script src="/static/dashboard.js?v=1.49.0"></script>
 </body>
 </html>
