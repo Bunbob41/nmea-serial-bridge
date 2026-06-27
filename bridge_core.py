@@ -724,6 +724,11 @@ class SerialNetBridge:
             return
         self._ingest_depth_sample(sample)
 
+    def _flush_depth_pending(self) -> None:
+        for sounding in self._depth_fix_binder.flush_pending(wall_time=time.time()):
+            self._append_sounding(sounding)
+        self._depth_fix_binder.clear()
+
     def hz_depth(self) -> float:
         return rolling_hz_last_second(self._hz_depth_times)
 
@@ -1566,6 +1571,7 @@ class SerialNetBridge:
                         break
                     text = line_b.decode("utf-8", errors="replace").strip()
                     if text:
+                        self._tap_local_backup(line_b)
                         self._ingest_depth_line(text)
             except asyncio.CancelledError:
                 raise
@@ -2029,6 +2035,7 @@ class SerialNetBridge:
         self._serial_open = False
         self._network_ready = False
         self._reset_serial_decode_state()
+        self._flush_depth_pending()
         self._stop_local_backup()
 
     async def _await_closed(self, writer: Optional[asyncio.StreamWriter], label: str) -> None:
@@ -2102,9 +2109,7 @@ class SerialNetBridge:
         self._reset_serial_decode_state()
         self._nav_quality_state[0] = None
         self._position_state[0] = None
-        for sounding in self._depth_fix_binder.flush_pending(wall_time=time.time()):
-            self._append_sounding(sounding)
-        self._depth_fix_binder.clear()
+        self._flush_depth_pending()
 
         self._stop_local_backup()
         self._set_status("Serial: closed", "Network: stopped")
