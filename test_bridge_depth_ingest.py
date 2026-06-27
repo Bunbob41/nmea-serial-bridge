@@ -17,6 +17,26 @@ def _sddpt(depth_m: float) -> str:
 
 
 class TestBridgeDepthIngest(unittest.TestCase):
+    def test_ingest_holds_depth_until_first_fix(self) -> None:
+        loop = asyncio.new_event_loop()
+        b = SerialNetBridge(
+            "COM99",
+            115200,
+            NetMode.UDP_LISTEN,
+            loop=loop,
+            udp_listen=("127.0.0.1", 10110),
+            nmea_mode=NmeaMode.PASSTHROUGH,
+            depth_com_enabled=True,
+            depth_com_port="COM8",
+        )
+        b.running = True
+        b._ingest_depth_line(_sddpt(4.0))
+        self.assertEqual(b.sounding_stats()["sounding_count"], 0)
+        b._ingest_net(_GGA, "UDP")
+        self.assertEqual(b.sounding_stats()["sounding_count"], 1)
+        b.abort_now()
+        loop.close()
+
     def test_ingest_releases_on_subsequent_fix(self) -> None:
         loop = asyncio.new_event_loop()
         b = SerialNetBridge(

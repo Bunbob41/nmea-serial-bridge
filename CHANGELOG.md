@@ -11,6 +11,11 @@ High-level notes for **this fork / branch** (`2034-ui-journey-modernization` and
 
 ---
 
+## v1.49.2
+
+- **Depth mux pre-fix hold** — live `DepthFixBinder` queues depths before the first GGA/RMC instead of emitting null-coordinate soundings; stop flush drops unbound pending (matches export replay).
+- **Export timestamps** — live session buffer rows write ISO UTC `timestamp` strings in CSV/KML fallback, matching replay export format.
+
 ## v1.49.1
 
 - **CI import fix** — guard `_DevStaticFiles` in `web_api.py` so module import no longer raises `NameError` when `fastapi` / `StaticFiles` is absent (fixes `bench_gui_smoke` on minimal runners).

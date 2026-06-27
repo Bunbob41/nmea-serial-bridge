@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from typing import Any, Deque, Optional
 
 from depth_codec import DepthSample
+from session_sounding_replay import format_export_timestamp
 
 DISPLAY_CAP = 5000
 STALE_MS = 3000
@@ -44,7 +45,7 @@ class Sounding:
             "fix_age_ms": self.fix_age_ms,
         }
         if self.wall_time is not None:
-            out["timestamp"] = self.wall_time
+            out["timestamp"] = format_export_timestamp("", epoch=self.wall_time)
         if self.lat is not None and self.lon is not None:
             out["lat"] = self.lat
             out["lon"] = self.lon
@@ -189,7 +190,9 @@ class DepthFixBinder:
         wall_time: Optional[float] = None,
     ) -> list[Sounding]:
         if self._cur is None:
-            return [_make_sounding(depth, None, None, None, stale_ms=stale_ms, wall_time=wall_time)]
+            if len(self._pending) < self._pending_cap:
+                self._pending.append(depth)
+            return []
 
         if (
             self._prev is not None
@@ -248,12 +251,8 @@ class DepthFixBinder:
         if not self._pending:
             return []
         if self._cur is None:
-            out = [
-                _make_sounding(d, None, None, None, stale_ms=stale_ms, wall_time=wall_time)
-                for d in self._pending
-            ]
             self._pending.clear()
-            return out
+            return []
         out = [
             _make_sounding(
                 d,

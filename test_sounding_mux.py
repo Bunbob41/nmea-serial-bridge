@@ -93,6 +93,43 @@ class TestSoundingMux(unittest.TestCase):
         self.assertEqual(len(out), 1)
         self.assertAlmostEqual(out[0].lat, 44.005, places=4)
 
+    def test_binder_holds_depth_until_first_fix(self) -> None:
+        binder = DepthFixBinder()
+        t0 = 3000.0
+        out = binder.bind_depth(_depth(t0, depth_m=7.5))
+        self.assertEqual(out, [])
+        self.assertEqual(len(binder._pending), 1)
+        released = binder.on_fix(_fix(44.0, -120.0, t0 + 1.0))
+        self.assertEqual(len(released), 1)
+        self.assertAlmostEqual(released[0].lat, 44.0)
+        self.assertAlmostEqual(released[0].lon, -120.0)
+        self.assertAlmostEqual(released[0].depth_m, 7.5)
+
+    def test_binder_flush_drops_pending_without_fix(self) -> None:
+        binder = DepthFixBinder()
+        binder.bind_depth(_depth(4000.0))
+        flushed = binder.flush_pending()
+        self.assertEqual(flushed, [])
+        self.assertEqual(len(binder._pending), 0)
+
+    def test_export_dict_uses_iso_timestamp(self) -> None:
+        epoch = 1_700_000_000.5
+        sounding = Sounding(
+            depth_m=3.2,
+            lat=44.0,
+            lon=-120.0,
+            fix_age_ms=0,
+            stale=False,
+            depth_source="sddpt",
+            wall_time=epoch,
+            hdop=1.0,
+            fix_type=1,
+        )
+        row = sounding.to_export_dict()
+        self.assertIsInstance(row["timestamp"], str)
+        self.assertTrue(str(row["timestamp"]).endswith("Z"))
+        self.assertNotIsInstance(row["timestamp"], float)
+
 
 if __name__ == "__main__":
     unittest.main()
