@@ -159,7 +159,7 @@ class DepthFixBinder:
     def clear(self) -> None:
         self._prev: Optional[FixSnapshot] = None
         self._cur: Optional[FixSnapshot] = None
-        self._pending: list[DepthSample] = []
+        self._pending: list[tuple[DepthSample, Optional[float]]] = []
 
     def on_fix(self, snap: FixSnapshot) -> list[Sounding]:
         """Record a new positional sentence; release depths waiting for this subsequent fix."""
@@ -167,9 +167,16 @@ class DepthFixBinder:
         if self._cur is not None and self._pending:
             released = self._release_pending(self._cur, snap)
         elif self._cur is None and self._pending:
-            for depth in self._pending:
+            for depth, wall_time in self._pending:
                 released.append(
-                    _make_sounding(depth, snap.lat, snap.lon, snap, force_stale=False)
+                    _make_sounding(
+                        depth,
+                        snap.lat,
+                        snap.lon,
+                        snap,
+                        force_stale=False,
+                        wall_time=wall_time,
+                    )
                 )
             self._pending.clear()
 
@@ -191,7 +198,7 @@ class DepthFixBinder:
     ) -> list[Sounding]:
         if self._cur is None:
             if len(self._pending) < self._pending_cap:
-                self._pending.append(depth)
+                self._pending.append((depth, wall_time))
             return []
 
         if (
@@ -212,7 +219,7 @@ class DepthFixBinder:
 
         if depth.received_mono > self._cur.fix_mono:
             if len(self._pending) < self._pending_cap:
-                self._pending.append(depth)
+                self._pending.append((depth, wall_time))
                 return []
             lat_lon = interpolate_position(self._prev, self._cur, depth.received_mono)
             if lat_lon is None:
@@ -260,10 +267,10 @@ class DepthFixBinder:
                 self._cur.lon,
                 self._cur,
                 stale_ms=stale_ms,
-                wall_time=wall_time,
+                wall_time=stored_wall_time if stored_wall_time is not None else wall_time,
                 force_stale=True,
             )
-            for d in self._pending
+            for d, stored_wall_time in self._pending
         ]
         self._pending.clear()
         return out
@@ -279,11 +286,20 @@ class DepthFixBinder:
         if n <= 0:
             return []
         out: list[Sounding] = []
-        for i, depth in enumerate(pending, start=1):
+        for i, (depth, wall_time) in enumerate(pending, start=1):
             t = i / (n + 1)
             lat = prev_fix.lat + (next_fix.lat - prev_fix.lat) * t
             lon = prev_fix.lon + (next_fix.lon - prev_fix.lon) * t
-            out.append(_make_sounding(depth, lat, lon, next_fix, force_stale=False))
+            out.append(
+                _make_sounding(
+                    depth,
+                    lat,
+                    lon,
+                    next_fix,
+                    force_stale=False,
+                    wall_time=wall_time,
+                )
+            )
         return out
 
 
