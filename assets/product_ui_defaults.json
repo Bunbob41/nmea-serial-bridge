@@ -172,8 +172,8 @@
       ]
     },
     "budget_survey": {
-      "depth_com_enabled": true,
-      "depth_com_port": "COM3",
+      "depth_com_enabled": false,
+      "depth_com_port": "",
       "depth_com_baud": 9600,
       "survey_map_base_layer": "satellite",
       "survey_map_show_depth": true,

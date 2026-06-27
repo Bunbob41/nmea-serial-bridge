@@ -137,29 +137,51 @@ def _fix_context_from_line(line: str, *, line_no: int, carry_date: str) -> Optio
     )
 
 
-def _depth_row(sample: DepthSample, fix: _FixContext) -> dict[str, Any]:
+def _depth_row(
+    sample: DepthSample,
+    fix: _FixContext,
+    *,
+    lat: Optional[float] = None,
+    lon: Optional[float] = None,
+    force_stale: bool = False,
+) -> dict[str, Any]:
     return {
         "timestamp": format_export_timestamp(
             fix.utc_time,
             utc_date=fix.utc_date,
             epoch=fix.epoch,
         ),
-        "lat": fix.lat,
-        "lon": fix.lon,
+        "lat": fix.lat if lat is None else lat,
+        "lon": fix.lon if lon is None else lon,
         "depth_m": float(sample.depth_m),
-        "fix_stale": False,
+        "fix_stale": force_stale,
         "depth_source": sample.source,
-        "fix_age_ms": max(0, (fix.line_no - int(sample.received_mono)) * 1000),
+        "fix_age_ms": 0,
     }
 
 
 def _assign_pending_depths(
     pending: list[DepthSample],
-    fix: _FixContext,
+    prev_fix: Optional[_FixContext],
+    next_fix: _FixContext,
     out: list[dict[str, Any]],
+    *,
+    force_stale: bool = False,
 ) -> None:
-    for sample in pending:
-        out.append(_depth_row(sample, fix))
+    n = len(pending)
+    if n <= 0:
+        return
+    if prev_fix is None:
+        for sample in pending:
+            out.append(_depth_row(sample, next_fix, force_stale=force_stale))
+    else:
+        for i, sample in enumerate(pending, start=1):
+            t = i / (n + 1)
+            lat = prev_fix.lat + (next_fix.lat - prev_fix.lat) * t
+            lon = prev_fix.lon + (next_fix.lon - prev_fix.lon) * t
+            out.append(
+                _depth_row(sample, next_fix, lat=lat, lon=lon, force_stale=force_stale)
+            )
     pending.clear()
 
 
@@ -167,7 +189,7 @@ def replay_soundings_from_lines(lines: list[str]) -> list[dict[str, Any]]:
     """Walk backup lines in order; bind each depth to the next GGA/RMC block fix."""
     out: list[dict[str, Any]] = []
     pending: list[DepthSample] = []
-    last_fix: Optional[_FixContext] = None
+    cur_fix: Optional[_FixContext] = None
     carry_date = ""
 
     for line_no, raw in enumerate(lines, start=1):
@@ -180,8 +202,8 @@ def replay_soundings_from_lines(lines: list[str]) -> list[dict[str, Any]]:
             if fix.utc_date:
                 carry_date = fix.utc_date
             if pending:
-                _assign_pending_depths(pending, fix, out)
-            last_fix = fix
+                _assign_pending_depths(pending, cur_fix, fix, out)
+            cur_fix = fix
             continue
 
         sample = parse_depth_line(line)
@@ -195,8 +217,8 @@ def replay_soundings_from_lines(lines: list[str]) -> list[dict[str, Any]]:
                 )
             )
 
-    if pending and last_fix is not None:
-        _assign_pending_depths(pending, last_fix, out)
+    if pending and cur_fix is not None:
+        _assign_pending_depths(pending, None, cur_fix, out, force_stale=True)
     return out
 
 

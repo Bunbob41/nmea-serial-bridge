@@ -58,24 +58,43 @@ class TestSessionSoundingReplay(unittest.TestCase):
         ]
         rows = replay_soundings_from_lines(lines)
         self.assertEqual(len(rows), 1)
-        self.assertAlmostEqual(rows[0]["lat"], 44.701479, places=5)
-        self.assertAlmostEqual(rows[0]["lon"], -120.259914, places=5)
+        lat_a = nmea_dm_to_decimal("4442.10932", "N", is_latitude=True)
+        lat_b = nmea_dm_to_decimal("4442.08878", "N", is_latitude=True)
+        lon_a = nmea_dm_to_decimal("12015.54222", "W", is_latitude=False)
+        lon_b = nmea_dm_to_decimal("12015.59487", "W", is_latitude=False)
+        assert lat_a is not None and lat_b is not None
+        assert lon_a is not None and lon_b is not None
+        self.assertAlmostEqual(rows[0]["lat"], (lat_a + lat_b) / 2, places=5)
+        self.assertAlmostEqual(rows[0]["lon"], (lon_a + lon_b) / 2, places=5)
         self.assertAlmostEqual(rows[0]["depth_m"], 7.0)
         self.assertIn("011514.17", rows[0]["timestamp"])
+        self.assertEqual(rows[0]["fix_age_ms"], 0)
+        self.assertFalse(rows[0]["fix_stale"])
 
-    def test_depths_before_next_fix_share_that_fix(self) -> None:
+    def test_depths_before_next_fix_spread_along_segment(self) -> None:
         lines = [_gga("3600.00000", "11800.00000", "120000.00")]
         for i in range(48):
             lines.append(_sddpt(float(i)))
         lines.append(_gga("3600.01000", "11800.01000", "120001.00"))
         rows = replay_soundings_from_lines(lines)
         self.assertEqual(len(rows), 48)
-        lats = {round(float(r["lat"]), 6) for r in rows}
-        lons = {round(float(r["lon"]), 6) for r in rows}
-        self.assertEqual(len(lats), 1)
-        self.assertEqual(len(lons), 1)
-        self.assertAlmostEqual(rows[0]["lat"], 36.000167, places=5)
-        self.assertAlmostEqual(rows[0]["lon"], -118.000167, places=5)
+        lats = [float(r["lat"]) for r in rows]
+        lons = [float(r["lon"]) for r in rows]
+        self.assertEqual(len(set(round(v, 8) for v in lats)), 48)
+        self.assertEqual(len(set(round(v, 8) for v in lons)), 48)
+        self.assertAlmostEqual(lats[0], 36.0 + (36.000167 - 36.0) / 49, places=5)
+        self.assertAlmostEqual(lats[-1], 36.0 + (36.000167 - 36.0) * 48 / 49, places=5)
+        self.assertFalse(any(r["fix_stale"] for r in rows))
+
+    def test_trailing_depths_marked_stale(self) -> None:
+        lines = [
+            _gga("3600.00000", "11800.00000", "120000.00"),
+            _sddpt(3.0),
+            _sddpt(4.0),
+        ]
+        rows = replay_soundings_from_lines(lines)
+        self.assertEqual(len(rows), 2)
+        self.assertTrue(all(r["fix_stale"] for r in rows))
 
     def test_timestamp_uses_rmc_date_with_gga_time(self) -> None:
         lines = [
