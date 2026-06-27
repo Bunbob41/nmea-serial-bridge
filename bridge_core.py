@@ -700,7 +700,10 @@ class SerialNetBridge:
                     pos_dict = pos.to_dict()
                     self._position_state[0] = pos_dict
                     snap = self._fix_snapshot_from_position_dict(pos_dict)
-                    for sounding in self._depth_fix_binder.on_fix(snap):
+                    for sounding in self._depth_fix_binder.on_fix(
+                        snap,
+                        wall_time=time.time(),
+                    ):
                         self._append_sounding(sounding)
                 sample = parse_depth_line(line)
                 if sample is not None:

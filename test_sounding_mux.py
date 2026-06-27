@@ -72,14 +72,15 @@ class TestSoundingMux(unittest.TestCase):
         binder = DepthFixBinder()
         t0 = 1000.0
         binder.on_fix(_fix(44.0, -120.0, t0))
-        wall_times = [1_700_000_000.0 + i * 0.02 for i in range(48)]
+        base_wall = 1_700_000_000.0
+        wall_times = [base_wall + i * 0.02 for i in range(48)]
         for i in range(48):
             binder.bind_depth(
                 _depth(t0 + 0.02 * (i + 1), depth_m=float(i)),
                 wall_time=wall_times[i],
             )
         self.assertEqual(len(binder._pending), 48)
-        released = binder.on_fix(_fix(44.01, -120.01, t0 + 1.0))
+        released = binder.on_fix(_fix(44.01, -120.01, t0 + 1.0), wall_time=base_wall + 1.0)
         self.assertEqual(len(released), 48)
         for sounding, expected in zip(released, wall_times):
             self.assertEqual(sounding.wall_time, expected)
@@ -90,6 +91,10 @@ class TestSoundingMux(unittest.TestCase):
         self.assertEqual(len(set(lons)), 48)
         self.assertAlmostEqual(lats[0], 44.0 + (0.01 / 49), places=6)
         self.assertAlmostEqual(lats[-1], 44.0 + (48 * 0.01 / 49), places=6)
+        for sounding in released:
+            row = sounding.to_export_dict()
+            self.assertIn("timestamp", row)
+            self.assertTrue(str(row["timestamp"]).endswith("Z"))
 
     def test_binder_interpolates_depths_before_current_fix(self) -> None:
         binder = DepthFixBinder()
@@ -103,17 +108,19 @@ class TestSoundingMux(unittest.TestCase):
     def test_binder_holds_depth_until_first_fix(self) -> None:
         binder = DepthFixBinder()
         t0 = 3000.0
-        wall_time = 1_700_000_100.5
+        wall_time = 1_700_000_010.0
         out = binder.bind_depth(_depth(t0, depth_m=7.5), wall_time=wall_time)
         self.assertEqual(out, [])
         self.assertEqual(len(binder._pending), 1)
-        released = binder.on_fix(_fix(44.0, -120.0, t0 + 1.0))
+        released = binder.on_fix(_fix(44.0, -120.0, t0 + 1.0), wall_time=1_700_000_011.0)
         self.assertEqual(len(released), 1)
         self.assertEqual(released[0].wall_time, wall_time)
         self.assertIn("timestamp", released[0].to_export_dict())
         self.assertAlmostEqual(released[0].lat, 44.0)
         self.assertAlmostEqual(released[0].lon, -120.0)
         self.assertAlmostEqual(released[0].depth_m, 7.5)
+        row = released[0].to_export_dict()
+        self.assertEqual(row["timestamp"], "2023-11-14T22:13:30.000Z")
 
     def test_binder_flush_drops_pending_without_fix(self) -> None:
         binder = DepthFixBinder()

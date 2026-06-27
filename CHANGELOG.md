@@ -11,6 +11,10 @@ High-level notes for **this fork / branch** (`2034-ui-journey-modernization` and
 
 ---
 
+## v1.49.3
+
+- **Live export timestamps on fix release** — pending high-rate depths retain ingest `wall_time` and pass it through `_release_pending` / first-fix `on_fix`, so mux-buffer CSV rows get ISO UTC `timestamp` values (not blank).
+
 ## v1.49.2
 
 - **Depth mux pre-fix hold** — live `DepthFixBinder` queues depths before the first GGA/RMC instead of emitting null-coordinate soundings; stop flush drops unbound pending (matches export replay).
