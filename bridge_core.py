@@ -2009,7 +2009,7 @@ class SerialNetBridge:
                 pass
         self._tcp_sink_writers.clear()
 
-        for w in (self.tcp_writer, self.serial_writer):
+        for w in (self.tcp_writer, self.serial_writer, self._depth_writer):
             if w is not None:
                 try:
                     w.close()
@@ -2031,6 +2031,8 @@ class SerialNetBridge:
         self.tcp_writer = None
         self.serial_reader = None
         self.serial_writer = None
+        self._depth_reader = None
+        self._depth_writer = None
 
         self._serial_open = False
         self._network_ready = False

@@ -7798,11 +7798,11 @@ class BridgeLogicMixin:
         bridge_obj = worker.bridge
         if bridge_obj is not None and hasattr(bridge_obj, "transport_session_summary"):
             transport_summary = bridge_obj.transport_session_summary(finalize=True)
+        worker.wait(4000)
         if bridge_obj is not None and hasattr(bridge_obj, "session_soundings_export"):
             session_soundings = bridge_obj.session_soundings_export()
         if bridge_obj is not None and hasattr(bridge_obj, "session_depth_stats"):
             session_depth_stats = dict(bridge_obj.session_depth_stats())
-        worker.wait(4000)
         summary = None
         record = None
         if getattr(self, "_session_backup_was_active", False):
