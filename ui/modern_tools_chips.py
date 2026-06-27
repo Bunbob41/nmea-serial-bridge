@@ -134,8 +134,8 @@ def sync_embedded_chip_inner_width(
         icon_only=icon_only,
         spacing=spacing,
     )
-    inner.setMinimumWidth(row_w)
-    inner.setMaximumWidth(max(row_w, 1))
+    inner.setMinimumWidth(0)
+    inner.setMaximumWidth(max(row_w, 16777215))
     inner.adjustSize()
     return row_w
 

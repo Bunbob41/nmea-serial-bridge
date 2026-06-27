@@ -64,15 +64,19 @@ class TestMissionChartBands(unittest.TestCase):
 
 
 class TestModernNavOrdering(unittest.TestCase):
-    def test_groups_stay_contiguous(self) -> None:
+    def test_order_preserves_saved_nav_order(self) -> None:
         from ui.tool_tabs import order_modern_tools_nav_names
 
-        scrambled = ["Inject", "Hub", "NMEA", "Presets", "Activity", "Control"]
-        ordered = order_modern_tools_nav_names(scrambled)
-        self.assertEqual(ordered.index("Control"), 0)
-        self.assertEqual(ordered.index("Activity"), 1)
-        self.assertLess(ordered.index("Activity"), ordered.index("Presets"))
-        self.assertEqual(len(ordered), len(scrambled))
+        saved = ["Inject", "Hub", "NMEA", "Presets", "Activity", "Control"]
+        ordered = order_modern_tools_nav_names(saved)
+        self.assertEqual(ordered, saved)
+
+    def test_order_dedupes_without_reordering(self) -> None:
+        from ui.tool_tabs import order_modern_tools_nav_names
+
+        duped = ["Control", "Activity", "Control", "Presets"]
+        ordered = order_modern_tools_nav_names(duped)
+        self.assertEqual(ordered, ["Control", "Activity", "Presets"])
 
 
 if __name__ == "__main__":

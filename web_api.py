@@ -133,6 +133,15 @@ class StatusResponse(BaseModel):
     udp_peer_stale: bool = False
     udp_peer_details: list[dict[str, Any]] = []
     net_mode: str = ""
+    depth_enabled: bool = False
+    depth_port: str = ""
+    depth_rate_hz: float = 0.0
+    last_depth_m: Optional[float] = None
+    last_depth_text: str = ""
+    last_sounding_stale: bool = False
+    sounding_count: int = 0
+    sounding_stale_count: int = 0
+    soundings_recent: list[dict[str, Any]] = []
 
 
 class ConfigResponse(BaseModel):
@@ -190,14 +199,17 @@ class CommandResponse(BaseModel):
     config: Optional[ConfigResponse] = None
 
 
-class _DevStaticFiles(StaticFiles):
-    """Avoid stale dashboard.js in browsers during grid/standard UI iteration."""
+if "StaticFiles" in globals():
+    class _DevStaticFiles(StaticFiles):
+        """Avoid stale dashboard.js in browsers during grid/standard UI iteration."""
 
-    async def get_response(self, path: str, scope) -> StarletteResponse:
-        response = await super().get_response(path, scope)
-        if path.endswith((".js", ".css", ".html")):
-            response.headers["Cache-Control"] = "no-store, must-revalidate"
-        return response
+        async def get_response(self, path: str, scope) -> StarletteResponse:
+            response = await super().get_response(path, scope)
+            if path.endswith((".js", ".css", ".html")):
+                response.headers["Cache-Control"] = "no-store, must-revalidate"
+            return response
+else:
+    _DevStaticFiles = None  # type: ignore[misc, assignment]
 
 
 def resolve_static_dir() -> Optional[Path]:

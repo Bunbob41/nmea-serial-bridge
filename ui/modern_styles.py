@@ -507,12 +507,95 @@ QWidget#modernLogConduit QPushButton {{
     padding: 5px 10px;
 }}
 
-/* ═══ Control tab ════════════════════════════════════════════════════════ */
+/* ═══ Control tab — Option A connection strip ═════════════════════════════ */
 QWidget#modernControlTab {{
     background-color: {MODERN_BG};
 }}
 QWidget#modernControlTab QLabel {{
     color: {MODERN_TEXT};
+}}
+QWidget#modernControlStripBand {{
+    background-color: transparent;
+}}
+QFrame#modernControlStrip {{
+    background-color: {MODERN_SURFACE};
+    border: 1px solid rgba(51, 65, 85, 0.45);
+    border-radius: 8px;
+}}
+QFrame#modernControlStrip[controlStripRunning="true"] {{
+    background-color: rgba(30, 27, 38, 0.92);
+    border: 1px solid rgba(71, 85, 105, 0.55);
+}}
+QFrame#modernControlSerialRow[serialLinkState="reconnecting"] {{
+    background-color: rgba(30, 27, 18, 0.55);
+    border: 1px solid rgba(251, 191, 36, 0.45);
+    border-radius: 8px;
+    padding: 4px 6px;
+    margin: -4px -6px;
+}}
+QLabel#modernControlStripLabel {{
+    color: {MODERN_TEXT_MUTED};
+    font-size: 8pt;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    min-width: 58px;
+    padding-right: 4px;
+}}
+QLabel#modernControlStripColon,
+QLabel#modernControlStripAt {{
+    color: {MODERN_TEXT_MUTED};
+    font-weight: 700;
+    padding: 0 2px;
+}}
+QToolButton#modernControlMoreToggle {{
+    color: {MODERN_ACCENT};
+    background: transparent;
+    border: none;
+    border-radius: 8px;
+    padding: 4px 8px;
+    font-size: 9.5pt;
+    font-weight: 700;
+    text-align: left;
+}}
+QToolButton#modernControlMoreToggle:hover {{
+    background-color: rgba(148, 163, 184, 0.12);
+}}
+QWidget#modernControlMoreOptions {{
+    background-color: transparent;
+}}
+QFrame#modernControlStrip QComboBox,
+QFrame#modernControlStrip QLineEdit {{
+    background-color: {MODERN_SURFACE_ALT};
+    color: {MODERN_TEXT};
+    border: 1px solid rgba(51, 65, 85, 0.55);
+    border-radius: 8px;
+    padding: 4px 8px;
+    min-height: 28px;
+}}
+QFrame#modernControlStrip QComboBox:focus,
+QFrame#modernControlStrip QLineEdit:focus {{
+    border: 1px solid {MODERN_ACCENT};
+}}
+QFrame#modernControlStrip QComboBox QAbstractItemView {{
+    background-color: {MODERN_SURFACE};
+    color: {MODERN_TEXT};
+    border: 1px solid rgba(51, 65, 85, 0.55);
+    border-radius: 8px;
+    selection-background-color: {MODERN_ACCENT};
+}}
+QFrame#modernControlStrip QCheckBox,
+QFrame#modernControlStrip QRadioButton {{
+    color: {MODERN_TEXT};
+    spacing: 8px;
+}}
+QFrame#modernControlStrip QPushButton#modernComRefreshBtn {{
+    background-color: {MODERN_SURFACE_ALT};
+    border: 1px solid rgba(51, 65, 85, 0.55);
+    border-radius: 8px;
+}}
+QFrame#modernControlStrip QPushButton#modernComRefreshBtn:hover {{
+    background-color: rgba(148, 163, 184, 0.16);
+    border-color: {MODERN_ACCENT};
 }}
 QWidget#modernControlStoppedViewport {{
     background-color: transparent;
@@ -520,7 +603,7 @@ QWidget#modernControlStoppedViewport {{
 QWidget#modernControlStoppedPanel {{
     background-color: transparent;
 }}
-QWidget#modernControlStoppedFormsHost {{
+QWidget#modernControlStoppedFormsHost,
 QWidget#modernControlFormsCenter {{
     background-color: transparent;
 }}
@@ -533,7 +616,7 @@ QWidget#modernControlLeftCol {{
 QFrame#modernControlFormCard {{
     background-color: {MODERN_SURFACE};
     border: 1px solid rgba(51, 65, 85, 0.45);
-    border-radius: 12px;
+    border-radius: 8px;
 }}
 QFrame#modernControlFormCard[serialLinkState="reconnecting"] {{
     background-color: rgba(30, 27, 18, 0.92);
@@ -711,15 +794,17 @@ QWidget#modernSessionRunCluster {{
     spacing: 6px;
 }}
 QFrame#modernControlPresetBar {{
-    background: transparent;
-    border: none;
+    background-color: rgba(30, 27, 38, 0.55);
+    border: 1px solid rgba(51, 65, 85, 0.4);
+    border-radius: 8px;
 }}
 QLabel#modernControlPresetIcon {{
     font-size: 12pt;
     min-width: 20px;
     padding-top: 1px;
 }}
-QFrame#modernControlFormCard QWidget#advancedNetPanel QGroupBox {{
+QFrame#modernControlFormCard QWidget#advancedNetPanel QGroupBox,
+QFrame#modernControlStrip QWidget#advancedNetPanel QGroupBox {{
     color: {MODERN_TEXT};
     font-size: 9.5pt;
     font-weight: 600;
@@ -728,13 +813,15 @@ QFrame#modernControlFormCard QWidget#advancedNetPanel QGroupBox {{
     margin-top: 8px;
     padding-top: 14px;
 }}
-QFrame#modernControlFormCard QWidget#advancedNetPanel QGroupBox::title {{
+QFrame#modernControlFormCard QWidget#advancedNetPanel QGroupBox::title,
+QFrame#modernControlStrip QWidget#advancedNetPanel QGroupBox::title {{
     subcontrol-origin: margin;
     left: 12px;
     padding: 0 6px;
     color: {MODERN_TEXT_MUTED};
 }}
-QFrame#modernControlFormCard QWidget#advancedNetPanel QLineEdit {{
+QFrame#modernControlFormCard QWidget#advancedNetPanel QLineEdit,
+QFrame#modernControlStrip QWidget#advancedNetPanel QLineEdit {{
     background-color: {MODERN_BG};
     color: {MODERN_TEXT};
     border: 1px solid rgba(71, 85, 105, 0.75);
@@ -743,16 +830,20 @@ QFrame#modernControlFormCard QWidget#advancedNetPanel QLineEdit {{
     min-height: 34px;
     font-size: 10pt;
 }}
-QFrame#modernControlFormCard QWidget#advancedNetPanel QLineEdit:focus {{
+QFrame#modernControlFormCard QWidget#advancedNetPanel QLineEdit:focus,
+QFrame#modernControlStrip QWidget#advancedNetPanel QLineEdit:focus {{
     border-color: {MODERN_ACCENT};
 }}
 QFrame#modernControlFormCard QWidget#advancedNetPanel QRadioButton,
-QFrame#modernControlFormCard QWidget#advancedNetPanel QCheckBox {{
+QFrame#modernControlFormCard QWidget#advancedNetPanel QCheckBox,
+QFrame#modernControlStrip QWidget#advancedNetPanel QRadioButton,
+QFrame#modernControlStrip QWidget#advancedNetPanel QCheckBox {{
     color: {MODERN_TEXT};
     spacing: 8px;
     font-size: 9.5pt;
 }}
-QFrame#modernControlFormCard QWidget#advancedNetPanel QLabel {{
+QFrame#modernControlFormCard QWidget#advancedNetPanel QLabel,
+QFrame#modernControlStrip QWidget#advancedNetPanel QLabel {{
     color: {MODERN_TEXT_MUTED};
     font-size: 9pt;
     font-weight: 600;

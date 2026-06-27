@@ -10,6 +10,76 @@ HealthTick = Literal["ok", "warn", "bad"]
 BUCKET_INTERVAL_S = 5.0
 
 
+def compute_depth_session_metrics(
+    soundings: list[dict[str, object]],
+    *,
+    depth_stats: dict[str, object] | None = None,
+) -> dict[str, object]:
+    """Derive Mission Review depth fields from mux buffer + live bridge stats."""
+    stats = depth_stats or {}
+    depths: list[float] = []
+    last_nonzero: Optional[float] = None
+    last_source = ""
+    for row in soundings:
+        try:
+            depth = float(row.get("depth_m"))
+        except (TypeError, ValueError):
+            continue
+        if depth >= 0:
+            depths.append(depth)
+        src = row.get("depth_source")
+        if src:
+            last_source = str(src)
+    for row in reversed(soundings):
+        try:
+            depth = float(row.get("depth_m"))
+        except (TypeError, ValueError):
+            continue
+        if depth > 0:
+            last_nonzero = depth
+            last_source = str(row.get("depth_source") or last_source)
+            break
+    avg_depth = sum(depths) / len(depths) if depths else None
+    rate_hz = float(stats.get("depth_rate_hz") or 0.0)
+    last_from_stats = stats.get("last_depth_m")
+    last_depth: Optional[float] = last_nonzero
+    if last_depth is None and last_from_stats is not None:
+        try:
+            last_depth = float(last_from_stats)
+        except (TypeError, ValueError):
+            last_depth = None
+    return {
+        "depth_enabled": bool(stats.get("depth_enabled")),
+        "depth_port": str(stats.get("depth_port") or ""),
+        "depth_rate_hz": rate_hz,
+        "last_depth_m": last_depth,
+        "avg_depth_m": avg_depth,
+        "depth_source": last_source or str(stats.get("last_depth_source") or ""),
+        "sounding_count": int(stats.get("sounding_count") or len(soundings)),
+    }
+
+
+def apply_depth_metrics_to_record(
+    record: "MissionSessionRecord",
+    soundings: list[dict[str, object]],
+    *,
+    depth_stats: dict[str, object] | None = None,
+    avg_depth_rate_hz: float = 0.0,
+) -> None:
+    metrics = compute_depth_session_metrics(soundings, depth_stats=depth_stats)
+    record.depth_enabled = bool(metrics.get("depth_enabled"))
+    record.depth_port = str(metrics.get("depth_port") or "")
+    record.depth_rate_hz = float(metrics.get("depth_rate_hz") or 0.0)
+    record.avg_depth_rate_hz = float(avg_depth_rate_hz)
+    last_depth = metrics.get("last_depth_m")
+    record.last_depth_m = float(last_depth) if last_depth is not None else None
+    avg_depth = metrics.get("avg_depth_m")
+    record.avg_depth_m = float(avg_depth) if avg_depth is not None else None
+    record.depth_source = str(metrics.get("depth_source") or "")
+    record.sounding_count = int(metrics.get("sounding_count") or 0)
+    record.soundings = list(soundings)
+
+
 @dataclass
 class MissionSessionRecord:
     """Frozen view of one backup-enabled bridge session."""
@@ -29,6 +99,15 @@ class MissionSessionRecord:
     com_active_s: float = 0.0
     last_com_to_net_age_s: Optional[float] = None
     udp_peer_count: int = 0
+    soundings: list[dict[str, object]] = field(default_factory=list)
+    depth_enabled: bool = False
+    depth_port: str = ""
+    depth_rate_hz: float = 0.0
+    avg_depth_rate_hz: float = 0.0
+    last_depth_m: Optional[float] = None
+    avg_depth_m: Optional[float] = None
+    depth_source: str = ""
+    sounding_count: int = 0
 
     def to_summary_dict(self) -> dict[str, object]:
         return {
@@ -60,6 +139,7 @@ class MissionSessionRecorder:
         self._throughput_buckets: list[int] = []
         self._health_ticks: list[HealthTick] = []
         self._hz_samples: list[float] = []
+        self._depth_hz_samples: list[float] = []
         self._last_error = ""
         self._com = ""
         self._baud = 0
@@ -80,6 +160,7 @@ class MissionSessionRecorder:
         self._throughput_buckets = []
         self._health_ticks = []
         self._hz_samples = []
+        self._depth_hz_samples = []
         self._last_error = ""
         self._com = com
         self._baud = baud
@@ -96,6 +177,9 @@ class MissionSessionRecorder:
         if err:
             self._last_error = err
         self._hz_samples.append(hz_up)
+        if stats.get("depth_enabled"):
+            depth_hz = float(stats.get("depth_rate_hz") or 0.0)
+            self._depth_hz_samples.append(depth_hz)
         self._last_backup_bytes = backup_bytes
         self._last_dropped = dropped
 
@@ -127,6 +211,10 @@ class MissionSessionRecorder:
         duration = max(0.0, now - self._started_mono) if self._started_mono else 0.0
         hz_vals = [h for h in self._hz_samples if h > 0]
         avg_hz = sum(hz_vals) / len(hz_vals) if hz_vals else 0.0
+        depth_hz_vals = [h for h in self._depth_hz_samples if h > 0]
+        avg_depth_hz = (
+            sum(depth_hz_vals) / len(depth_hz_vals) if depth_hz_vals else 0.0
+        )
         return MissionSessionRecord(
             started_mono=self._started_mono,
             ended_mono=now,
@@ -140,6 +228,7 @@ class MissionSessionRecorder:
             error=str(summary.get("error") or self._last_error),
             com=self._com,
             baud=self._baud,
+            avg_depth_rate_hz=avg_depth_hz,
         )
 
     def _close_bucket(

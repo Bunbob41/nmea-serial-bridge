@@ -334,7 +334,8 @@ Serial Link is one **COM ↔ IP** bridge session. It does not replace survey sof
 | -------- | -------------------- | ----- |
 | **Mission Planner / QGC on laptop** | Cube on vessel PC COM → bridge → MP **UDP Client** on survey laptop via LAN or **Tailscale** | Target the **survey PC’s IP:14550**, not `127.0.0.1`, from remote machines. Open Windows firewall for inbound UDP on that port. |
 | **Hypack / acquisition PC** | INS **NMEA** UDP → bridge → **COM** into Hypack or acquisition card | Classic survey path (§6). Passthrough NMEA; match baud and sentence rate. |
-| **Sonar / depth (NMEA)** | SonarMite / SDDPT / ASCII depth on serial or via mux | **Passthrough** or **Raw** depending on format; bridge does not merge depth with GPS — your survey software does. |
+| **Sonar / depth (NMEA)** | SonarMite / SDDPT / ASCII on **secondary COM** (optional) | Enable **Depth sonar on secondary COM** on Control; GNSS on UDP or primary COM. Serial Link **muxes** depth to latest fix for Survey Map + export. |
+| **Budget survey stack** | Cheap GNSS + single-beam without Applanix/DCT | See [`docs/BUDGET_SURVEY_STACK.md`](BUDGET_SURVEY_STACK.md): UDP GNSS + COM sonar, Survey Map tab, CSV/KML with depth. |
 | **One COM, many listeners** | **Fan-out** + optional **Extra TCP output** | e.g. MP + Python logger + web dashboard tap on same Cube stream without a second USB cable. |
 | **Mesh / PTP / MikroTik / Starlink + Tailscale** | Mesh provides **IP reachability**; bridge still **listens** on the survey PC | No special mesh mode — configure senders to the PC’s **mesh/VPN IP** and the same listen port. Watch jitter on HUD **Into COM** Hz. |
 | **Bench com0com** | Prove fan-out and MAVLink before the boat | com0com pair + MP UDP Client to localhost (§5.6). |

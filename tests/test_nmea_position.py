@@ -20,8 +20,16 @@ _SAMPLE_RMC = (
 
 class TestNmeaPosition(unittest.TestCase):
     def test_dm_to_decimal(self) -> None:
-        self.assertAlmostEqual(nmea_dm_to_decimal("3600.42235", "N") or 0, 36.007039, places=5)
-        self.assertAlmostEqual(nmea_dm_to_decimal("11846.36546", "W") or 0, -118.772757, places=5)
+        self.assertAlmostEqual(
+            nmea_dm_to_decimal("3600.42235", "N", is_latitude=True) or 0,
+            36.007039,
+            places=5,
+        )
+        self.assertAlmostEqual(
+            nmea_dm_to_decimal("11846.36546", "W", is_latitude=False) or 0,
+            -118.772757,
+            places=5,
+        )
 
     def test_parse_gga(self) -> None:
         pos = parse_gga_position(_SAMPLE_GGA)

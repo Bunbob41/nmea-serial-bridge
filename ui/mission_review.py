@@ -398,14 +398,18 @@ def _build_mission_summary_grid(win: BridgeLogicMixin) -> QtWidgets.QFrame:
         ("Safeguarded", "_mission_sum_safeguarded_val", "_mission_sum_safeguarded_unit"),
         ("Dropped", "_mission_sum_dropped_val", "_mission_sum_dropped_unit"),
         ("Duration", "_mission_sum_duration_val", "_mission_sum_duration_unit"),
-        ("Hz", "_mission_sum_hz_val", "_mission_sum_hz_unit"),
+        ("COM Hz", "_mission_sum_hz_val", "_mission_sum_hz_unit"),
+        ("Depth", "_mission_sum_depth_val", "_mission_sum_depth_unit"),
+        ("Depth Hz", "_mission_sum_depth_hz_val", "_mission_sum_depth_hz_unit"),
     )
     for col, (label, val_attr, unit_attr) in enumerate(specs):
         cell, val_lbl, unit_lbl = _mission_summary_metric(label)
         setattr(win, val_attr, val_lbl)
         setattr(win, unit_attr, unit_lbl)
-        grid.addWidget(cell, 0, col)
-    for col in range(len(specs)):
+        row = 0 if col < 4 else 1
+        col_in_row = col if col < 4 else col - 4
+        grid.addWidget(cell, row, col_in_row)
+    for col in range(4):
         grid.setColumnStretch(col, 1)
     return card
 
@@ -417,6 +421,11 @@ def _update_mission_summary_grid(
     dropped: int,
     duration_s: float,
     hz: float,
+    depth_m: Optional[float] = None,
+    depth_hz: float = 0.0,
+    depth_enabled: bool = False,
+    avg_depth_m: Optional[float] = None,
+    depth_source: str = "",
 ) -> None:
     val = getattr(win, "_mission_sum_safeguarded_val", None)
     unit = getattr(win, "_mission_sum_safeguarded_unit", None)
@@ -445,6 +454,40 @@ def _update_mission_summary_grid(
         val.setText(f"{hz:.1f}" if hz > 0 else "0.0")
         if unit is not None:
             unit.setText("Hz")
+    val = getattr(win, "_mission_sum_depth_val", None)
+    unit = getattr(win, "_mission_sum_depth_unit", None)
+    if val is not None:
+        if depth_enabled and depth_m is not None and depth_m > 0:
+            val.setText(f"{depth_m:.2f}")
+            if unit is not None:
+                unit.setText("m")
+            tip = "Latest non-zero depth from secondary COM"
+            if avg_depth_m is not None and avg_depth_m > 0:
+                tip += f" · session avg {avg_depth_m:.2f} m"
+            if depth_source:
+                tip += f" · {depth_source}"
+            val.setToolTip(tip)
+        elif depth_enabled:
+            val.setText("—")
+            if unit is not None:
+                unit.setText("")
+            val.setToolTip("Depth COM enabled but no soundings were muxed this session.")
+        else:
+            val.setText("—")
+            if unit is not None:
+                unit.setText("")
+            val.setToolTip("Enable Depth sonar on secondary COM on the Control tab.")
+    val = getattr(win, "_mission_sum_depth_hz_val", None)
+    unit = getattr(win, "_mission_sum_depth_hz_unit", None)
+    if val is not None:
+        if depth_enabled:
+            val.setText(f"{depth_hz:.1f}" if depth_hz > 0 else "0.0")
+            if unit is not None:
+                unit.setText("Hz")
+        else:
+            val.setText("—")
+            if unit is not None:
+                unit.setText("")
 
 
 def _mission_chart_panel(child: QtWidgets.QWidget) -> QtWidgets.QFrame:
@@ -487,6 +530,11 @@ def apply_mission_scrub(win: BridgeLogicMixin, bucket_index: int) -> None:
         dropped=dropped,
         duration_s=record.duration_s if at_end else snap.elapsed_s,
         hz=record.avg_hz_up,
+        depth_m=record.last_depth_m,
+        depth_hz=record.avg_depth_rate_hz or record.depth_rate_hz,
+        depth_enabled=record.depth_enabled,
+        avg_depth_m=record.avg_depth_m,
+        depth_source=record.depth_source,
     )
     note = getattr(win, "_mission_integrity_note", None)
     if note is not None:
@@ -660,6 +708,11 @@ def populate_mission_review(
         dropped=dropped,
         duration_s=record.duration_s,
         hz=record.avg_hz_up,
+        depth_m=record.last_depth_m,
+        depth_hz=record.avg_depth_rate_hz or record.depth_rate_hz,
+        depth_enabled=record.depth_enabled,
+        avg_depth_m=record.avg_depth_m,
+        depth_source=record.depth_source,
     )
     val = getattr(win, "_mission_sum_safeguarded_val", None)
     if val is not None and path:

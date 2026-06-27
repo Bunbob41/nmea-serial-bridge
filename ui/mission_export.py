@@ -9,11 +9,25 @@ from pathlib import Path
 
 from core.local_logger import LOCAL_BACKUP_EXT, LOCAL_BACKUP_LEGACY_EXT
 from nmea_codec import nmea_sentence_type
+from nmea_position import parse_nmea_position
+from session_sounding_replay import backup_has_depth_sentences, replay_soundings_from_backup
 from ui.backup_status import _human_bytes
 from ui.mission_session import MissionSessionRecord
-from nmea_position import parse_nmea_position
 
 SESSION_BACKUP_SUFFIXES = (LOCAL_BACKUP_EXT, LOCAL_BACKUP_LEGACY_EXT, ".log", ".txt")
+
+
+def _export_soundings(record: MissionSessionRecord) -> list[dict[str, object]]:
+    """Prefer replay mux from session backup for continuous, stream-order soundings."""
+    try:
+        source = resolve_session_backup_path(record)
+    except FileNotFoundError:
+        return list(getattr(record, "soundings", None) or [])
+    if backup_has_depth_sentences(source):
+        replayed = replay_soundings_from_backup(source)
+        if replayed:
+            return replayed
+    return list(getattr(record, "soundings", None) or [])
 
 QUICK_EXPORT_SAVE_FILTER = (
     "NMEA / log (*.nmea *.log *.txt);;NMEA files (*.nmea);;"
@@ -82,6 +96,46 @@ def export_session_nmea_csv(source: Path, dest: Path) -> Path:
     return dest
 
 
+def export_session_survey_csv(record: MissionSessionRecord, dest: Path) -> Path:
+    """Export muxed soundings when available; otherwise fall back to raw NMEA CSV."""
+    soundings = _export_soundings(record)
+    dest = Path(dest)
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    if not soundings:
+        source = resolve_session_backup_path(record)
+        return export_session_nmea_csv(source, dest)
+    with dest.open("w", encoding="utf-8", newline="") as out:
+        writer = csv.writer(out)
+        writer.writerow(
+            (
+                "timestamp",
+                "lat",
+                "lon",
+                "depth_m",
+                "fix_stale",
+                "depth_source",
+                "fix_age_ms",
+                "hdop",
+                "fix_type",
+            )
+        )
+        for row in soundings:
+            writer.writerow(
+                (
+                    row.get("timestamp", ""),
+                    row.get("lat", ""),
+                    row.get("lon", ""),
+                    row.get("depth_m", ""),
+                    row.get("fix_stale", ""),
+                    row.get("depth_source", ""),
+                    row.get("fix_age_ms", ""),
+                    row.get("hdop", ""),
+                    row.get("fix_type", ""),
+                )
+            )
+    return dest
+
+
 def export_session_track_kml(
     source: Path,
     dest: Path,
@@ -123,6 +177,65 @@ def export_session_track_kml(
     return dest
 
 
+def export_session_soundings_kml(record: MissionSessionRecord, dest: Path) -> Path:
+    """KML track from muxed soundings when depth COM was enabled."""
+    soundings = _export_soundings(record)
+    if not soundings:
+        source = resolve_session_backup_path(record)
+        return export_session_track_kml(source, dest)
+    coords = []
+    placemarks = []
+    placemark_no = 0
+    for row in soundings:
+        lat = row.get("lat")
+        lon = row.get("lon")
+        if lat is None or lon is None:
+            continue
+        try:
+            lat_f = float(lat)
+            lon_f = float(lon)
+        except (TypeError, ValueError):
+            continue
+        coords.append((lon_f, lat_f))
+        placemark_no += 1
+        depth = row.get("depth_m", "")
+        stale = row.get("fix_stale", False)
+        placemarks.append(
+            "    <Placemark>\n"
+            f"      <name>Sounding {placemark_no}</name>\n"
+            "      <Point><coordinates>"
+            f"{lon_f:.6f},{lat_f:.6f},0"
+            "</coordinates></Point>\n"
+            "      <ExtendedData>\n"
+            f"        <Data name=\"depth_m\"><value>{depth}</value></Data>\n"
+            f"        <Data name=\"fix_stale\"><value>{stale}</value></Data>\n"
+            "      </ExtendedData>\n"
+            "    </Placemark>\n"
+        )
+    if not coords:
+        source = resolve_session_backup_path(record)
+        return export_session_track_kml(source, dest)
+    coord_text = " ".join(f"{lon:.6f},{lat:.6f},0" for lon, lat in coords)
+    body = (
+        '<?xml version="1.0" encoding="UTF-8"?>\n'
+        '<kml xmlns="http://www.opengis.net/kml/2.2">\n'
+        "  <Document>\n"
+        "    <name>Mission soundings</name>\n"
+        "    <Placemark>\n"
+        "      <name>Mission track</name>\n"
+        "      <LineString><tessellate>1</tessellate>"
+        f"<coordinates>{coord_text}</coordinates></LineString>\n"
+        "    </Placemark>\n"
+        + "".join(placemarks)
+        + "  </Document>\n"
+        "</kml>\n"
+    )
+    dest = Path(dest)
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    dest.write_text(body, encoding="utf-8")
+    return dest
+
+
 def build_mission_summary_text(record: MissionSessionRecord) -> str:
     """Plain-text handoff manifest for the survey office."""
     mins = int(record.duration_s // 60)
@@ -137,6 +250,23 @@ def build_mission_summary_text(record: MissionSessionRecord) -> str:
         f"Backup chunks dropped: {record.total_dropped:,}",
         f"Backup path: {record.backup_path or '(none)'}",
     ]
+    if record.depth_enabled:
+        depth_line = (
+            f"Depth: {record.last_depth_m:.2f} m"
+            if record.last_depth_m is not None and record.last_depth_m > 0
+            else "Depth: (no muxed soundings)"
+        )
+        if record.avg_depth_m is not None and record.avg_depth_m > 0:
+            depth_line += f" · avg {record.avg_depth_m:.2f} m"
+        if record.depth_source:
+            depth_line += f" · {record.depth_source}"
+        lines.append(depth_line)
+        lines.append(
+            f"Depth stream: {record.avg_depth_rate_hz or record.depth_rate_hz:.2f} Hz"
+            f" · {record.sounding_count} soundings"
+        )
+        if record.depth_port:
+            lines.append(f"Depth COM: {record.depth_port}")
     if record.com:
         lines.append(f"Serial: {record.com} @ {record.baud}")
     if record.error:

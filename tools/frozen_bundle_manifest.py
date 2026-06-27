@@ -29,6 +29,10 @@ FROZEN_STATIC_FILES = (
     "web/static/index.html",
     "web/static/dashboard.js",
     "web/static/dashboard.css",
+    "web/static/survey_map.html",
+    "web/static/survey_map.css",
+    "web/static/survey_map.js",
+    "web/static/depth_ramp.js",
     "web/static/layouts/gridstack/index.html",
     "web/static/vendor/gridstack/gridstack-all.js",
 )

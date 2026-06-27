@@ -265,6 +265,9 @@ class BridgeLogicMixin:
         self._log_tab_auto_timer = QtCore.QTimer(self)
         self._log_tab_auto_timer.setSingleShot(True)
         self._log_tab_auto_timer.timeout.connect(self._auto_switch_to_log_tab)
+        self._inject_loop_timer = QtCore.QTimer(self)
+        self._inject_loop_timer.setTimerType(QtCore.Qt.TimerType.CoarseTimer)
+        self._inject_loop_timer.timeout.connect(self._inject_loop_tick)
         self._ntrip_future: Optional[asyncio.Future] = None
         self._bench_preflight_chain = False
         from app_facade import BridgeAppFacade
@@ -466,6 +469,7 @@ class BridgeLogicMixin:
         from ui.controls import wire_connection_controls
         wire_connection_controls(self)
         self.refresh_ports()
+        self._restore_budget_survey_prefs()
         self._apply_startup_connection_fields()
         self._mode_toggle()
         self._log_flush_timer.start(UI_LOG_FLUSH_MS)
@@ -2444,6 +2448,22 @@ class BridgeLogicMixin:
                 4000,
             )
 
+    def showEvent(self, event: QtGui.QShowEvent) -> None:
+        super().showEvent(event)
+        from ui.window_present import schedule_clamp_to_screen
+
+        schedule_clamp_to_screen(self)
+
+    def changeEvent(self, event: QtCore.QEvent) -> None:
+        super().changeEvent(event)
+        if event.type() != QtCore.QEvent.Type.WindowStateChange:
+            return
+        if self.windowState() & QtCore.Qt.WindowState.WindowMinimized:
+            return
+        from ui.window_present import schedule_clamp_to_screen
+
+        schedule_clamp_to_screen(self)
+
     def _pick_theme_zone_color(self, zone_id: str) -> None:
         current = self._theme_zone_colors.get(zone_id, DEFAULT_ZONE_COLORS.get(zone_id, "#222222"))
         start = QtGui.QColor(current)
@@ -2620,6 +2640,9 @@ class BridgeLogicMixin:
             if hasattr(nw, "_apply_theme"):
                 nw._apply_theme(self._theme_id, persist=False)
             nw.show()
+            from ui.window_present import schedule_launch_focus
+
+            schedule_launch_focus(nw)
             nw.raise_()
             nw.activateWindow()
             self.close()
@@ -4755,6 +4778,60 @@ class BridgeLogicMixin:
     def _refresh_intent_hint(self) -> None:
         self._apply_intent_hint_display()
 
+    def _restore_budget_survey_prefs(self) -> None:
+        from ui.ui_prefs import load_budget_survey_prefs
+
+        prefs = load_budget_survey_prefs()
+        chk = getattr(self, "chk_depth_com_enabled", None)
+        if chk is None:
+            return
+        chk.blockSignals(True)
+        try:
+            chk.setChecked(bool(prefs.get("depth_com_enabled")))
+            port = str(prefs.get("depth_com_port") or "")
+            dcb = getattr(self, "depth_com_cb", None)
+            if dcb is not None and port:
+                idx = dcb.findText(port)
+                if idx >= 0:
+                    dcb.setCurrentIndex(idx)
+                else:
+                    dcb.addItem(port)
+                    dcb.setCurrentText(port)
+            dbaud = getattr(self, "depth_baud_edit", None)
+            if dbaud is not None:
+                dbaud.setCurrentText(str(prefs.get("depth_com_baud", 4800)))
+        finally:
+            chk.blockSignals(False)
+        self._on_depth_com_enabled_toggled(chk.isChecked())
+
+    def _persist_budget_survey_prefs(self) -> None:
+        from ui.ui_prefs import load_budget_survey_prefs, save_budget_survey_prefs
+
+        prev = load_budget_survey_prefs()
+        panel = getattr(self, "survey_map_panel", None)
+        if panel is not None and hasattr(panel, "collect_prefs"):
+            prev.update(panel.collect_prefs())
+        dcb = getattr(self, "depth_com_cb", None)
+        dbaud = getattr(self, "depth_baud_edit", None)
+        chk = getattr(self, "chk_depth_com_enabled", None)
+        save_budget_survey_prefs(
+            {
+                **prev,
+                "depth_com_enabled": bool(chk.isChecked()) if chk else False,
+                "depth_com_port": dcb.currentText().strip() if dcb else "",
+                "depth_com_baud": int(read_baud_widget(dbaud)) if dbaud else 4800,
+            }
+        )
+
+    def _on_depth_com_enabled_toggled(self, enabled: bool) -> None:
+        for w in (
+            getattr(self, "depth_com_cb", None),
+            getattr(self, "depth_baud_edit", None),
+        ):
+            if w is not None:
+                w.setEnabled(bool(enabled))
+        self._persist_budget_survey_prefs()
+
     def _validate_before_start(self) -> Optional[str]:
         if self._worker and self._worker.isRunning():
             return "Bridge is still stopping. Wait a moment, then try again."
@@ -4781,6 +4858,21 @@ class BridgeLogicMixin:
         baud_err = validate_baud(read_baud_widget(self.baud_edit))
         if baud_err:
             return baud_err
+
+        chk_depth = getattr(self, "chk_depth_com_enabled", None)
+        if chk_depth is not None and chk_depth.isChecked():
+            dcb = getattr(self, "depth_com_cb", None)
+            depth_port = dcb.currentText().strip().upper() if dcb else ""
+            if not depth_port or depth_port.startswith("("):
+                return "Select a depth sonar COM port or disable secondary depth ingest."
+            primary = self.com_cb.currentText().strip().upper()
+            if depth_port == primary:
+                return "Depth sonar COM must differ from the primary bridge COM."
+            dbaud = getattr(self, "depth_baud_edit", None)
+            if dbaud is not None:
+                d_err = validate_baud(read_baud_widget(dbaud))
+                if d_err:
+                    return f"Depth sonar baud: {d_err}"
 
         if self.chk_advanced_net.isChecked():
             try:
@@ -6417,6 +6509,7 @@ class BridgeLogicMixin:
             **b.transport_stats(),
             **b.navigation_quality_stats(),
             **b.navigation_position_stats(),
+            **b.sounding_stats(),
             **b._local_backup_stats(),
         }
 
@@ -6473,6 +6566,10 @@ class BridgeLogicMixin:
         from ui.serial_link_alerts import sync_serial_link_alerts
 
         sync_serial_link_alerts(self, merged)
+
+        panel_map = getattr(self, "survey_map_panel", None)
+        if panel_map is not None and hasattr(panel_map, "update_from_stats"):
+            panel_map.update_from_stats(merged)
 
     def _refresh_control_map(self, merged: dict | None = None) -> None:
         widget = getattr(self, "control_position_map", None)
@@ -7101,18 +7198,37 @@ class BridgeLogicMixin:
             if not ports:
                 self.com_cb.addItem("(no ports — click Refresh)")
                 self.com_cb.setInsertPolicy(QtWidgets.QComboBox.InsertPolicy.NoInsert)
-                return
-            for device in sort_com_devices(ports):
-                self.com_cb.addItem(device)
-            self.com_cb.setInsertPolicy(QtWidgets.QComboBox.InsertPolicy.NoInsert)
-            if prev:
-                idx = self.com_cb.findText(prev)
-                if idx >= 0:
-                    self.com_cb.setCurrentIndex(idx)
-                else:
-                    self.com_cb.setCurrentText(prev)
+            else:
+                for device in sort_com_devices(ports):
+                    self.com_cb.addItem(device)
+                self.com_cb.setInsertPolicy(QtWidgets.QComboBox.InsertPolicy.NoInsert)
+                if prev:
+                    idx = self.com_cb.findText(prev)
+                    if idx >= 0:
+                        self.com_cb.setCurrentIndex(idx)
+                    else:
+                        self.com_cb.setCurrentText(prev)
         finally:
             self.com_cb.blockSignals(False)
+        dcb = getattr(self, "depth_com_cb", None)
+        if dcb is not None:
+            prev_depth = dcb.currentText().strip()
+            dcb.blockSignals(True)
+            try:
+                dcb.clear()
+                port_list = [p.device for p in serial.tools.list_ports.comports()]
+                for device in sort_com_devices(port_list) if port_list else []:
+                    dcb.addItem(device)
+                dcb.setInsertPolicy(QtWidgets.QComboBox.InsertPolicy.NoInsert)
+                if prev_depth:
+                    idx = dcb.findText(prev_depth)
+                    if idx >= 0:
+                        dcb.setCurrentIndex(idx)
+                    else:
+                        dcb.addItem(prev_depth)
+                        dcb.setCurrentText(prev_depth)
+            finally:
+                dcb.blockSignals(False)
         picker = getattr(self, "serial_mirror_ports", None)
         if picker is not None and hasattr(picker, "refresh"):
             picker.refresh(primary_com=self.com_cb.currentText().strip())
@@ -7122,17 +7238,20 @@ class BridgeLogicMixin:
         if not sel.startswith("net:"):
             self._sync_hub_selection_from_control(force=True)
 
-    def _send_raw_manual(self, where: str, raw: str) -> None:
+    def _send_raw_manual(self, where: str, raw: str, *, quiet: bool = False) -> None:
         if not self._is_bridge_running():
-            self._log_ui(
-                "Send: bridge not running — Connect tab: choose path, Start, wait for Running."
-            )
+            if not quiet:
+                self._log_ui(
+                    "Send: bridge not running — Connect tab: choose path, Start, wait for Running."
+                )
             return
         data = _nmea_line_bytes(raw)
         if not data:
-            self._log_ui("Send: empty or invalid line.")
+            if not quiet:
+                self._log_ui("Send: empty or invalid line.")
             return
-        self._log_ui(f"Send: {len(data)} bytes -> {where}")
+        if not quiet:
+            self._log_ui(f"Send: {len(data)} bytes -> {where}")
         b = self.bridge
         w = self._worker
 
@@ -7165,6 +7284,80 @@ class BridgeLogicMixin:
             )
             return
         self._send_raw_manual(where, raw)
+
+    def _inject_loop_interval_ms(self) -> int:
+        cmb = getattr(self, "cmb_inject_interval", None)
+        if cmb is None:
+            return 1000
+        ms = cmb.currentData()
+        try:
+            return max(50, int(ms))
+        except (TypeError, ValueError):
+            return 1000
+
+    def _inject_loop_where(self) -> str:
+        cmb = getattr(self, "cmb_inject_loop_where", None)
+        if cmb is None:
+            return "serial"
+        where = cmb.currentData()
+        return str(where or "serial")
+
+    def _inject_loop_active(self) -> bool:
+        timer = getattr(self, "_inject_loop_timer", None)
+        return timer is not None and timer.isActive()
+
+    def _set_inject_loop_running(self, on: bool) -> None:
+        timer = getattr(self, "_inject_loop_timer", None)
+        chk = getattr(self, "chk_inject_loop", None)
+        if chk is not None and chk.isChecked() != on:
+            chk.blockSignals(True)
+            chk.setChecked(on)
+            chk.blockSignals(False)
+        if timer is None:
+            return
+        if on:
+            timer.start(self._inject_loop_interval_ms())
+        else:
+            timer.stop()
+
+    def _stop_inject_loop(self, *, reason: str = "") -> None:
+        if not self._inject_loop_active():
+            return
+        self._set_inject_loop_running(False)
+        if reason:
+            self._log_ui(f"Loop: stopped ({reason}).")
+
+    def _on_inject_loop_toggled(self, on: bool) -> None:
+        if not on:
+            self._set_inject_loop_running(False)
+            return
+        if not self._is_bridge_running():
+            self._log_ui("Loop: bridge not running — Start first.")
+            self._set_inject_loop_running(False)
+            return
+        raw = self.send_edit.toPlainText()
+        if not raw.strip():
+            self._log_ui("Loop: paste text in the box first.")
+            self._set_inject_loop_running(False)
+            return
+        where = self._inject_loop_where()
+        ms = self._inject_loop_interval_ms()
+        self._log_ui(f"Loop: sending {where} every {ms} ms")
+        self._set_inject_loop_running(True)
+
+    def _on_inject_interval_changed(self, _index: int = 0) -> None:
+        if self._inject_loop_active():
+            self._inject_loop_timer.setInterval(self._inject_loop_interval_ms())
+
+    def _inject_loop_tick(self) -> None:
+        if not self._is_bridge_running():
+            self._stop_inject_loop(reason="bridge not running")
+            return
+        raw = self.send_edit.toPlainText()
+        if not raw.strip():
+            self._stop_inject_loop(reason="empty text")
+            return
+        self._send_raw_manual(self._inject_loop_where(), raw, quiet=True)
 
     def start_bridge(self) -> None:
         if self._starting:
@@ -7321,6 +7514,21 @@ class BridgeLogicMixin:
             tcp_sink = TcpSinkConfig(enabled=True, bind_port=sink_port)
 
         def build(loop: asyncio.AbstractEventLoop) -> SerialNetBridge:
+            depth_enabled = (
+                getattr(self, "chk_depth_com_enabled", None) is not None
+                and self.chk_depth_com_enabled.isChecked()
+            )
+            depth_port = ""
+            depth_baud = 4800
+            if depth_enabled:
+                depth_port = getattr(self, "depth_com_cb", None)
+                depth_port = depth_port.currentText().strip().upper() if depth_port else ""
+                dbaud = getattr(self, "depth_baud_edit", None)
+                if dbaud is not None:
+                    try:
+                        depth_baud = int(read_baud_widget(dbaud))
+                    except ValueError:
+                        depth_baud = 4800
             common = dict(
                 loop=loop,
                 ui_log=self._worker.log_msg.emit,
@@ -7347,6 +7555,9 @@ class BridgeLogicMixin:
                     else None
                 ),
                 wire_tap_cb=self._on_bridge_wire_tap,
+                depth_com_enabled=depth_enabled and bool(depth_port),
+                depth_com_port=depth_port,
+                depth_com_baud=depth_baud,
             )
             if mode == NetMode.TCP_SERVER:
                 return SerialNetBridge(
@@ -7582,10 +7793,16 @@ class BridgeLogicMixin:
         self._log_ui("Stopping bridge…")
         worker.request_stop()
         transport_summary = None
+        session_soundings: list[dict[str, object]] = []
+        session_depth_stats: dict[str, object] = {}
         bridge_obj = worker.bridge
         if bridge_obj is not None and hasattr(bridge_obj, "transport_session_summary"):
             transport_summary = bridge_obj.transport_session_summary(finalize=True)
         worker.wait(4000)
+        if bridge_obj is not None and hasattr(bridge_obj, "session_soundings_export"):
+            session_soundings = bridge_obj.session_soundings_export()
+        if bridge_obj is not None and hasattr(bridge_obj, "session_depth_stats"):
+            session_depth_stats = dict(bridge_obj.session_depth_stats())
         summary = None
         record = None
         if getattr(self, "_session_backup_was_active", False):
@@ -7597,6 +7814,14 @@ class BridgeLogicMixin:
                 import time as _time
 
                 record = rec.finalize(summary, mono=_time.monotonic())
+                from ui.mission_session import apply_depth_metrics_to_record
+
+                apply_depth_metrics_to_record(
+                    record,
+                    session_soundings,
+                    depth_stats=session_depth_stats,
+                    avg_depth_rate_hz=record.avg_depth_rate_hz,
+                )
                 if transport_summary:
                     record.com_active_s = float(
                         transport_summary.get("com_active_total_s") or 0.0
@@ -7677,19 +7902,19 @@ class BridgeLogicMixin:
         if resolved is None:
             return
         record, source = resolved
-        from ui.mission_export import CSV_EXPORT_FILTER, export_session_nmea_csv, suggest_quick_export_path
+        from ui.mission_export import CSV_EXPORT_FILTER, export_session_survey_csv, suggest_quick_export_path
 
         default_path = str(suggest_quick_export_path(record, default_ext=".csv"))
         dest, _ = QtWidgets.QFileDialog.getSaveFileName(
             self,
-            "Export session log as CSV",
+            "Export survey CSV",
             default_path,
             CSV_EXPORT_FILTER,
         )
         if not dest:
             return
         try:
-            out = export_session_nmea_csv(source, Path(dest))
+            out = export_session_survey_csv(record, Path(dest))
         except (OSError, ValueError) as exc:
             QtWidgets.QMessageBox.critical(self, "Export failed", str(exc))
             return
@@ -7700,7 +7925,7 @@ class BridgeLogicMixin:
         if resolved is None:
             return
         record, source = resolved
-        from ui.mission_export import KML_EXPORT_FILTER, export_session_track_kml, suggest_quick_export_path
+        from ui.mission_export import KML_EXPORT_FILTER, export_session_soundings_kml, suggest_quick_export_path
 
         default_path = str(suggest_quick_export_path(record, default_ext=".kml"))
         dest, _ = QtWidgets.QFileDialog.getSaveFileName(
@@ -7712,7 +7937,7 @@ class BridgeLogicMixin:
         if not dest:
             return
         try:
-            out = export_session_track_kml(source, Path(dest))
+            out = export_session_soundings_kml(record, Path(dest))
         except (OSError, ValueError) as exc:
             QtWidgets.QMessageBox.critical(self, "Export failed", str(exc))
             return
@@ -7771,6 +7996,7 @@ class BridgeLogicMixin:
         self._last_bridge_com_reported = ""
         self._bridge_stop_mono = time.monotonic()
         self._log_tab_auto_timer.stop()
+        self._stop_inject_loop()
         self._stop_ntrip()
         self._reset_ui_log_serial_coalesce()
         self._stop_guard_timer.stop()

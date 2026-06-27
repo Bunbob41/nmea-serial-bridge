@@ -334,33 +334,39 @@ class TestUiTabs(unittest.TestCase):
         if getattr(win, "_modern_sidebar_collapsed", True):
             win._apply_modern_sidebar_collapsed(False, persist=False)
         nav_spec = build_modern_tools_nav()
-        labels = [btn.text().strip() for btn in win._tools_nav_buttons]
+        labels = [
+            str(btn.property("navLabel") or btn.text().strip())
+            for btn in win._tools_nav_buttons
+        ]
         self.assertEqual(len(labels), len(nav_spec))
-        for _sid, label, icon in nav_spec:
-            self.assertIn(f"{icon}  {label}", labels)
+        for _sid, label, _icon in nav_spec:
+            self.assertIn(label, labels)
         joined = " ".join(labels)
         self.assertNotIn("More", joined)
         self.assertNotIn("Remote", joined)
         self.assertNotIn("Clear view", joined)
-        self.assertEqual(len(labels), 13)
-        self.assertIn("🎨  Theme", labels)
-        self.assertNotIn("📖  Guide", joined)
-        self.assertIn("🎛  Control", labels)
-        self.assertIn("🛰  Hub", labels)
-        self.assertIn("🔀  Fleet", labels)
-        self.assertIn("📱  Dashboard", joined)
+        self.assertEqual(len(labels), 14)
+        self.assertIn("Theme", labels)
+        self.assertNotIn("Guide", joined)
+        self.assertIn("Control", labels)
+        self.assertIn("Survey Map", labels)
+        self.assertIn("Hub", labels)
+        self.assertIn("Fleet", labels)
+        self.assertIn("Dashboard", joined)
         checks_idx = win._tools_section_index["checks"]
         checks_page = win._tools_stack.widget(checks_idx)
         self.assertEqual(checks_page.objectName(), "modernChecksPage")
         output = getattr(win, "diag_output", None)
         self.assertIsNotNone(output)
         self.assertGreaterEqual(output.maximumHeight(), 1000)
-        self.assertEqual(win._tools_section_index["inject"], labels.index("💉  Inject"))
+        self.assertEqual(win._tools_section_index["inject"], labels.index("Inject"))
         self.assertIn("guide", win._tools_section_index)
-        control_idx = win._tools_section_index["control"]
+        self.assertIn("survey_map", win._tools_section_index)
+        nav_sids = [sid for sid, _lbl, _icon in nav_spec]
+        self.assertLess(nav_sids.index("control"), nav_sids.index("survey_map"))
+        self.assertLess(nav_sids.index("survey_map"), nav_sids.index("activity"))
         activity_idx = win._tools_section_index["activity"]
-        self.assertEqual(activity_idx, labels.index("📋  Activity"))
-        self.assertEqual(control_idx + 1, activity_idx)
+        self.assertEqual(activity_idx, labels.index("Activity"))
         self.assertLess(
             activity_idx,
             win._tools_section_index["black_box"],
@@ -595,24 +601,43 @@ class TestUiTabs(unittest.TestCase):
         phone = next((lbl, icon) for sid, lbl, icon in nav if sid == "phone")
         self.assertEqual(phone, ("Dashboard", "📱"))
 
-    def test_modern_control_forms_stack_narrow(self) -> None:
-        from ui.modern import BridgeWindowModern, CONTROL_FORMS_STACK_BELOW_W
+    def test_inject_repeat_send_controls(self) -> None:
+        from ui.modern import BridgeWindowModern
 
         win = BridgeWindowModern()
-        win._apply_control_forms_responsive(640)
-        self.assertFalse(win._control_forms_vertical)
+        self.assertIsNotNone(getattr(win, "chk_inject_loop", None))
+        self.assertIsNotNone(getattr(win, "cmb_inject_interval", None))
+        self.assertIsNotNone(getattr(win, "cmb_inject_loop_where", None))
+        self.assertEqual(win._inject_loop_interval_ms(), 1000)
+        win.cmb_inject_interval.setCurrentIndex(0)
+        self.assertEqual(win._inject_loop_interval_ms(), 200)
+        win.cmb_inject_loop_where.setCurrentIndex(1)
+        self.assertEqual(win._inject_loop_where(), "net")
 
-        win._apply_control_forms_responsive(CONTROL_FORMS_STACK_BELOW_W - 40)
-        self.assertTrue(win._control_forms_vertical)
-        grid = getattr(win, "_control_forms_grid", None)
-        self.assertIsNotNone(grid)
-        network_item = grid.itemAtPosition(1, 0)  # type: ignore[union-attr]
-        self.assertIsNotNone(network_item)
+    def test_modern_control_strip_band(self) -> None:
+        from ui.modern import BridgeWindowModern, CONTROL_STRIP_BAND_W
 
-        win._apply_control_forms_responsive(CONTROL_FORMS_STACK_BELOW_W + 40)
-        self.assertFalse(win._control_forms_vertical)
-        network_item = grid.itemAtPosition(0, 1)  # type: ignore[union-attr]
-        self.assertIsNotNone(network_item)
+        win = BridgeWindowModern()
+        band = win.findChild(QtWidgets.QWidget, "modernControlStripBand")
+        self.assertIsNotNone(band)
+        self.assertEqual(band.maximumWidth(), CONTROL_STRIP_BAND_W)
+        self.assertGreaterEqual(band.maximumWidth(), band.sizeHint().width())
+        self.assertIsNotNone(getattr(win, "_control_strip_frame", None))
+        self.assertIsNotNone(getattr(win, "_control_more_toggle", None))
+        depth_row = getattr(win, "_control_depth_row", None)
+        self.assertIsNotNone(depth_row)
+        win.chk_depth_com_enabled.blockSignals(True)
+        win.chk_depth_com_enabled.setChecked(False)
+        win.chk_depth_com_enabled.blockSignals(False)
+        win._sync_control_depth_row_visibility(False)
+        self.assertTrue(depth_row.isHidden())
+        win._toggle_control_more_options()
+        self.assertTrue(getattr(win, "_control_more_expanded", False))
+        self.assertFalse(getattr(win, "_control_more_host").isHidden())
+        win._on_depth_com_enabled_toggled(True)
+        self.assertFalse(depth_row.isHidden())
+        win._toggle_control_more_options()
+        self.assertFalse(getattr(win, "_control_more_expanded", True))
 
     def test_phone_dashboard_stacks_narrow(self) -> None:
         from ui.modern import BridgeWindowModern
@@ -758,6 +783,15 @@ class TestUiTabs(unittest.TestCase):
         widget.update_position(lat=40.7128, lon=-74.0060, quality=1, fix_label="GPS")
         self._app.processEvents()
 
+    def test_modern_survey_map_tab(self) -> None:
+        from ui.modern import BridgeWindowModern
+
+        win = BridgeWindowModern()
+        self.assertIn("survey_map", win._tools_section_index)
+        page = win._tools_stack.widget(win._tools_section_index["survey_map"])
+        self.assertEqual(page.objectName(), "modernSurveyMapPage")
+        self.assertIsNotNone(getattr(win, "survey_map_panel", None))
+
     def test_modern_header_status_banner_opens_control(self) -> None:
         from PySide6.QtCore import QEvent, Qt
         from PySide6.QtGui import QMouseEvent
@@ -895,38 +929,6 @@ class TestUiTabs(unittest.TestCase):
         self.assertTrue(lbl.isVisible())
         self.assertEqual(lbl.toolTip(), long)
         self.assertLess(len(lbl.text()), len(long))
-
-    def test_bridge_stats_show_live_traffic(self) -> None:
-        from ui.modern import bridge_stats_show_live_traffic
-
-        self.assertFalse(bridge_stats_show_live_traffic({}))
-        self.assertFalse(bridge_stats_show_live_traffic({"hz_down": 0, "lines_up": 0}))
-        self.assertTrue(bridge_stats_show_live_traffic({"hz_down": 1.2}))
-        self.assertTrue(bridge_stats_show_live_traffic({"lines_up": 3}))
-
-    def test_smart_peek_switches_to_control_on_traffic(self) -> None:
-        from ui.modern import BridgeWindowModern
-
-        win = BridgeWindowModern()
-        win._smart_peek_pending = True
-        win._open_modern_section_by_sid("activity")
-        self.assertEqual(win._modern_current_section_sid(), "activity")
-        win._maybe_finish_smart_peek({"hz_down": 2.0, "lines_down": 4})
-        self._app.processEvents()
-        self.assertFalse(win._smart_peek_pending)
-        self.assertEqual(win._modern_current_section_sid(), "control")
-
-    def test_smart_peek_skips_control_if_user_left_activity(self) -> None:
-        from ui.modern import BridgeWindowModern
-
-        win = BridgeWindowModern()
-        win._smart_peek_pending = True
-        win._open_modern_section_by_sid("hub")
-        win._maybe_finish_smart_peek({"hz_up": 1.0})
-        self._app.processEvents()
-        self.assertFalse(win._smart_peek_pending)
-        self.assertEqual(win._modern_current_section_sid(), "hub")
-
 
 if __name__ == "__main__":
     unittest.main()

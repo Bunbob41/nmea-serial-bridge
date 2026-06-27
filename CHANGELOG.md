@@ -11,6 +11,165 @@ High-level notes for **this fork / branch** (`2034-ui-journey-modernization` and
 
 ---
 
+## v1.49.2
+
+- **Depth mux pre-fix hold** — live `DepthFixBinder` queues depths before the first GGA/RMC instead of emitting null-coordinate soundings; stop flush drops unbound pending (matches export replay).
+- **Export timestamps** — live session buffer rows write ISO UTC `timestamp` strings in CSV/KML fallback, matching replay export format.
+
+## v1.49.1
+
+- **CI import fix** — guard `_DevStaticFiles` in `web_api.py` so module import no longer raises `NameError` when `fastapi` / `StaticFiles` is absent (fixes `bench_gui_smoke` on minimal runners).
+
+## v1.49.0
+
+Release checkpoint since v1.48.19 — survey depth stack, export replay, and web/Survey Map legend polish.
+
+- **Depth–position mux** — high-rate `$SDDPT` no longer stacks on one fix; samples wait for the next GGA/RMC and spread along the segment (live Survey Map trail + session export).
+- **Live depth readout** — draggable HUD on Survey Map and web dashboard; inline depth above the color scale; 0.01 m precision with `last_depth_text` from the raw field.
+- **Depth legend** — Survey Map + web grid layout; customizable shallow/mid/deep colors; layout/overlap fixes for Qt WebEngine.
+- **Export replay** — `session_sounding_replay.py` binds each depth to the **next** fix in backup stream order; ISO timestamps from GGA/RMC; CSV/KML tests.
+- **Web dashboard** — grid layout script/cache fixes; `map_depth_readout.js`; depth legend stays visible between map redraws.
+- **Inject tab** — repeat-send loop (200 ms–2 s) to serial/network/both.
+- **Modern Control** — nav order preserves user layout; embedded tools chip scroll width contract aligned with tests.
+
+## v1.48.33
+
+- **Export depth sync** — session CSV/KML replay binds each `$SDDPT` to the **next** `$GPGGA`/`$GPRMC` in stream order (no cross-block interpolation); restores UTC timestamps from GGA/RMC time + RMC date.
+
+## v1.48.32
+
+- **Web depth legend fix** — live readout updates every `/status` poll (not only after map init), legend is wide enough for `8.54 m`, cache-busted `map_depth_readout.js`, and `/status` carries `last_depth_text` from the raw depth field so hundredths track SonarMite/NMEA source precision.
+
+## v1.48.31
+
+- **Live depth precision** — Survey Map and web legend readout show depth to **0.01 m** (e.g. 7.56, 1000.00) for SonarMite-style soundings.
+
+## v1.48.30
+
+- **Live depth inline** — current depth (m) in the Survey Map control panel above the 0–200 scale row, and at the top of the web depth legend; Qt map bridge now forwards `last_depth_m`.
+
+## v1.48.29
+
+- **Live depth readout** — draggable HUD on Survey Map and web dashboard map shows current depth (m), sample rate, and stale-fix hint; drag grip to reposition, double-click grip to reset.
+
+## v1.48.28
+
+- **Web dashboard blank fix** — grid layout (`/`) regained missing GridStack scripts after `depth_ramp.js` was added to the classic template; builder regex updated so localhost and Tailscale URLs load tiles again.
+
+## v1.48.27
+
+- **Export depth path** — CSV/KML re-mux from session backup in stream order (each `$SDDPT` spread between consecutive GGA/RMC fixes); explicit DDMM/DDDMM coordinate math; UDP `$SDDPT` muxed on the net path; KML placemarks numbered contiguously.
+
+## v1.48.26
+
+- **Web dashboard depth legend** — grid layout (default `/` route) now includes the depth color scale; legend paints top-right whenever depth points are on, even between map redraws.
+
+## v1.48.25
+
+- **Survey Map depth legend** — default top-right on launch; ignore centered saved positions; defer layout until the map shell is sized; overlap fixes no longer persist to localStorage unless you drag.
+
+## v1.48.24
+
+- **Depth–position mux** — high-rate `$SDDPT` samples no longer stack on one cached lat/lon; depths after the active GGA/RMC wait for the subsequent fix and are spread along the segment (export + Survey Map track).
+
+## v1.48.23
+
+- **Survey Map overlays (real fix)** — overlay script was UTF-16 (WebEngine could not parse it); logic inlined in `survey_map.js` + CSS defaults put controls top-left and depth legend top-right.
+
+## v1.48.22
+
+- **Survey Map overlays (fix)** — controls and depth legend start separated (legend top-right); visible drag grip with mouse fallback for Qt WebEngine; auto-fix overlapping saved positions; status on its own row.
+
+## v1.48.21
+
+- **Survey Map overlays** — draggable control bar and depth legend (grip at top; double-click grip to reset); Leaflet +/- moved to bottom-right so nothing clips; status line no longer ellipsized.
+
+## v1.48.20
+
+- **Inject tab — repeat send** — paste a line and loop it to serial, network, or both on 200 ms / 500 ms / 1 s / 2 s; stops when you uncheck or Stop bridge (no per-tick log spam).
+
+## v1.48.19
+
+- **Window title bar** — clamp main window to the visible monitor whenever it is shown or restored (tray, minimize, maximize, layout switch), not only at launch.
+
+## v1.48.18
+
+- **Survey Map controls** — compact top-left overlay (two tight rows); depth legend shows whenever Depth is on (even before soundings arrive).
+- **Depth legend (Survey Map + web dashboard)** — vertical color scale on the map; right-click the legend to customize shallow / mid / deep colors (saved in browser localStorage, shared across both views).
+
+## v1.48.17
+
+- **Modern window resize** — lower floor (400×260); stop header nav/status/chip mins from ratcheting window width; Control strip uses max-width 520; sidebar auto-collapses on narrow windows.
+
+## v1.48.16
+
+- **Control tab (Option A)** — single 520px connection strip: preset hint on top, inline SERIAL / NETWORK rows, collapsible More Options (depth row hidden until checked, fan-out + advanced net inside). One layout for Stop/Run — fields lock instead of rebuilding.
+
+## v1.48.15
+
+- **Control tab** — retire embedded Position track (Survey Map is canonical); remove Smart-Peek auto-switch to Activity/Control on bridge Start.
+
+## v1.48.14
+
+- **Survey map perf** — Qt WebEngine uses Python push only (no duplicate `/status` poll); `panTo` follow, 1 Hz depth redraw, skip hidden tab updates; web dashboard gets Hypack-style depth trail + legend.
+
+## v1.48.13
+
+- **Survey map stutter** — debounce `refreshMapLayout` to one `invalidateSize` per 150 ms; remove triple timers, per-stats refresh, tile `redraw()` storms, and duplicate tab-switch hooks.
+
+## v1.48.12
+
+- **Survey map crash** — fix `QTimer.singleShot` callbacks in `refresh_map_layout` (bound method, not immediate `runJavaScript` return); JS bridge scripts built as single strings.
+
+## v1.48.11
+
+- **Survey map layout refresh** — fix `refresh_map_layout` timer loop; `_JS_REFRESH_LAYOUT` is a single string constant passed to `runJavaScript`.
+
+## v1.48.10
+
+- **Survey map tiles** — fix `survey_map.py` JS bridge string closures; refresh layout after page load; redraw base tiles on `refreshMapLayout`; narrow dark CSS to container only.
+
+## v1.48.9
+
+- **Survey map tab flash** — `window.refreshMapLayout()` invalidates Leaflet on visibility/resize; Qt `showEvent` and tab switch call it; map canvas background unified to `#0f172a`.
+
+## v1.48.8
+
+- **Survey map zoom** — tactical default zoom (17) on launch instead of world view; **Center on Boat** fits boat + trail/soundings (Hypack-style zoom extents) with status fallback when GNSS is absent.
+
+## v1.48.7
+
+- **Survey map depth default** — fresh profiles default manual depth max to 200 m; Qt map bridge calls `window.setSurveyMapPrefs` safely (fixes WebEngine ReferenceError on launch).
+
+## v1.48.6
+
+- **Mission Review depth pipeline** — secondary COM soundings export lat/lon even when GPS fix is stale; session stop captures mux buffer + depth telemetry; Mission Review grid shows Depth and Depth Hz from session data.
+
+## v1.48.5
+
+- **Survey Map performance & depth scale** — `preferCanvas` rendering, follow-boat pan throttled to 2 Hz, manual depth inputs up to 500 m (no 20 m clamp), and instant color-ramp redraw on auto/manual scale changes.
+
+## v1.48.4
+
+- **Survey Map tactical UI** — unified top overlay (status, layer, depth scale controls), solid depth markers with stale slate-gray points, custom right-click menu (center/follow boat, clear soundings), follow-boat pan with drag-to-unfollow, and globe sidebar icon. Qt strip controls removed; map prefs sync via WebChannel.
+
+## v1.48.3
+
+- **Modern UI stylesheet** — fix unclosed `modernControlStoppedFormsHost` QSS block that spammed “Could not parse stylesheet” on launch.
+
+## v1.48.2
+
+- **Survey Map depth display** — depth track draws as Hypack-style color-coded line segments (shallow→deep ramp); left **Depth (m)** color band legend auto-scales from live soundings (manual min/max optional). Fixes empty `survey_map.js`, stale-fix coordinates dropped from map points, and denser `soundings_recent` buffer for the track.
+
+## v1.48.1
+
+- **Survey Map blank fix** — embed loads via local Web API (`/static/survey_map.html`) instead of `file://` so Leaflet CSS/JS and OSM/Esri tiles render in Qt WebEngine; map resizes when the tab is shown and polls `/status` when served over HTTP.
+
+## v1.48.0
+
+- **Budget survey stack (DCT-lite)** — optional secondary COM for single-beam depth (`$SDDPT` / `$SDDBT` / SonarMite ASCII), muxed to latest GGA/RMC with stale fix flag; **Survey Map** tab (street/satellite + depth layer); Mission Review CSV/KML export with `depth_m`; web dashboard depth overlay. Off by default — Norbit DCT positioning unchanged.
+- **Known**: full quickstart §1–§5 manual bench (UDP GGA + COM depth + map tiles) should be run on com0com before field deploy; automated codec/mux/export/API tests cover the mux path.
+
 ## v1.47.3
 
 - **Control tab — stopped centering fix** — stopped viewport now expands to full tab width (Expanding size policy) so the 960px form block actually centers; fixed init early-return that skipped mount layout on first paint.
